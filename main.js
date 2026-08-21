@@ -202,7 +202,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
     if (this.settings.nightlyReviewEnabled) await this.ensureNightlyReviewJob();
     await this.saveState();
     await this.catchUpOnStart();
-    console.log('[obsidian-ai-scheduler] autonomous assistant loaded, jobs:', this.jobs.length);
+    console.log('[ai-scheduler] autonomous assistant loaded, jobs:', this.jobs.length);
   }
 
   async saveState() {
