@@ -91,6 +91,8 @@ Recurring jobs remain enabled after completion. One-time jobs are disabled after
 2. Put them in `<your-vault>\\.obsidian\\plugins\\ai-scheduler\\`
 3. Enable **AI Scheduler** under Community plugins
 
+The release assets contain the complete installable plugin package.
+
 ## Commands
 
 - **Open AI Scheduler**: view scheduled tasks and recent activity
