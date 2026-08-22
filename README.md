@@ -6,7 +6,7 @@ AI Scheduler is the autonomy layer for [Claudian](https://github.com/YishenTu/cl
 
 ## What It Does
 
-- **AI planning**: describe an outcome in normal language and ask the AI to turn it into jobs
+- **AI planning**: describe an outcome in normal language, choose a Claudian provider/model, and ask the AI to turn it into jobs
 - **Scheduled work**: run jobs once, every day, every week, or after a vault change
 - **Self-talk**: let an AI reply create a small number of future follow-up jobs
 - **Nightly review**: analyze Markdown files changed during the day and write a report to `AI Reviews/YYYY-MM-DD.md`
@@ -51,7 +51,7 @@ When Obsidian is open, the plugin checks jobs approximately every 15 seconds. Cl
 If Obsidian is closed when a job becomes due:
 
 - The job does not run in the background.
-- On the next launch, the plugin can catch up jobs missed within the configured startup window.
+- On the next launch, the plugin can catch up jobs missed within the configured startup window, but this is **disabled by default**.
 - Jobs missed outside that window are left alone rather than unexpectedly running very old work.
 - You can disable catch-up in Settings.
 
@@ -65,6 +65,8 @@ The AI planner can create these schedules:
 - **Daily**: a local time such as `22:00`
 - **Weekly**: a local time and selected weekdays
 - **Vault event**: react to a Markdown file change, with a cooldown to avoid repeated runs
+
+The planning dialog shows provider/model profiles discovered from Claudian's open chats and saved model selections. The selected profile is stored with generated jobs, so a scheduled job continues using the intended Claudian conversation and model.
 
 Recurring jobs remain enabled after completion. One-time jobs are disabled after they finish or fail. Failed jobs are visible in the assistant panel and can be retried.
 

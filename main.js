@@ -11,11 +11,12 @@ const TICK_MS = 15000;
 const AGENT_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_SETTINGS = {
   assistantTab: 1,
+  planningProfile: '',
   reportFolder: 'AI Reviews',
   reviewTime: '22:00',
   nightlyReviewEnabled: false,
   notifyOnCompletion: true,
-  catchUpOnStart: true,
+  catchUpOnStart: false,
   catchUpHours: 24,
 };
 
@@ -154,6 +155,9 @@ module.exports = class AISchedulerPlugin extends Plugin {
   async onload() {
     const data = await this.loadData() || {};
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings || {});
+    // v2 shipped startup catch-up enabled. Apply the safer opt-in behavior to
+    // existing installations as well as new ones.
+    if (!data.version || data.version < 3) this.settings.catchUpOnStart = false;
     this.jobs = Array.isArray(data.jobs)
       ? data.jobs.map(job => normalizeJob(job))
       : (Array.isArray(data.tasks) ? data.tasks.map(task => normalizeJob({
@@ -206,7 +210,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
   }
 
   async saveState() {
-    await this.saveData({ version: 2, settings: this.settings, jobs: this.jobs, activity: this.activity.slice(-50) });
+    await this.saveData({ version: 3, settings: this.settings, jobs: this.jobs, activity: this.activity.slice(-50) });
   }
 
   logActivity(type, message, jobId = null) {
@@ -253,7 +257,11 @@ module.exports = class AISchedulerPlugin extends Plugin {
   }
 
   getClaudianPlugin() {
-    return this.app.plugins && this.app.plugins.plugins ? this.app.plugins.plugins.claudian : null;
+    const plugins = this.app.plugins && this.app.plugins.plugins;
+    if (!plugins) return null;
+    // Claudian's published Obsidian id is realclaudian. Keep the old id as a
+    // fallback for development builds and older installations.
+    return plugins.realclaudian || plugins.claudian || null;
   }
 
   async getClaudianView() {
@@ -263,25 +271,43 @@ module.exports = class AISchedulerPlugin extends Plugin {
     if (!views.length && typeof claudian.activateView === 'function') {
       try { await claudian.activateView(); } catch (_) { /* Claudian may already be opening */ }
       await sleep(1200);
+    }
+    for (let attempt = 0; attempt < 6; attempt++) {
       views = typeof claudian.getAllViews === 'function' ? claudian.getAllViews() : [];
+      if (views[0] && this.getTabManager(views[0])) return views[0];
+      await sleep(500);
     }
     return views[0] || null;
   }
 
+  getTabManager(view) {
+    if (!view) return null;
+    return typeof view.getTabManager === 'function' ? view.getTabManager() : view.tabManager || null;
+  }
+
+  getActiveTab(view, manager) {
+    if (view && typeof view.getActiveTab === 'function') return view.getActiveTab();
+    if (manager && typeof manager.getActiveTab === 'function') return manager.getActiveTab();
+    return null;
+  }
+
   getTab(view, number) {
-    if (!view || !view.tabManager) return null;
-    const manager = view.tabManager;
+    const manager = this.getTabManager(view);
+    if (!manager) return null;
+    const tabs = typeof manager.getAllTabs === 'function' ? manager.getAllTabs() : [];
+    if (tabs.length) return tabs[Math.max(0, Number(number || 1) - 1)] || null;
     const items = typeof manager.getTabBarItems === 'function' ? manager.getTabBarItems() : [];
     const item = items[Math.max(0, Number(number || 1) - 1)];
-    if (!item) return null;
-    const tabs = typeof manager.getAllTabs === 'function' ? manager.getAllTabs() : [];
-    return tabs.find(tab => tab.id === item.id) || manager.getActiveTab && manager.getActiveTab();
+    return item && typeof manager.getTab === 'function' ? manager.getTab(item.id) : null;
   }
 
   tabIsBusy(view, tab) {
     if (!tab) return false;
-    const item = view.tabManager.getTabBarItems().find(candidate => candidate.id === tab.id);
-    return Boolean(tab.state && tab.state.isStreaming || tab.isStreaming || item && (item.isWorking || item.isStreaming));
+    const manager = this.getTabManager(view);
+    const item = manager && typeof manager.getTabBarItems === 'function'
+      ? manager.getTabBarItems().find(candidate => candidate.id === tab.id) : null;
+    const working = manager && typeof manager.isTabWorking === 'function' ? manager.isTabWorking(tab.id) : false;
+    return Boolean(working || tab.state && tab.state.isStreaming || tab.isStreaming || item && (item.isWorking || item.isStreaming));
   }
 
   async waitForTabIdle(view, tab) {
@@ -311,18 +337,23 @@ module.exports = class AISchedulerPlugin extends Plugin {
     return contentFromMessage(message).trim();
   }
 
-  async sendToClaudian(prompt, tabNumber = this.settings.assistantTab) {
+  async sendToClaudian(prompt, tabNumber = this.settings.assistantTab, conversationId = null) {
     const view = await this.getClaudianView();
-    if (!view || !view.tabManager) throw new Error('Claudian is not available. Open or enable Claudian first.');
-    const manager = view.tabManager;
-    const target = this.getTab(view, tabNumber);
+    const manager = this.getTabManager(view);
+    if (!view || !manager) throw new Error('Claudian is installed but its chat view is not ready. Open the Claudian view once, then try again.');
+    if (conversationId && typeof manager.openConversation === 'function') {
+      await manager.openConversation(conversationId, { preferNewTab: false, activate: true });
+      await sleep(300);
+    }
+    const target = conversationId ? this.getActiveTab(view, manager) : this.getTab(view, tabNumber);
     if (!target) throw new Error(`Claudian chat ${tabNumber} does not exist.`);
     await this.waitForTabIdle(view, target);
-    if (manager.activeTabId !== target.id && typeof manager.switchToTab === 'function') {
+    const activeId = typeof manager.getActiveTabId === 'function' ? manager.getActiveTabId() : manager.activeTabId;
+    if (activeId !== target.id && typeof manager.switchToTab === 'function') {
       await manager.switchToTab(target.id);
       await sleep(300);
     }
-    const active = typeof manager.getActiveTab === 'function' ? manager.getActiveTab() : target;
+    const active = this.getActiveTab(view, manager) || target;
     const beforeCount = this.getTabMessages(view, active).length;
     const controller = active && active.controllers && active.controllers.inputController;
     if (!controller || typeof controller.sendMessage !== 'function') throw new Error('Claudian input controller is unavailable.');
@@ -360,12 +391,12 @@ module.exports = class AISchedulerPlugin extends Plugin {
       const executionPrompt = `${job.prompt}\n\nIf this work reveals a concrete future action, you may append at most three follow-up jobs using <assistant-scheduler>[{"title":"...","prompt":"...","schedule":{"kind":"once","at":"ISO-8601"}}]</assistant-scheduler>. Do not create follow-ups unless they are genuinely useful.`;
       const reply = job.routine === 'daily-review'
         ? await this.runDailyReview(false)
-        : await this.sendToClaudian(executionPrompt, job.tab || this.settings.assistantTab);
+        : await this.sendToClaudian(executionPrompt, job.tab || this.settings.assistantTab, job.conversationId || null);
       job.lastReply = reply || '';
       job.lastStatus = 'completed';
       job.lastError = null;
       job.status = 'completed';
-      await this.processFollowUps(reply, job.tab || this.settings.assistantTab);
+      await this.processFollowUps(reply, job);
       if (job.output && job.output.folder && reply) {
         await this.writeOutput(job.output.folder, job.output.filename, reply);
       }
@@ -494,10 +525,17 @@ module.exports = class AISchedulerPlugin extends Plugin {
     }
   }
 
-  async processFollowUps(reply, tab) {
+  async processFollowUps(reply, parentJob) {
     const plans = extractJson(reply).filter(item => item && item.title && item.prompt && item.schedule);
     for (const plan of plans.slice(0, 5)) {
-      await this.addJob(this.jobFromPlan(plan, tab, 'self-talk'));
+      await this.addJob(Object.assign(
+        this.jobFromPlan(plan, parentJob.tab, 'self-talk'),
+        {
+          conversationId: parentJob.conversationId || null,
+          providerId: parentJob.providerId || null,
+          model: parentJob.model || null,
+        },
+      ));
     }
   }
 
@@ -514,6 +552,9 @@ module.exports = class AISchedulerPlugin extends Plugin {
       title: String(plan.title).slice(0, 120),
       prompt: String(plan.prompt),
       tab: Number(plan.tab || fallbackTab || this.settings.assistantTab),
+      conversationId: plan.conversationId || null,
+      providerId: plan.providerId || null,
+      model: plan.model || null,
       schedule: normalized,
       nextRunAt: normalized.kind === 'event' ? null : getScheduleNextRun(normalized),
       output: plan.output || null,
@@ -523,7 +564,115 @@ module.exports = class AISchedulerPlugin extends Plugin {
     };
   }
 
-  async planAndCreate(goal, tab = this.settings.assistantTab) {
+  getProviderName(providerId) {
+    const names = {
+      claude: 'Claude',
+      codex: 'Codex',
+      grok: 'Grok',
+      opencode: 'OpenCode',
+      pi: 'Pi',
+      acp: 'ACP',
+    };
+    return names[providerId] || providerId || 'Claudian';
+  }
+
+  getExecutionProfiles() {
+    const profiles = [];
+    const seen = new Set();
+    const add = (profile) => {
+      if (!profile || !profile.providerId) return;
+      const key = `${profile.providerId}\n${profile.model || ''}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      profiles.push(profile);
+    };
+    const view = this.getClaudianViewSync();
+    const manager = this.getTabManager(view);
+    const tabs = manager && typeof manager.getAllTabs === 'function' ? manager.getAllTabs() : [];
+    tabs.forEach((tab, index) => {
+      const conversation = tab.conversationId && this.getClaudianPlugin().getConversationSync
+        ? this.getClaudianPlugin().getConversationSync(tab.conversationId) : null;
+      const providerId = conversation && conversation.providerId;
+      profiles.push({
+        value: `tab:${index + 1}`,
+        label: providerId
+          ? `Chat ${index + 1} - ${conversation.title || 'Untitled'} (${this.getProviderName(providerId)}${conversation.selectedModel ? ` / ${conversation.selectedModel}` : ''})`
+          : `Chat ${index + 1} - use its current Claudian model`,
+        tab: index + 1,
+        conversationId: tab.conversationId,
+        providerId: providerId || null,
+        model: conversation && conversation.selectedModel || '',
+      });
+    });
+    const claudian = this.getClaudianPlugin();
+    const settings = claudian && (claudian.settings || claudian.providerHost && claudian.providerHost.settings) || {};
+    const savedModels = settings.savedProviderModel || {};
+    const last = settings.lastSelectedChatModel;
+    if (last && last.providerId) add({
+      value: this.profileValue(last.providerId, last.model),
+      label: `${this.getProviderName(last.providerId)} / ${last.model || 'default model'}`,
+      providerId: last.providerId,
+      model: last.model || '',
+    });
+    Object.entries(savedModels).forEach(([providerId, model]) => add({
+      value: this.profileValue(providerId, model),
+      label: `${this.getProviderName(providerId)} / ${model || 'default model'}`,
+      providerId,
+      model: String(model || ''),
+    }));
+    const settingsProvider = settings.settingsProvider;
+    const settingsModel = settingsProvider && (savedModels[settingsProvider] || settings.model);
+    if (settingsProvider) add({
+      value: this.profileValue(settingsProvider, settingsModel),
+      label: `${this.getProviderName(settingsProvider)} / ${settingsModel || 'current model'}`,
+      providerId: settingsProvider,
+      model: String(settingsModel || ''),
+    });
+    return profiles;
+  }
+
+  getClaudianViewSync() {
+    const claudian = this.getClaudianPlugin();
+    return claudian && typeof claudian.getAllViews === 'function' ? claudian.getAllViews()[0] || null : null;
+  }
+
+  profileValue(providerId, model) {
+    return `profile:${encodeURIComponent(JSON.stringify({ providerId, model: model || '' }))}`;
+  }
+
+  parseProfileValue(value) {
+    if (!String(value || '').startsWith('profile:')) return null;
+    try { return JSON.parse(decodeURIComponent(String(value).slice(8))); } catch (_) { return null; }
+  }
+
+  async resolveExecutionProfile(value) {
+    const selected = value || this.settings.planningProfile;
+    if (String(selected).startsWith('tab:')) {
+      const tab = Math.max(1, Number.parseInt(String(selected).slice(4), 10) || 1);
+      const view = await this.getClaudianView();
+      const runtime = this.getTab(view, tab);
+      const conversation = runtime && runtime.conversationId && this.getClaudianPlugin().getConversationSync
+        ? this.getClaudianPlugin().getConversationSync(runtime.conversationId) : null;
+      return { tab, conversationId: runtime && runtime.conversationId || null, providerId: conversation && conversation.providerId || null, model: conversation && conversation.selectedModel || null };
+    }
+    const profile = this.parseProfileValue(selected);
+    if (profile && profile.providerId) {
+      const claudian = this.getClaudianPlugin();
+      if (!claudian || typeof claudian.createConversation !== 'function') throw new Error('Claudian cannot create a conversation for the selected provider.');
+      const conversation = await claudian.createConversation({
+        providerId: profile.providerId,
+        ...(profile.model ? { selectedModel: profile.model } : {}),
+      });
+      if (conversation && conversation.id && typeof claudian.renameConversation === 'function') {
+        await claudian.renameConversation(conversation.id, 'AI Scheduler - Planning');
+      }
+      return { tab: this.settings.assistantTab, conversationId: conversation.id, providerId: profile.providerId, model: profile.model || null };
+    }
+    return { tab: this.settings.assistantTab, conversationId: null, providerId: null, model: null };
+  }
+
+  async planAndCreate(goal, selection = this.settings.planningProfile) {
+    const execution = await this.resolveExecutionProfile(selection);
     const prompt = [
       'You are the planning brain for an autonomous Obsidian AI assistant.',
       'Turn the user goal below into one or more safe, concrete automation jobs.',
@@ -538,11 +687,16 @@ module.exports = class AISchedulerPlugin extends Plugin {
       'A prompt should tell the future agent exactly what to do and what vault context to inspect.',
       `User goal:\n${goal}`,
     ].join('\n');
-    const reply = await this.sendToClaudian(prompt, tab);
+    const reply = await this.sendToClaudian(prompt, execution.tab, execution.conversationId);
     const plans = extractJson(reply).filter(item => item && item.title && item.prompt && item.schedule);
     if (!plans.length) throw new Error('The AI returned no valid schedule. Ask it for a concrete time or cadence.');
     const jobs = [];
-    for (const plan of plans.slice(0, 10)) jobs.push(await this.addJob(this.jobFromPlan(plan, tab, 'planner')));
+    for (const plan of plans.slice(0, 10)) {
+      jobs.push(await this.addJob(Object.assign(
+        this.jobFromPlan(plan, execution.tab, 'planner'),
+        { conversationId: execution.conversationId, providerId: execution.providerId, model: execution.model },
+      )));
+    }
     this.logActivity('planned', `AI created ${jobs.length} job(s)`);
     await this.saveState();
     return { reply, jobs };
@@ -558,54 +712,105 @@ module.exports = class AISchedulerPlugin extends Plugin {
   }
 };
 
+function styleElement(element, styles) {
+  Object.assign(element.style, styles);
+  return element;
+}
+
+function makeButton(parent, label, onClick, primary = false) {
+  const button = parent.createEl('button', { text: label });
+  if (primary) button.addClass('mod-cta');
+  button.onclick = () => { void onClick(button); };
+  return button;
+}
+
+function makeCard(parent, styles = {}) {
+  return styleElement(parent.createEl('div'), Object.assign({
+    border: '1px solid var(--background-modifier-border)',
+    borderRadius: '12px',
+    padding: '16px',
+    background: 'var(--background-primary-alt)',
+  }, styles));
+}
+
 class AssistantModal extends Modal {
   constructor(app, plugin) { super(app); this.plugin = plugin; }
 
-  async onOpen() {
-    this.render();
-  }
+  onOpen() { this.render(); }
 
-  async render() {
+  render() {
     const { contentEl } = this;
+    this.modalEl.style.width = 'min(760px, calc(100vw - 32px))';
+    this.modalEl.style.maxHeight = 'min(760px, calc(100vh - 32px))';
+    this.modalEl.style.padding = '0';
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'AI Assistant' });
-    contentEl.createEl('p', { text: 'This plugin wakes Claudian at scheduled times, starts self-talk, and writes results into your vault.' });
-    contentEl.createEl('p', { text: 'Obsidian must be running for jobs to execute. Missed jobs can be caught up after you reopen it.' });
+    styleElement(contentEl, { padding: '0', overflow: 'auto' });
+    const shell = styleElement(contentEl.createEl('div'), { padding: '28px', maxWidth: '760px', margin: '0 auto' });
+    const connected = Boolean(this.plugin.getTabManager(this.plugin.getClaudianViewSync()));
 
-    const actions = new Setting(contentEl);
-    actions.addButton(button => button.setButtonText('Ask AI to plan').setCta().onClick(() => new PlannerModal(this.app, this.plugin).open()));
-    actions.addButton(button => button.setButtonText('Run daily review').onClick(async () => {
+    const hero = styleElement(shell.createEl('div'), { display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'flex-start', marginBottom: '26px' });
+    const heroCopy = hero.createEl('div');
+    styleElement(heroCopy.createEl('div', { text: 'CLAUDIAN / AUTONOMY' }), { color: 'var(--interactive-accent)', fontSize: '11px', fontWeight: '700', letterSpacing: '0.12em', marginBottom: '8px' });
+    styleElement(heroCopy.createEl('h1', { text: 'AI Assistant' }), { fontSize: '32px', margin: '0 0 8px', letterSpacing: '-0.03em' });
+    styleElement(heroCopy.createEl('p', { text: 'A quiet control layer for scheduled work, self-talk, and vault memory.' }), { margin: '0', color: 'var(--text-muted)', maxWidth: '510px', lineHeight: '1.5' });
+    const status = styleElement(hero.createEl('span', { text: connected ? 'Connected' : 'Open Claudian' }), { flex: '0 0 auto', borderRadius: '999px', padding: '6px 10px', fontSize: '11px', fontWeight: '700', color: connected ? 'var(--text-success)' : 'var(--text-warning)', background: connected ? 'var(--background-modifier-success)' : 'var(--background-modifier-error)' });
+    status.setAttribute('aria-label', connected ? 'Claudian is connected' : 'Open Claudian to connect');
+
+    const actions = styleElement(shell.createEl('div'), { display: 'flex', gap: '10px', flexWrap: 'wrap', paddingBottom: '24px', borderBottom: '1px solid var(--background-modifier-border)' });
+    makeButton(actions, 'Ask AI to plan', () => new PlannerModal(this.app, this.plugin).open(), true);
+    makeButton(actions, 'Run daily review', async button => {
+      button.disabled = true;
       try { await this.plugin.runDailyReview(true); } catch (error) { new Notice(`Review failed: ${errorText(error)}`, 8000); }
-    }));
-    actions.addButton(button => button.setButtonText(this.plugin.settings.nightlyReviewEnabled ? 'Disable nightly review' : 'Enable nightly review').onClick(async () => {
+      button.disabled = false;
+      this.render();
+    });
+    makeButton(actions, this.plugin.settings.nightlyReviewEnabled ? 'Disable nightly review' : 'Enable nightly review', async () => {
       this.plugin.settings.nightlyReviewEnabled = !this.plugin.settings.nightlyReviewEnabled;
       await this.plugin.ensureNightlyReviewJob();
       await this.plugin.saveState();
       this.render();
-    }));
+    });
 
+    const stats = styleElement(shell.createEl('div'), { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px', margin: '22px 0' });
+    const activeCount = this.plugin.jobs.filter(job => job.enabled).length;
+    const profileCount = this.plugin.getExecutionProfiles().length;
+    [[activeCount, 'ACTIVE JOBS'], [profileCount, 'AI PROFILES'], [connected ? 'READY' : 'WAITING', 'RUNTIME']].forEach(([value, label]) => {
+      const stat = makeCard(stats, { padding: '13px 14px' });
+      styleElement(stat.createEl('div', { text: String(value) }), { fontSize: '20px', fontWeight: '700' });
+      styleElement(stat.createEl('div', { text: label }), { marginTop: '3px', fontSize: '10px', letterSpacing: '0.1em', color: 'var(--text-muted)' });
+    });
+
+    this.renderSection(shell, 'Active jobs', `${activeCount} ${activeCount === 1 ? 'job' : 'jobs'} currently enabled`);
     const scheduled = this.plugin.jobs.filter(job => job.enabled).sort((a, b) => String(a.nextRunAt).localeCompare(String(b.nextRunAt)));
-    contentEl.createEl('h3', { text: `Active jobs (${scheduled.length})` });
-    if (!scheduled.length) contentEl.createEl('p', { text: 'No active jobs. Ask the AI to create one from a natural-language goal.' });
+    const jobs = shell.createEl('div');
+    if (!scheduled.length) {
+      const empty = makeCard(jobs, { color: 'var(--text-muted)' });
+      empty.createEl('div', { text: 'Your assistant is waiting for a goal.' });
+      styleElement(empty.createEl('div', { text: 'Ask it to review, remind, organize, or follow up on your work.' }), { marginTop: '6px', fontSize: '12px' });
+    }
     for (const job of scheduled) {
-      new Setting(contentEl)
-        .setName(job.title)
-        .setDesc(`${describeSchedule(job)}${job.status === 'failed' ? ` - ${job.lastError}` : ''}`)
-        .addButton(button => button.setButtonText('Disable').onClick(async () => {
-          job.enabled = false; job.nextRunAt = null; await this.plugin.saveState(); this.render();
-        }));
+      const card = makeCard(jobs, { display: 'flex', justifyContent: 'space-between', gap: '14px', alignItems: 'center', marginBottom: '9px' });
+      const copy = card.createEl('div');
+      styleElement(copy.createEl('div', { text: job.title }), { fontWeight: '600' });
+      styleElement(copy.createEl('div', { text: describeSchedule(job) }), { marginTop: '4px', color: 'var(--text-muted)', fontSize: '12px' });
+      makeButton(card, 'Disable', async () => { job.enabled = false; job.nextRunAt = null; await this.plugin.saveState(); this.render(); });
     }
 
-    const recent = this.plugin.jobs.filter(job => !job.enabled || job.lastStatus).slice(-5).reverse();
-    contentEl.createEl('h3', { text: 'Recent activity' });
-    for (const job of recent) {
-      const mark = job.lastStatus === 'completed' ? '[ok]' : job.lastStatus === 'failed' ? '[failed]' : '[off]';
-      const row = contentEl.createEl('div', { text: `${mark} ${job.title} - ${job.lastRunAt ? formatDate(job.lastRunAt) : 'not run'}`, cls: 'setting-item-description' });
-      if (job.lastStatus === 'failed') {
-        const retry = row.createEl('button', { text: 'Retry' });
-        retry.onclick = async () => { await this.plugin.retryJob(job); this.render(); };
-      }
+    const activity = this.plugin.activity.slice(-5).reverse();
+    this.renderSection(shell, 'Activity', activity.length ? 'The latest assistant events' : 'No activity yet');
+    const activityCard = makeCard(shell.createEl('div'), { padding: '6px 16px' });
+    if (!activity.length) styleElement(activityCard.createEl('div', { text: 'Activity will appear here after the assistant runs.', cls: 'setting-item-description' }), { padding: '10px 0' });
+    for (const event of activity) {
+      const row = styleElement(activityCard.createEl('div'), { display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '10px 0', borderBottom: '1px solid var(--background-modifier-border)' });
+      row.createEl('span', { text: event.message });
+      styleElement(row.createEl('span', { text: formatDate(event.at) }), { color: 'var(--text-muted)', fontSize: '11px', whiteSpace: 'nowrap' });
     }
+  }
+
+  renderSection(parent, title, description) {
+    const heading = styleElement(parent.createEl('div'), { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '10px' });
+    styleElement(heading.createEl('h2', { text: title }), { margin: '0', fontSize: '17px' });
+    styleElement(heading.createEl('span', { text: description }), { color: 'var(--text-muted)', fontSize: '12px' });
   }
 
   onClose() { this.contentEl.empty(); }
@@ -614,31 +819,54 @@ class AssistantModal extends Modal {
 class PlannerModal extends Modal {
   constructor(app, plugin) { super(app); this.plugin = plugin; }
 
-  onOpen() {
+  async onOpen() { await this.render(); }
+
+  async render() {
     const { contentEl } = this;
+    this.modalEl.style.width = 'min(700px, calc(100vw - 32px))';
+    this.modalEl.style.padding = '0';
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Ask the AI to plan' });
-    contentEl.createEl('p', { text: 'Describe the outcome you want. The AI will turn it into scheduled, recurring, or vault-triggered jobs.' });
-    const textarea = contentEl.createEl('textarea');
-    textarea.style.width = '100%';
-    textarea.style.minHeight = '130px';
-    textarea.placeholder = 'Every evening, review the notes I changed today and create a report in AI Reviews. Also remind me every Monday to review open loops.';
-    new Setting(contentEl)
-      .addButton(button => button.setButtonText('Create AI plan').setCta().onClick(async () => {
-        const goal = textarea.value.trim();
-        if (!goal) { new Notice('Describe what you want the assistant to do.'); return; }
-        button.setDisabled(true);
-        try {
-          const result = await this.plugin.planAndCreate(goal);
-          new Notice(`AI created ${result.jobs.length} job(s)`, 6000);
-          this.close();
-          new AssistantModal(this.app, this.plugin).open();
-        } catch (error) {
-          new Notice(`Planning failed: ${errorText(error)}`, 8000);
-          button.setDisabled(false);
-        }
-      }))
-      .addButton(button => button.setButtonText('Close').onClick(() => this.close()));
+    styleElement(contentEl, { padding: '0', overflow: 'auto' });
+    const shell = styleElement(contentEl.createEl('div'), { padding: '28px', maxWidth: '700px', margin: '0 auto' });
+    styleElement(shell.createEl('div', { text: 'AI PLANNER' }), { color: 'var(--interactive-accent)', fontSize: '11px', fontWeight: '700', letterSpacing: '0.12em', marginBottom: '8px' });
+    styleElement(shell.createEl('h1', { text: 'Teach your assistant' }), { fontSize: '30px', margin: '0 0 8px', letterSpacing: '-0.03em' });
+    styleElement(shell.createEl('p', { text: 'Describe the outcome. Claudian will turn it into safe, persistent jobs.' }), { margin: '0 0 22px', color: 'var(--text-muted)', lineHeight: '1.5' });
+
+    const profileCard = makeCard(shell.createEl('div'), { marginBottom: '14px' });
+    styleElement(profileCard.createEl('div', { text: 'Run planning with' }), { fontWeight: '600', marginBottom: '5px' });
+    styleElement(profileCard.createEl('div', { text: 'Choose the exact provider and model configured in Claudian. The selected profile is also used for the generated jobs.' }), { color: 'var(--text-muted)', fontSize: '12px', lineHeight: '1.45', marginBottom: '10px' });
+    const select = profileCard.createEl('select');
+    styleElement(select, { width: '100%', padding: '9px 10px', borderRadius: '7px', border: '1px solid var(--background-modifier-border)', background: 'var(--background-primary)', color: 'var(--text-normal)' });
+    const profiles = this.plugin.getExecutionProfiles();
+    if (!profiles.length) profiles.push({ value: 'tab:1', label: 'No Claudian profile found - open Claudian first' });
+    profiles.forEach(profile => select.createEl('option', { value: profile.value, text: profile.label }));
+    const preferred = this.plugin.settings.planningProfile;
+    select.value = profiles.some(profile => profile.value === preferred) ? preferred : profiles[0].value;
+
+    const textarea = shell.createEl('textarea');
+    styleElement(textarea, { width: '100%', minHeight: '170px', resize: 'vertical', margin: '14px 0 8px', padding: '14px', borderRadius: '10px', border: '1px solid var(--background-modifier-border)', background: 'var(--background-primary-alt)', color: 'var(--text-normal)', fontFamily: 'inherit', lineHeight: '1.5', boxSizing: 'border-box' });
+    textarea.placeholder = 'Every evening, review the notes I changed today, identify open loops, and create a report in AI Reviews. Remind me every Monday to review unfinished work.';
+    styleElement(shell.createEl('div', { text: 'Examples: review notes, prepare tomorrow, remind me about open loops, or react when a project file changes.' }), { color: 'var(--text-muted)', fontSize: '12px', marginBottom: '22px' });
+    const footer = styleElement(shell.createEl('div'), { display: 'flex', justifyContent: 'flex-end', gap: '10px' });
+    makeButton(footer, 'Cancel', () => this.close());
+    makeButton(footer, 'Create AI plan', async button => {
+      const goal = textarea.value.trim();
+      if (!goal) { new Notice('Describe what you want the assistant to do.'); return; }
+      button.disabled = true;
+      select.disabled = true;
+      this.plugin.settings.planningProfile = select.value;
+      await this.plugin.saveState();
+      try {
+        const result = await this.plugin.planAndCreate(goal, select.value);
+        new Notice(`AI created ${result.jobs.length} job(s)`, 6000);
+        this.close();
+        new AssistantModal(this.app, this.plugin).open();
+      } catch (error) {
+        new Notice(`Planning failed: ${errorText(error)}`, 8000);
+        button.disabled = false;
+        select.disabled = false;
+      }
+    }, true);
   }
 
   onClose() { this.contentEl.empty(); }
@@ -652,12 +880,24 @@ class AssistantSettingTab extends PluginSettingTab {
     containerEl.empty();
     containerEl.createEl('h2', { text: 'AI Scheduler' });
     containerEl.createEl('p', { text: 'This plugin schedules Claudian. It does not contain a model or provider of its own.' });
+    const profiles = this.plugin.getExecutionProfiles();
+    if (profiles.length) {
+      new Setting(containerEl)
+        .setName('Default planning profile')
+        .setDesc('The provider/model preselected when you ask the AI to plan.')
+        .addDropdown(dropdown => {
+          profiles.forEach(profile => dropdown.addOption(profile.value, profile.label));
+          dropdown.setValue(profiles.some(profile => profile.value === this.plugin.settings.planningProfile) ? this.plugin.settings.planningProfile : profiles[0].value);
+          dropdown.onChange(async value => { this.plugin.settings.planningProfile = value; await this.plugin.saveState(); });
+        });
+    } else {
+      containerEl.createEl('p', { text: 'Open Claudian once to expose its provider and model profiles here.' });
+    }
     new Setting(containerEl)
       .setName('Assistant chat number')
-      .setDesc('The Claudian tab used for autonomous work.')
+      .setDesc('Fallback Claudian chat used when no provider profile is selected.')
       .addText(text => text.setValue(String(this.plugin.settings.assistantTab)).onChange(async value => {
-        const number = Math.max(1, Number.parseInt(value, 10) || 1);
-        this.plugin.settings.assistantTab = number;
+        this.plugin.settings.assistantTab = Math.max(1, Number.parseInt(value, 10) || 1);
         await this.plugin.saveState();
       }));
     new Setting(containerEl)
@@ -667,22 +907,25 @@ class AssistantSettingTab extends PluginSettingTab {
         this.plugin.settings.nightlyReviewEnabled = value;
         await this.plugin.ensureNightlyReviewJob();
         await this.plugin.saveState();
+        this.display();
       }));
-    new Setting(containerEl)
-      .setName('Nightly review time')
-      .setDesc('Local 24-hour time, for example 22:00.')
-      .addText(text => text.setValue(this.plugin.settings.reviewTime).onChange(async value => {
-        this.plugin.settings.reviewTime = parseClock(value) && /^\d{1,2}:\d{2}$/.test(value) ? value : this.plugin.settings.reviewTime;
-        await this.plugin.ensureNightlyReviewJob();
-        await this.plugin.saveState();
-      }));
-    new Setting(containerEl)
-      .setName('Report folder')
-      .setDesc('Vault folder for daily review notes.')
-      .addText(text => text.setValue(this.plugin.settings.reportFolder).onChange(async value => {
-        this.plugin.settings.reportFolder = value.trim() || DEFAULT_SETTINGS.reportFolder;
-        await this.plugin.saveState();
-      }));
+    if (this.plugin.settings.nightlyReviewEnabled) {
+      new Setting(containerEl)
+        .setName('Nightly review time')
+        .setDesc('Local 24-hour time, for example 22:00.')
+        .addText(text => text.setValue(this.plugin.settings.reviewTime).onChange(async value => {
+          if (/^([01]?\d|2[0-3]):[0-5]\d$/.test(value)) this.plugin.settings.reviewTime = value;
+          await this.plugin.ensureNightlyReviewJob();
+          await this.plugin.saveState();
+        }));
+      new Setting(containerEl)
+        .setName('Report folder')
+        .setDesc('Vault folder for daily review notes.')
+        .addText(text => text.setValue(this.plugin.settings.reportFolder).onChange(async value => {
+          this.plugin.settings.reportFolder = value.trim() || DEFAULT_SETTINGS.reportFolder;
+          await this.plugin.saveState();
+        }));
+    }
     new Setting(containerEl)
       .setName('Completion notifications')
       .setDesc('Show an Obsidian notice when an AI job finishes.')
@@ -692,17 +935,20 @@ class AssistantSettingTab extends PluginSettingTab {
       }));
     new Setting(containerEl)
       .setName('Run missed jobs after startup')
-      .setDesc('Catch up jobs that became due while Obsidian was closed.')
+      .setDesc('Off by default. Enable only if you explicitly want AI work to run after Obsidian was closed.')
       .addToggle(toggle => toggle.setValue(this.plugin.settings.catchUpOnStart).onChange(async value => {
         this.plugin.settings.catchUpOnStart = value;
         await this.plugin.saveState();
+        this.display();
       }));
-    new Setting(containerEl)
-      .setName('Startup catch-up window (hours)')
-      .setDesc('Do not run jobs missed longer ago than this window.')
-      .addText(text => text.setValue(String(this.plugin.settings.catchUpHours)).onChange(async value => {
-        this.plugin.settings.catchUpHours = Math.max(1, Number.parseInt(value, 10) || 24);
-        await this.plugin.saveState();
-      }));
+    if (this.plugin.settings.catchUpOnStart) {
+      new Setting(containerEl)
+        .setName('Startup catch-up window (hours)')
+        .setDesc('Only jobs missed within this window will run after startup.')
+        .addText(text => text.setValue(String(this.plugin.settings.catchUpHours)).onChange(async value => {
+          this.plugin.settings.catchUpHours = Math.max(1, Number.parseInt(value, 10) || 24);
+          await this.plugin.saveState();
+        }));
+    }
   }
 }
