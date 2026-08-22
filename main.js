@@ -14,14 +14,12 @@ const BACKEND_INFO = {
   claudian: {
     name: 'Claudian',
     pluginId: 'realclaudian',
-    installUrl: 'obsidian://show-plugin?id=realclaudian',
-    communityUrl: 'https://obsidian.md/plugins?id=realclaudian',
+    githubUrl: 'https://github.com/YishenTu/claudian',
   },
   copilot: {
     name: 'Obsidian Copilot',
     pluginId: 'copilot',
-    installUrl: 'obsidian://show-plugin?id=copilot',
-    communityUrl: 'https://obsidian.md/plugins?id=copilot',
+    githubUrl: 'https://github.com/logancyang/obsidian-copilot',
   },
 };
 
@@ -1045,7 +1043,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
     if (this.settings.backendMode === 'copilot') {
       const setup = this.checkCopilotSetup();
       if (!setup.ok) {
-        const installHint = setup.needsInstall ? ` Install it from Settings → Community plugins (${setup.communityUrl}).` : '';
+        const installHint = setup.needsInstall ? ` Install it from ${setup.githubUrl}.` : '';
         throw new Error(`${setup.message}${installHint} It is the active AI Scheduler backend for ${action}.`);
       }
       return { modelRef: 'copilot', tab: null, conversationId: null, providerId: 'copilot', model: null };
@@ -1056,7 +1054,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
     }
     if (!this.getClaudianPlugin()) {
       const info = BACKEND_INFO.claudian;
-      throw new Error(`${info.name} is not installed or enabled. Install it from Settings → Community plugins (${info.communityUrl}). It is required for ${action}.`);
+      throw new Error(`${info.name} is not installed or enabled. Install it from ${info.githubUrl}. It is required for ${action}.`);
     }
     const availableModels = this.getModelOptions();
     if (!availableModels.some(model => model.value === selected)) {
@@ -1234,26 +1232,26 @@ module.exports = class AISchedulerPlugin extends Plugin {
   async checkClaudianSetup() {
     const info = BACKEND_INFO.claudian;
     const claudian = this.getClaudianPlugin();
-    if (!claudian) return { ok: false, needsInstall: true, message: `${info.name} is not installed or enabled.`, installUrl: info.installUrl, communityUrl: info.communityUrl };
+    if (!claudian) return { ok: false, needsInstall: true, message: `${info.name} is not installed or enabled.`, githubUrl: info.githubUrl };
     const view = await this.getClaudianView();
     const manager = this.getTabManager(view);
-    if (!view || !manager) return { ok: false, needsInstall: false, message: `${info.name} is installed, but its chat runtime is not ready. Open Claudian once and try again.`, installUrl: info.installUrl, communityUrl: info.communityUrl };
+    if (!view || !manager) return { ok: false, needsInstall: false, message: `${info.name} is installed, but its chat runtime is not ready. Open Claudian once and try again.`, githubUrl: info.githubUrl };
     const models = this.getModelOptions();
-    if (!models.some(model => model.providerId)) return { ok: false, needsInstall: false, message: `${info.name} is open, but no provider/model is configured.`, installUrl: info.installUrl, communityUrl: info.communityUrl };
-    return { ok: true, message: `${info.name} is ready with ${models.length} available model option${models.length === 1 ? '' : 's'}.`, installUrl: info.installUrl, communityUrl: info.communityUrl };
+    if (!models.some(model => model.providerId)) return { ok: false, needsInstall: false, message: `${info.name} is open, but no provider/model is configured.`, githubUrl: info.githubUrl };
+    return { ok: true, message: `${info.name} is ready with ${models.length} available model option${models.length === 1 ? '' : 's'}.`, githubUrl: info.githubUrl };
   }
 
   checkCopilotSetup() {
     const info = BACKEND_INFO.copilot;
     const copilot = this.getCopilotPlugin();
-    if (!copilot) return { ok: false, needsInstall: true, message: `${info.name} is not installed or enabled.`, installUrl: info.installUrl, communityUrl: info.communityUrl };
+    if (!copilot) return { ok: false, needsInstall: true, message: `${info.name} is not installed or enabled.`, githubUrl: info.githubUrl };
     let chain = null;
     try { chain = copilot.chainOwner && typeof copilot.chainOwner.getCurrentChainManager === 'function' ? copilot.chainOwner.getCurrentChainManager() : null; } catch (_) { chain = null; }
     if (!copilot.chatManager || typeof copilot.chatManager.sendMessage !== 'function' || typeof copilot.chatManager.getLLMMessage !== 'function'
       || !chain || typeof chain.runChain !== 'function') {
-      return { ok: false, needsInstall: false, message: `${info.name} is installed, but its automation API is unavailable. Update Copilot.`, installUrl: info.installUrl, communityUrl: info.communityUrl };
+      return { ok: false, needsInstall: false, message: `${info.name} is installed, but its automation API is unavailable. Update Copilot.`, githubUrl: info.githubUrl };
     }
-    return { ok: true, message: `${info.name} is ready. Its active Copilot model will be used.`, installUrl: info.installUrl, communityUrl: info.communityUrl };
+    return { ok: true, message: `${info.name} is ready. Its active Copilot model will be used.`, githubUrl: info.githubUrl };
   }
 
   async checkBackendSetup(mode = this.settings.backendMode) {
@@ -1582,7 +1580,7 @@ class AssistantSettingTab extends PluginSettingTab {
       desc.createEl('span', { text: result.message });
       if (!result.ok && result.needsInstall) {
         desc.createEl('span', { text: ' ' });
-        const link = desc.createEl('a', { text: `Install ${info.name}`, href: result.installUrl || info.installUrl });
+        const link = desc.createEl('a', { text: `Open ${info.name} on GitHub`, href: result.githubUrl || info.githubUrl });
         link.target = '_blank';
       }
     };
@@ -1590,11 +1588,11 @@ class AssistantSettingTab extends PluginSettingTab {
       ? Boolean(this.plugin.getCopilotPlugin())
       : Boolean(this.plugin.getClaudianPlugin());
     if (!installed) {
-      update({ ok: false, needsInstall: true, message: `${info.name} is not installed or enabled.`, installUrl: info.installUrl });
+      update({ ok: false, needsInstall: true, message: `${info.name} is not installed or enabled.`, githubUrl: info.githubUrl });
       return;
     }
     void this.plugin.checkBackendSetup().then(update).catch(error => {
-      update({ ok: false, needsInstall: false, message: errorText(error), installUrl: info.installUrl });
+      update({ ok: false, needsInstall: false, message: errorText(error), githubUrl: info.githubUrl });
     });
   }
 

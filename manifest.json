@@ -1,7 +1,7 @@
 {
   "id": "ai-scheduler",
   "name": "AI Scheduler",
-  "version": "2.0.9",
+  "version": "2.1.0",
   "minAppVersion": "1.4.0",
   "description": "Schedule AI planning, recurring work, reviews, and notifications through Claudian or Copilot.",
   "author": "Rachit Asthana",
