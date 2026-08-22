@@ -6,6 +6,7 @@
  * agent should wake up and what should happen after it replies.
  */
 const { Plugin, PluginSettingTab, Modal, Setting, Notice, normalizePath } = require('obsidian');
+const nodePath = require('path');
 
 const TICK_MS = 15000;
 const AGENT_TIMEOUT_MS = 30 * 60 * 1000;
@@ -75,14 +76,92 @@ function nextWeeklyRun(time, days, from = new Date()) {
   return nextDailyRun(time, from);
 }
 
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_SHORT_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function validClock(value) {
+  return /^([01]?\d|2[0-3]):[0-5]\d$/.test(String(value || '').trim());
+}
+
+function normalizeMultiRules(rules) {
+  if (!Array.isArray(rules)) return [];
+  return rules.map(rule => ({
+    days: [...new Set((Array.isArray(rule && rule.days) ? rule.days : []).map(Number).filter(day => day >= 0 && day <= 6))].sort((a, b) => a - b),
+    times: [...new Set((Array.isArray(rule && rule.times) ? rule.times : rule && rule.time ? [rule.time] : []).map(time => String(time).trim()).filter(validClock))].sort(),
+  })).filter(rule => rule.days.length && rule.times.length);
+}
+
+function nextMultiRun(rules, from = new Date()) {
+  const normalized = normalizeMultiRules(rules);
+  let next = null;
+  for (let offset = 0; offset <= 7; offset++) {
+    const day = new Date(from);
+    day.setDate(day.getDate() + offset);
+    for (const rule of normalized) {
+      if (!rule.days.includes(day.getDay())) continue;
+      for (const time of rule.times) {
+        const clock = parseClock(time);
+        const candidate = new Date(day);
+        candidate.setHours(clock.hour, clock.minute, 0, 0);
+        if (candidate <= from) continue;
+        if (!next || candidate < next) next = candidate;
+      }
+    }
+  }
+  return next ? next.toISOString() : null;
+}
+
+function parseDayToken(token) {
+  const normalized = String(token || '').trim().toLowerCase();
+  const exactLong = DAY_NAMES.findIndex(name => name.toLowerCase() === normalized);
+  const exact = exactLong >= 0 ? exactLong : DAY_SHORT_NAMES.findIndex(name => name.toLowerCase() === normalized);
+  if (exact >= 0) return [exact];
+  const match = /^([a-z]+)\s*-\s*([a-z]+)$/.exec(normalized);
+  if (!match) return [];
+  const startLong = DAY_NAMES.findIndex(name => name.toLowerCase().startsWith(match[1]));
+  const start = startLong >= 0 ? startLong : DAY_SHORT_NAMES.findIndex(name => name.toLowerCase().startsWith(match[1]));
+  const endLong = DAY_NAMES.findIndex(name => name.toLowerCase().startsWith(match[2]));
+  const end = endLong >= 0 ? endLong : DAY_SHORT_NAMES.findIndex(name => name.toLowerCase().startsWith(match[2]));
+  if (start < 0 || end < 0) return [];
+  const days = [];
+  for (let day = start; ; day = (day + 1) % 7) {
+    days.push(day);
+    if (day === end) break;
+  }
+  return days;
+}
+
+function parseMultiRulesText(value) {
+  const source = String(value || '').trim();
+  if (!source) return [];
+  try {
+    const parsed = JSON.parse(source);
+    if (Array.isArray(parsed)) return normalizeMultiRules(parsed);
+  } catch (_) { /* use the readable line format below */ }
+  const rules = [];
+  for (const line of source.split(/\r?\n/)) {
+    const match = /^(.+?)\s*=\s*(.+)$/.exec(line.trim());
+    if (!match) continue;
+    const days = match[1].split(',').flatMap(parseDayToken);
+    const times = match[2].split(',').map(value => value.trim()).filter(validClock);
+    rules.push({ days, times });
+  }
+  return normalizeMultiRules(rules);
+}
+
+function formatMultiRules(rules) {
+  return normalizeMultiRules(rules).map(rule => `${rule.days.map(day => DAY_SHORT_NAMES[day]).join(', ')} = ${rule.times.join(', ')}`).join('\n');
+}
+
 function getScheduleNextRun(schedule, from = new Date()) {
   if (!schedule || schedule.kind === 'event') return null;
   if (schedule.kind === 'once') {
     const date = new Date(schedule.at);
     return Number.isNaN(date.getTime()) ? null : date.toISOString();
   }
-  if (schedule.kind === 'weekly') return nextWeeklyRun(schedule.time, schedule.days, from);
-  return nextDailyRun(schedule.time, from);
+  if (schedule.kind === 'weekly') return validClock(schedule.time) ? nextWeeklyRun(schedule.time, schedule.days, from) : null;
+  if (schedule.kind === 'multi') return nextMultiRun(schedule.rules, from);
+  return validClock(schedule.time) ? nextDailyRun(schedule.time, from) : null;
 }
 
 function contentFromMessage(message) {
@@ -124,10 +203,11 @@ function extractJson(text) {
 function normalizeJob(raw, now = new Date()) {
   const schedule = raw.schedule || (raw.sendAt ? { kind: 'once', at: raw.sendAt } : { kind: 'once', at: new Date(Date.now() + 60000).toISOString() });
   const normalizedSchedule = {
-    kind: ['once', 'daily', 'weekly', 'event'].includes(schedule.kind) ? schedule.kind : 'once',
+    kind: ['once', 'daily', 'weekly', 'multi', 'event'].includes(schedule.kind) ? schedule.kind : 'once',
     at: schedule.at,
     time: schedule.time,
     days: schedule.days,
+    rules: schedule.rules,
     event: schedule.event,
   };
   const nextRunAt = raw.nextRunAt !== undefined
@@ -148,6 +228,7 @@ function normalizeJob(raw, now = new Date()) {
     routine: null,
     notify: true,
     output: null,
+    contextPaths: Array.isArray(raw.contextPaths) ? raw.contextPaths : raw.context && Array.isArray(raw.context.paths) ? raw.context.paths : [],
     attempts: 0,
     profile: null,
     conversationId: null,
@@ -159,7 +240,8 @@ function normalizeJob(raw, now = new Date()) {
 function describeSchedule(job) {
   const schedule = job.schedule || {};
   if (schedule.kind === 'daily') return `daily at ${schedule.time}`;
-  if (schedule.kind === 'weekly') return `weekly at ${schedule.time}`;
+  if (schedule.kind === 'weekly') return `weekly ${((schedule.days || []).map(Number).filter(day => DAY_SHORT_NAMES[day]).map(day => DAY_SHORT_NAMES[day]).join(', ') || 'at the selected days')} at ${schedule.time}`;
+  if (schedule.kind === 'multi') return formatMultiRules(schedule.rules).replace(/\n/g, ' · ') || 'multiple times';
   if (schedule.kind === 'event') return `when ${schedule.event || 'the vault changes'}`;
   return job.nextRunAt ? formatDate(job.nextRunAt) : 'not scheduled';
 }
@@ -244,6 +326,11 @@ module.exports = class AISchedulerPlugin extends Plugin {
   logActivity(type, message, jobId = null) {
     this.activity.push({ id: id('event'), at: new Date().toISOString(), type, message, jobId });
     this.activity = this.activity.slice(-50);
+  }
+
+  async clearActivity() {
+    this.activity = [];
+    await this.saveState();
   }
 
   async catchUpOnStart() {
@@ -365,7 +452,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
     return contentFromMessage(message).trim();
   }
 
-  async sendToClaudian(prompt, tabNumber = this.settings.assistantTab, conversationId = null) {
+  async sendToClaudian(prompt, tabNumber = this.settings.assistantTab, conversationId = null, context = null) {
     const view = await this.getClaudianView();
     const manager = this.getTabManager(view);
     if (!view || !manager) throw new Error('Claudian is installed but its chat view is not ready. Open the Claudian view once, then try again.');
@@ -386,7 +473,12 @@ module.exports = class AISchedulerPlugin extends Plugin {
     const controller = active && active.controllers && active.controllers.inputController;
     if (!controller || typeof controller.sendMessage !== 'function') throw new Error('Claudian input controller is unavailable.');
 
-    const send = controller.sendMessage({ content: prompt });
+    const turnRequest = { text: prompt };
+    if (context && context.linkedContentPath) turnRequest.linkedContentPath = context.linkedContentPath;
+    if (context && context.externalContextPaths && context.externalContextPaths.length) {
+      turnRequest.externalContextPaths = context.externalContextPaths;
+    }
+    const send = controller.sendMessage({ content: prompt, turnRequestOverride: turnRequest });
     await Promise.race([
       send,
       sleep(AGENT_TIMEOUT_MS).then(() => { throw new Error('AI task timed out after 30 minutes'); }),
@@ -418,10 +510,11 @@ module.exports = class AISchedulerPlugin extends Plugin {
     try {
       const execution = await this.resolveJobExecution(job);
       await this.saveState();
-      const executionPrompt = `${job.prompt}\n\nIf this work reveals a concrete future action, you may append at most three follow-up jobs using <assistant-scheduler>[{"title":"...","prompt":"...","schedule":{"kind":"once","at":"ISO-8601"}}]</assistant-scheduler>. Do not create follow-ups unless they are genuinely useful.`;
+      const context = this.getJobContext(job);
+      const executionPrompt = `${this.contextPrompt(job.prompt, context.paths)}\n\nIf this work reveals a concrete future action, you may append at most three follow-up jobs using <assistant-scheduler>[{"title":"...","prompt":"...","schedule":{"kind":"once","at":"ISO-8601"}}]</assistant-scheduler>. Do not create follow-ups unless they are genuinely useful.`;
       const reply = job.routine === 'daily-review'
         ? await this.runDailyReview(false, execution, 'nightly')
-        : await this.sendToClaudian(executionPrompt, execution.tab, execution.conversationId);
+        : await this.sendToClaudian(executionPrompt, execution.tab, execution.conversationId, context);
       job.lastReply = reply || '';
       job.lastStatus = 'completed';
       job.lastError = null;
@@ -476,6 +569,9 @@ module.exports = class AISchedulerPlugin extends Plugin {
 
   async addJob(raw) {
     const job = normalizeJob(raw);
+    if (job.schedule.kind !== 'event' && !job.nextRunAt) {
+      throw new Error(`Cannot create "${job.title}": its schedule is invalid or has no valid time.`);
+    }
     this.jobs.push(job);
     await this.saveState();
     return job;
@@ -542,7 +638,8 @@ module.exports = class AISchedulerPlugin extends Plugin {
     const resolved = execution || (nightlyJob && kind === 'nightly'
       ? await this.resolveJobExecution(nightlyJob)
       : await this.resolveModel(model, kind === 'nightly' ? 'nightly review' : 'daily preview'));
-    const reply = await this.sendToClaudian(prompt, resolved.tab, resolved.conversationId);
+    const context = this.getPathsContext(files.map(file => file.path));
+    const reply = await this.sendToClaudian(prompt, resolved.tab, resolved.conversationId, context);
     const reportTitle = kind === 'nightly' ? 'Nightly Review' : 'Daily Preview';
     const report = reply || `# ${reportTitle} - ${today}\n\nClaudian did not return a report.`;
     const timestamp = localTimestampKey(now);
@@ -565,6 +662,46 @@ module.exports = class AISchedulerPlugin extends Plugin {
     if (this.settings.reviewContextMode === 'all-markdown') return true;
     if (this.settings.reviewContextMode === 'no-files') return false;
     return Boolean(file.stat && file.stat.mtime >= start.getTime());
+  }
+
+  getVaultContextOptions() {
+    const options = [];
+    const files = this.app.vault.getMarkdownFiles ? this.app.vault.getMarkdownFiles() : [];
+    files.forEach(file => options.push({ path: file.path, label: `Page: ${file.path}`, type: 'page' }));
+    const loaded = this.app.vault.getAllLoadedFiles ? this.app.vault.getAllLoadedFiles() : [];
+    loaded.filter(file => Array.isArray(file.children)).forEach(folder => {
+      if (folder.path) options.push({ path: folder.path, label: `Project folder: ${folder.path}`, type: 'project' });
+    });
+    return options.sort((a, b) => a.path.localeCompare(b.path));
+  }
+
+  getPathsContext(paths) {
+    const selected = [...new Set((Array.isArray(paths) ? paths : []).map(path => normalizePath(String(path || '').trim())).filter(Boolean))];
+    const available = this.getVaultContextOptions();
+    const known = new Set(available.map(option => option.path));
+    const folders = new Set(available.filter(option => option.type === 'project').map(option => option.path));
+    const filePaths = selected.filter(path => !folders.has(path));
+    const folderPaths = selected.filter(path => folders.has(path));
+    const basePath = this.app.vault.adapter && typeof this.app.vault.adapter.getBasePath === 'function'
+      ? this.app.vault.adapter.getBasePath() : '';
+    return {
+      paths: selected,
+      missingPaths: selected.filter(path => !known.has(path)),
+      linkedContentPath: filePaths[0] || null,
+      externalContextPaths: folderPaths.map(path => basePath ? nodePath.join(basePath, ...path.split('/')) : path),
+    };
+  }
+
+  getJobContext(job) {
+    const context = this.getPathsContext(job && job.contextPaths);
+    if (context.missingPaths.length) throw new Error(`Selected context no longer exists: ${context.missingPaths.join(', ')}`);
+    return context;
+  }
+
+  contextPrompt(prompt, paths) {
+    const contextPaths = Array.isArray(paths) ? paths : [];
+    if (!contextPaths.length) return prompt;
+    return `${prompt}\n\nSelected Claudian context:\n${contextPaths.map(path => `- ${path}`).join('\n')}\nUse the attached page/project context and respect the user's Claudian permissions.`;
   }
 
   async writeOutput(folder, filename, content) {
@@ -600,6 +737,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
           conversationId: parentJob.conversationId || null,
           providerId: parentJob.providerId || null,
           model: parentJob.model || null,
+          contextPaths: parentJob.contextPaths || [],
         },
       ));
     }
@@ -612,6 +750,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
       at: schedule.at,
       time: schedule.time,
       days: schedule.days,
+      rules: schedule.rules,
       event: schedule.event,
     };
     return {
@@ -626,6 +765,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
       nextRunAt: normalized.kind === 'event' ? null : getScheduleNextRun(normalized),
       output: plan.output || null,
       notify: plan.notify !== false,
+      contextPaths: Array.isArray(plan.contextPaths) ? plan.contextPaths : plan.context && Array.isArray(plan.context.paths) ? plan.context.paths : [],
       cooldownMinutes: plan.cooldownMinutes || schedule.cooldownMinutes,
       source,
     };
@@ -817,13 +957,14 @@ module.exports = class AISchedulerPlugin extends Plugin {
       `Existing job: ${JSON.stringify({ title: job.title, prompt: job.prompt, schedule: job.schedule })}`,
       `Requested change: ${request}`,
     ].join('\n\n');
-    const reply = await this.sendToClaudian(prompt, execution.tab, execution.conversationId);
+    const context = this.getJobContext(job);
+    const reply = await this.sendToClaudian(prompt, execution.tab, execution.conversationId, context);
     const plan = extractJson(reply)[0];
     if (!plan || !plan.title || !plan.prompt || !plan.schedule) throw new Error('The AI returned an invalid job edit.');
     return plan;
   }
 
-  async planAndCreate(goal) {
+  async planAndCreate(goal, contextPaths = [], resultFolder = '') {
     const execution = await this.resolveModel(this.settings.planningModel, 'AI planning');
     const prompt = [
       'You are the planning brain for an autonomous Obsidian AI Scheduler.',
@@ -832,20 +973,26 @@ module.exports = class AISchedulerPlugin extends Plugin {
       'Each item must have: title, prompt, schedule.',
       'schedule must be one of:',
       '- {"kind":"once","at":"ISO-8601 timestamp"}',
-      '- {"kind":"daily","time":"HH:MM"}',
-      '- {"kind":"weekly","time":"HH:MM","days":[0,1,2,3,4,5,6]}',
-      '- {"kind":"event","event":"modify","cooldownMinutes":10}',
-      'Use the user\'s local time. Add output {"folder":"...","filename":"..."} only when a note should be saved.',
-      'A prompt should tell the future agent exactly what to do and what vault context to inspect.',
-      `User goal:\n${goal}`,
+       '- {"kind":"daily","time":"HH:MM"}',
+       '- {"kind":"weekly","time":"HH:MM","days":[0,1,2,3,4,5,6]}',
+       '- {"kind":"multi","rules":[{"days":[1],"times":["02:00"]},{"days":[6],"times":["15:00"]},{"days":[0,2,3,4,5],"times":["01:00","05:00"]}]}',
+       '- {"kind":"event","event":"modify","cooldownMinutes":10}',
+       'Use the user\'s local time. Add output {"folder":"...","filename":"..."} only when a note should be saved.',
+       'A prompt should tell the future agent exactly what to do and what vault context to inspect. Multiple requested schedules must become separate jobs or one multi schedule with rules.',
+       `Selected context paths:\n${contextPaths.length ? contextPaths.map(path => `- ${path}`).join('\n') : '- None selected'}`,
+       `User goal:\n${goal}`,
     ].join('\n');
-    const reply = await this.sendToClaudian(prompt, execution.tab, execution.conversationId);
+    const context = this.getPathsContext(contextPaths);
+    const reply = await this.sendToClaudian(prompt, execution.tab, execution.conversationId, context);
     const plans = extractJson(reply).filter(item => item && item.title && item.prompt && item.schedule);
     if (!plans.length) throw new Error('The AI returned no valid schedule. Ask it for a concrete time or cadence.');
     const jobs = [];
     for (const plan of plans.slice(0, 10)) {
       jobs.push(await this.addJob(Object.assign(
-        this.jobFromPlan(plan, execution.tab, 'planner'),
+        this.jobFromPlan(Object.assign({}, plan, {
+          contextPaths: plan.contextPaths || plan.context && plan.context.paths || contextPaths,
+          output: plan.output || (resultFolder ? { folder: resultFolder } : null),
+        }), execution.tab, 'planner'),
         { profile: execution.modelRef, conversationId: execution.conversationId, providerId: execution.providerId, model: execution.model },
       )));
     }
@@ -900,6 +1047,36 @@ function makeCard(parent, styles = {}) {
     padding: '16px',
     background: 'var(--background-primary-alt)',
   }, styles));
+}
+
+function createContextPicker(parent, plugin, initialPaths = []) {
+  const card = makeCard(parent, { marginBottom: '14px', padding: '12px 14px' });
+  styleElement(card.createEl('div', { text: 'Context for this task' }), { fontWeight: '600', marginBottom: '4px' });
+  styleElement(card.createEl('div', { text: 'Select pages or project folders Claudian should attach when this task runs.' }), { color: 'var(--text-muted)', fontSize: '12px', marginBottom: '8px' });
+  const select = card.createEl('select');
+  select.multiple = true;
+  select.size = 6;
+  styleElement(select, { width: '100%', minHeight: '110px', padding: '6px', background: 'var(--background-primary)', color: 'var(--text-normal)' });
+  const options = plugin.getVaultContextOptions();
+  const known = new Set(options.map(option => option.path));
+  for (const path of initialPaths) {
+    if (!known.has(path)) options.push({ path, label: `Unavailable: ${path}`, type: 'missing' });
+  }
+  options.sort((a, b) => a.label.localeCompare(b.label));
+  options.forEach(option => {
+    const element = select.createEl('option', { value: option.path, text: option.label });
+    element.selected = initialPaths.includes(option.path);
+  });
+  const controls = styleElement(card.createEl('div'), { display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' });
+  makeButton(controls, 'Use active page', () => {
+    const active = plugin.app.workspace && plugin.app.workspace.getActiveFile && plugin.app.workspace.getActiveFile();
+    if (!active) { new Notice('No active Markdown page is open.'); return; }
+    const option = [...select.options].find(candidate => candidate.value === active.path);
+    if (option) option.selected = true;
+    else new Notice(`Active page is not available: ${active.path}`);
+  });
+  makeButton(controls, 'Clear context', () => [...select.options].forEach(option => { option.selected = false; }));
+  return { getPaths: () => [...select.selectedOptions].map(option => option.value) };
 }
 
 class AssistantModal extends Modal {
@@ -984,7 +1161,12 @@ class AssistantModal extends Modal {
     }
 
     const activity = this.plugin.activity.slice(-8).reverse();
-    this.renderSection(shell, 'Recent activity', activity.length ? 'All times are local' : 'No activity yet');
+    const activityHeading = this.renderSection(shell, 'Recent activity', activity.length ? 'All times are local' : 'No activity yet');
+    makeButton(activityHeading, 'Clear', async button => {
+      button.disabled = true;
+      await this.plugin.clearActivity();
+      this.render();
+    });
     const activityCard = makeCard(shell.createEl('div'), { padding: '6px 16px' });
     if (!activity.length) styleElement(activityCard.createEl('div', { text: 'Reviews, task runs, and notifications will appear here.' }), { padding: '10px 0', color: 'var(--text-muted)' });
     for (const event of activity) {
@@ -998,6 +1180,7 @@ class AssistantModal extends Modal {
     const heading = styleElement(parent.createEl('div'), { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '10px' });
     styleElement(heading.createEl('h2', { text: title }), { margin: '0', fontSize: '17px' });
     styleElement(heading.createEl('span', { text: description }), { color: 'var(--text-muted)', fontSize: '12px' });
+    return heading;
   }
 
   onClose() { this.contentEl.empty(); }
@@ -1019,6 +1202,10 @@ class PlannerModal extends Modal {
     styleElement(shell.createEl('h1', { text: 'Plan scheduled work' }), { fontSize: '30px', margin: '0 0 8px', letterSpacing: '-0.03em' });
     styleElement(shell.createEl('p', { text: 'Describe the outcome. Claudian will turn it into safe, persistent jobs.' }), { margin: '0 0 22px', color: 'var(--text-muted)', lineHeight: '1.5' });
 
+    const contextPicker = createContextPicker(shell, this.plugin);
+    styleElement(shell.createEl('div', { text: 'Default result folder for created tasks (optional)' }), { color: 'var(--text-muted)', fontSize: '12px', marginBottom: '4px' });
+    const resultFolder = shell.createEl('input', { type: 'text', placeholder: 'Optional result folder for created tasks, e.g. Projects/News' });
+    styleElement(resultFolder, { width: '100%', boxSizing: 'border-box', marginBottom: '10px' });
     const textarea = shell.createEl('textarea');
     styleElement(textarea, { width: '100%', minHeight: '170px', resize: 'vertical', margin: '14px 0 8px', padding: '14px', borderRadius: '10px', border: '1px solid var(--background-modifier-border)', background: 'var(--background-primary-alt)', color: 'var(--text-normal)', fontFamily: 'inherit', lineHeight: '1.5', boxSizing: 'border-box' });
     textarea.placeholder = 'Every evening, review the notes I changed today, identify open loops, and create a report in AI Reviews. Remind me every Monday to review unfinished work.';
@@ -1030,7 +1217,7 @@ class PlannerModal extends Modal {
       if (!goal) { new Notice('Describe what you want AI Scheduler to do.'); return; }
        button.disabled = true;
        try {
-         const result = await this.plugin.planAndCreate(goal);
+         const result = await this.plugin.planAndCreate(goal, contextPicker.getPaths(), resultFolder.value.trim());
         new Notice(`AI created ${result.jobs.length} job(s)`, 6000);
         this.close();
         new AssistantModal(this.app, this.plugin).open();
@@ -1059,15 +1246,38 @@ class JobModal extends Modal {
     title.style.boxSizing = 'border-box';
     title.style.marginBottom = '10px';
     const prompt = shell.createEl('textarea', { text: this.job.prompt, placeholder: 'What should Claudian do?' });
+    prompt.value = this.job.prompt || '';
     styleElement(prompt, { width: '100%', minHeight: '130px', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', padding: '10px', marginBottom: '10px' });
+    const contextPicker = createContextPicker(shell, this.plugin, this.job.contextPaths || []);
+    styleElement(shell.createEl('div', { text: 'Result folder for this task (optional)' }), { color: 'var(--text-muted)', fontSize: '12px', marginBottom: '4px' });
+    const resultFolder = shell.createEl('input', { type: 'text', value: this.job.output && this.job.output.folder || '', placeholder: 'Optional result folder, e.g. Projects/News' });
+    styleElement(resultFolder, { width: '100%', boxSizing: 'border-box', marginBottom: '10px' });
     const kind = shell.createEl('select');
-    ['once', 'daily', 'weekly', 'event'].forEach(value => kind.createEl('option', { value, text: value[0].toUpperCase() + value.slice(1) }));
+    ['once', 'daily', 'weekly', 'multi', 'event'].forEach(value => kind.createEl('option', { value, text: value === 'multi' ? 'Multiple weekday times' : value[0].toUpperCase() + value.slice(1) }));
     kind.value = this.job.schedule.kind || 'once';
     kind.style.marginBottom = '10px';
     const schedule = shell.createEl('input', { type: 'text', value: this.job.schedule.kind === 'once' ? (this.job.schedule.at || '') : (this.job.schedule.time || ''), placeholder: 'ISO timestamp or HH:MM' });
     schedule.style.width = '100%';
     schedule.style.boxSizing = 'border-box';
     schedule.style.marginBottom = '10px';
+    const weeklyDays = shell.createEl('input', { type: 'text', value: Array.isArray(this.job.schedule.days) ? this.job.schedule.days.join(',') : '0,1,2,3,4,5,6', placeholder: 'Weekly days: 0=Sun, 1=Mon, ... 6=Sat' });
+    weeklyDays.style.width = '100%';
+    weeklyDays.style.boxSizing = 'border-box';
+    weeklyDays.style.marginBottom = '10px';
+    const multiRules = shell.createEl('textarea', { text: formatMultiRules(this.job.schedule.rules), placeholder: 'One rule per line, for example:\nMon = 02:00\nSat = 15:00\nSun, Tue-Fri = 01:00, 05:00' });
+    multiRules.value = formatMultiRules(this.job.schedule.rules);
+    styleElement(multiRules, { width: '100%', minHeight: '100px', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', padding: '10px', marginBottom: '10px' });
+    styleElement(shell.createEl('div', { text: 'For multiple times, use weekday names and 24-hour times, one rule per line.' }), { color: 'var(--text-muted)', fontSize: '12px', marginBottom: '10px' });
+    const updateScheduleFields = () => {
+      const isOnce = kind.value === 'once';
+      const isWeekly = kind.value === 'weekly';
+      const isMulti = kind.value === 'multi';
+      schedule.style.display = isOnce || (!isWeekly && !isMulti && kind.value !== 'event') ? '' : 'none';
+      weeklyDays.style.display = isWeekly ? '' : 'none';
+      multiRules.style.display = isMulti ? '' : 'none';
+    };
+    kind.onchange = updateScheduleFields;
+    updateScheduleFields();
     const request = shell.createEl('textarea', { placeholder: 'Optional: tell AI how to improve this task' });
     styleElement(request, { width: '100%', minHeight: '70px', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', padding: '10px', marginBottom: '12px' });
     const footer = styleElement(shell.createEl('div'), { display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' });
@@ -1081,6 +1291,9 @@ class JobModal extends Modal {
         prompt.value = plan.prompt;
         kind.value = plan.schedule.kind || 'once';
         schedule.value = plan.schedule.kind === 'once' ? (plan.schedule.at || '') : (plan.schedule.time || '');
+        weeklyDays.value = Array.isArray(plan.schedule.days) ? plan.schedule.days.join(',') : weeklyDays.value;
+        multiRules.value = formatMultiRules(plan.schedule.rules);
+        updateScheduleFields();
         new Notice('AI suggested an updated task. Review it before saving.');
       } catch (error) { new Notice(`Could not improve task: ${errorText(error)}`, 8000); }
       button.disabled = false;
@@ -1090,11 +1303,19 @@ class JobModal extends Modal {
       const nextSchedule = { kind: kind.value };
       if (kind.value === 'once') nextSchedule.at = schedule.value.trim();
       else if (kind.value === 'event') nextSchedule.event = 'modify';
-      else nextSchedule.time = schedule.value.trim();
+      else if (kind.value === 'weekly') {
+        nextSchedule.time = schedule.value.trim();
+        nextSchedule.days = weeklyDays.value.split(',').map(value => Number(value.trim())).filter(day => day >= 0 && day <= 6);
+      } else if (kind.value === 'multi') {
+        nextSchedule.rules = parseMultiRulesText(multiRules.value);
+        if (!nextSchedule.rules.length) { new Notice('Add at least one valid multi-time rule.'); return; }
+      } else nextSchedule.time = schedule.value.trim();
       if (kind.value !== 'event' && !getScheduleNextRun(nextSchedule, new Date(Date.now() - 1000))) { new Notice('Enter a valid schedule value.'); return; }
       button.disabled = true;
       try {
-        await this.plugin.updateJob(this.job, { title: title.value.trim(), prompt: prompt.value.trim(), schedule: nextSchedule });
+        const folder = resultFolder.value.trim();
+        const output = folder ? Object.assign({}, this.job.output || {}, { folder }) : null;
+        await this.plugin.updateJob(this.job, { title: title.value.trim(), prompt: prompt.value.trim(), schedule: nextSchedule, contextPaths: contextPicker.getPaths(), output });
         this.onSaved();
         this.close();
       } catch (error) { new Notice(`Could not save task: ${errorText(error)}`, 8000); button.disabled = false; }
@@ -1177,10 +1398,17 @@ class AssistantSettingTab extends PluginSettingTab {
       .setName('Nightly review')
       .setDesc('Opt-in: create a timestamped review report on a recurring schedule.')
       .addToggle(toggle => toggle.setValue(this.plugin.settings.nightlyReviewEnabled).onChange(async value => {
-        this.plugin.settings.nightlyReviewEnabled = value;
-        await this.plugin.ensureNightlyReviewJob();
-        await this.plugin.saveState();
-        this.display();
+        const previous = this.plugin.settings.nightlyReviewEnabled;
+        try {
+          this.plugin.settings.nightlyReviewEnabled = value;
+          await this.plugin.ensureNightlyReviewJob();
+          await this.plugin.saveState();
+          new Notice(value ? 'Nightly review enabled.' : 'Nightly review disabled.');
+        } catch (error) {
+          this.plugin.settings.nightlyReviewEnabled = previous;
+          toggle.setValue(previous);
+          new Notice(`Could not change nightly review: ${errorText(error)}`, 8000);
+        }
       }));
     new Setting(containerEl)
       .setName('Nightly review time')
@@ -1203,16 +1431,17 @@ class AssistantSettingTab extends PluginSettingTab {
       .addToggle(toggle => toggle.setValue(this.plugin.settings.catchUpOnStart).onChange(async value => {
         this.plugin.settings.catchUpOnStart = value;
         await this.plugin.saveState();
-        this.display();
       }));
-    if (this.plugin.settings.catchUpOnStart) {
-      new Setting(containerEl)
-        .setName('Startup catch-up window (hours)')
-        .setDesc('Only jobs missed within this window will run after startup.')
-        .addText(text => text.setValue(String(this.plugin.settings.catchUpHours)).onChange(async value => {
+    new Setting(containerEl)
+      .setName('Startup catch-up window (hours)')
+      .setDesc('Only jobs missed within this window will run after startup. Disabled while catch-up is off.')
+      .addText(text => {
+        text.setValue(String(this.plugin.settings.catchUpHours));
+        text.inputEl.disabled = !this.plugin.settings.catchUpOnStart;
+        text.onChange(async value => {
           this.plugin.settings.catchUpHours = Math.max(1, Number.parseInt(value, 10) || 24);
           await this.plugin.saveState();
-        }));
-    }
+        });
+      });
   }
 }

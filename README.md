@@ -9,6 +9,9 @@ AI Scheduler is the autonomy layer for [Claudian](https://github.com/YishenTu/cl
 - **AI planning**: describe an outcome in normal language and ask Claudian to turn it into jobs
 - **Model control**: choose separate Claudian models for planning, scheduled tasks, daily previews, and nightly reviews
 - **Scheduled work**: run jobs once, every day, every week, or after a vault change
+- **Flexible frequency**: create multiple weekday/time rules in one schedule, such as Monday at 02:00 and Saturday at 15:00
+- **Task context**: attach a Markdown page or a vault project folder to a task; Claudian receives it through its linked-content and external-context APIs
+- **Per-task results**: save each task's output to its own vault folder instead of one global location
 - **Self-talk**: let an AI reply create a small number of future follow-up jobs
 - **Daily and nightly reviews**: analyze Markdown context and write timestamped reports to `AI Reviews/YYYY-MM-DD-HHmmss.md`
 - **Notifications**: show an Obsidian notice when work completes or fails
@@ -68,6 +71,8 @@ The AI planner can create these schedules:
 - **Vault event**: react to a Markdown file change, with a cooldown to avoid repeated runs
 
 Settings exposes four independent model choices: planning, scheduled task execution, daily preview, and nightly review. Editing a task with **Improve with AI** uses the planning model.
+
+The scheduler settings include a **Refresh models** control that reloads the currently available Claudian models. Each task editor can select pages or project folders for context, choose a result folder, and use a multiple-time schedule.
 
 Recurring jobs remain enabled after completion. One-time jobs are disabled after they finish or fail. Past jobs remain visible in the scheduler and can be edited, run again, or deleted.
 
