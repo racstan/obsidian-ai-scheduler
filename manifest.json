@@ -1,7 +1,7 @@
 {
   "id": "ai-scheduler",
   "name": "AI Scheduler",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "minAppVersion": "1.4.0",
   "description": "AI Scheduler for Claudian with AI planning, scheduled work, daily previews, nightly reviews, and notifications.",
   "author": "Rachit Asthana",

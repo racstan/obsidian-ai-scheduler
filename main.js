@@ -541,7 +541,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
     const model = kind === 'nightly' ? this.settings.nightlyReviewModel : this.settings.dailyReviewModel;
     const resolved = execution || (nightlyJob && kind === 'nightly'
       ? await this.resolveJobExecution(nightlyJob)
-      : await this.resolveModel(model));
+      : await this.resolveModel(model, kind === 'nightly' ? 'nightly review' : 'daily preview'));
     const reply = await this.sendToClaudian(prompt, resolved.tab, resolved.conversationId);
     const reportTitle = kind === 'nightly' ? 'Nightly Review' : 'Daily Preview';
     const report = reply || `# ${reportTitle} - ${today}\n\nClaudian did not return a report.`;
@@ -710,6 +710,14 @@ module.exports = class AISchedulerPlugin extends Plugin {
 
   getExecutionProfiles() { return this.getModelOptions(); }
 
+  async refreshModels() {
+    const view = await this.getClaudianView();
+    if (!view || !this.getTabManager(view)) {
+      throw new Error('Claudian is not ready. Open Claudian once, then refresh the model list.');
+    }
+    return this.getModelOptions();
+  }
+
   getClaudianViewSync() {
     const claudian = this.getClaudianPlugin();
     return claudian && typeof claudian.getAllViews === 'function' ? claudian.getAllViews()[0] || null : null;
@@ -726,24 +734,44 @@ module.exports = class AISchedulerPlugin extends Plugin {
     try { return JSON.parse(decodeURIComponent(String(value).slice(8))); } catch (_) { return null; }
   }
 
-  async resolveModel(value) {
+  async resolveModel(value, action = 'this action') {
     const selected = value === undefined || value === null ? this.settings.executionModel : value;
+    if (!selected) {
+      throw new Error(`No model selected for ${action}. Choose a model in AI Scheduler settings first.`);
+    }
+    if (!this.getClaudianPlugin()) {
+      throw new Error(`Claudian is not installed or enabled. It is required for ${action}.`);
+    }
+    const availableModels = this.getModelOptions();
+    if (!availableModels.some(model => model.value === selected)) {
+      throw new Error(`The selected model for ${action} is no longer available in Claudian. Refresh the model list and choose another model.`);
+    }
     if (String(selected).startsWith('tab:')) {
       const tab = Math.max(1, Number.parseInt(String(selected).slice(4), 10) || 1);
       const view = await this.getClaudianView();
       const runtime = this.getTab(view, tab);
-      const conversation = runtime && runtime.conversationId && this.getClaudianPlugin().getConversationSync
-        ? this.getClaudianPlugin().getConversationSync(runtime.conversationId) : null;
+      if (!runtime) throw new Error(`The Claudian chat selected for ${action} no longer exists. Refresh the model list and choose another model.`);
+      const claudian = this.getClaudianPlugin();
+      const conversation = runtime && runtime.conversationId && claudian && claudian.getConversationSync
+        ? claudian.getConversationSync(runtime.conversationId) : null;
+      if (!conversation || !conversation.providerId) throw new Error(`The Claudian chat selected for ${action} has no configured provider.`);
        return { modelRef: selected, tab, conversationId: runtime && runtime.conversationId || null, providerId: conversation && conversation.providerId || null, model: conversation && conversation.selectedModel || null };
     }
     const profile = this.parseProfileValue(selected);
     if (profile && profile.providerId) {
       const claudian = this.getClaudianPlugin();
-      if (!claudian || typeof claudian.createConversation !== 'function') throw new Error('Claudian cannot create a conversation for the selected provider.');
-      const conversation = await claudian.createConversation({
-        providerId: profile.providerId,
-        ...(profile.model ? { selectedModel: profile.model } : {}),
-      });
+      if (!claudian) throw new Error(`Claudian is not installed or enabled. It is required for ${action}.`);
+      if (typeof claudian.createConversation !== 'function') throw new Error(`Claudian cannot create a conversation for ${action}.`);
+      let conversation;
+      try {
+        conversation = await claudian.createConversation({
+          providerId: profile.providerId,
+          ...(profile.model ? { selectedModel: profile.model } : {}),
+        });
+      } catch (error) {
+        throw new Error(`Claudian could not create the selected model for ${action}: ${errorText(error)}`);
+      }
+      if (!conversation || !conversation.id) throw new Error(`Claudian returned no conversation for ${action}.`);
       if (conversation && conversation.id && typeof claudian.renameConversation === 'function') {
         await claudian.renameConversation(conversation.id, 'AI Scheduler - Planning');
       }
@@ -756,7 +784,8 @@ module.exports = class AISchedulerPlugin extends Plugin {
 
   async resolveJobExecution(job) {
     const selectedModel = job.routine === 'daily-review' ? this.settings.nightlyReviewModel : this.settings.executionModel;
-    const execution = await this.resolveModel(selectedModel);
+    const action = job.routine === 'daily-review' ? 'nightly review' : 'scheduled task execution';
+    const execution = await this.resolveModel(selectedModel, action);
     Object.assign(job, {
       profile: execution.modelRef || null,
       tab: execution.tab,
@@ -784,7 +813,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
   }
 
   async refineJob(job, request) {
-    const execution = await this.resolveModel(this.settings.planningModel);
+    const execution = await this.resolveModel(this.settings.planningModel, 'AI task editing');
     const prompt = [
       'You are editing an existing AI Scheduler job in Obsidian.',
       'Return ONLY one JSON object inside <assistant-scheduler> tags with title, prompt, and schedule.',
@@ -799,7 +828,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
   }
 
   async planAndCreate(goal) {
-    const execution = await this.resolveModel(this.settings.planningModel);
+    const execution = await this.resolveModel(this.settings.planningModel, 'AI planning');
     const prompt = [
       'You are the planning brain for an autonomous Obsidian AI Scheduler.',
       'Turn the user goal below into one or more safe, concrete automation jobs.',
@@ -1088,13 +1117,28 @@ class AssistantSettingTab extends PluginSettingTab {
     containerEl.createEl('h2', { text: 'AI Scheduler' });
     containerEl.createEl('p', { text: 'Choose a Claudian model separately for each scheduler action. Model choices come from Claudian.' });
     const models = this.plugin.getModelOptions();
+    new Setting(containerEl)
+      .setName('Available Claudian models')
+      .setDesc('Refresh this list after adding, removing, or changing models in Claudian.')
+      .addButton(button => button.setButtonText('Refresh models').onClick(async () => {
+        button.setDisabled(true);
+        try {
+          await this.plugin.refreshModels();
+          new Notice('Claudian model list refreshed.');
+          this.display();
+        } catch (error) {
+          new Notice(`Could not refresh models: ${errorText(error)}`, 8000);
+          button.setDisabled(false);
+        }
+      }));
     const addModelSetting = (name, desc, key) => new Setting(containerEl)
       .setName(name)
       .setDesc(desc)
       .addDropdown(dropdown => {
-        if (!models.length) dropdown.addOption('', 'Open Claudian to load models');
+        dropdown.addOption('', models.length ? 'Select a model' : 'No models found - open Claudian');
         models.forEach(model => dropdown.addOption(model.value, model.label));
-        dropdown.setValue(this.plugin.settings[key] || '');
+        const selected = this.plugin.settings[key] || '';
+        dropdown.setValue(models.some(model => model.value === selected) ? selected : '');
         dropdown.onChange(async value => { this.plugin.settings[key] = value; await this.plugin.saveState(); });
       });
     addModelSetting('Planning model', 'Used when Ask AI to plan creates tasks and when Improve with AI edits a task.', 'planningModel');
@@ -1104,7 +1148,7 @@ class AssistantSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Test notification')
-      .setDesc('Send a normal Obsidian notification without using AI.')
+      .setDesc('Send a normal Obsidian notification visible across the app, without using AI.')
       .addButton(button => button.setButtonText('Send test notification').onClick(() => this.plugin.testNotification()));
     new Setting(containerEl)
       .setName('Check Claudian setup')
