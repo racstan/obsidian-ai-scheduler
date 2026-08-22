@@ -656,19 +656,15 @@ module.exports = class AISchedulerPlugin extends Plugin {
     const view = this.getClaudianViewSync();
     const manager = this.getTabManager(view);
     const tabs = manager && typeof manager.getAllTabs === 'function' ? manager.getAllTabs() : [];
-    tabs.forEach((tab, index) => {
+    tabs.forEach(tab => {
       const conversation = tab.conversationId && this.getClaudianPlugin().getConversationSync
         ? this.getClaudianPlugin().getConversationSync(tab.conversationId) : null;
       const providerId = conversation && conversation.providerId;
-      profiles.push({
-        value: `tab:${index + 1}`,
-        label: providerId
-          ? `Chat ${index + 1} - ${this.getProviderName(providerId)}${conversation.selectedModel ? ` / ${conversation.selectedModel}` : ' / current model'}`
-          : `Chat ${index + 1} - current Claudian model`,
-        tab: index + 1,
-        conversationId: tab.conversationId,
-        providerId: providerId || null,
-        model: conversation && conversation.selectedModel || '',
+      if (providerId && conversation.selectedModel) add({
+        value: this.profileValue(providerId, conversation.selectedModel),
+        label: `${this.getProviderName(providerId)} / ${conversation.selectedModel}`,
+        providerId,
+        model: conversation.selectedModel,
       });
       if (providerId && tab.ui && tab.ui.modelSelector && typeof tab.ui.modelSelector.getAvailableModels === 'function') {
         try {
