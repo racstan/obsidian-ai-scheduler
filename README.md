@@ -7,6 +7,7 @@ AI Scheduler is the autonomy layer for [Claudian](https://github.com/YishenTu/cl
 ## What It Does
 
 - **AI planning**: describe an outcome in normal language, choose a Claudian provider/model, and ask the AI to turn it into jobs
+- **Model control**: choose a provider/model for one task, set a default for all tasks, or choose a dedicated nightly-review model
 - **Scheduled work**: run jobs once, every day, every week, or after a vault change
 - **Self-talk**: let an AI reply create a small number of future follow-up jobs
 - **Nightly review**: analyze Markdown files changed during the day and write a report to `AI Reviews/YYYY-MM-DD.md`
@@ -67,6 +68,8 @@ The AI planner can create these schedules:
 - **Vault event**: react to a Markdown file change, with a cooldown to avoid repeated runs
 
 The planning dialog shows provider/model profiles discovered from Claudian's open chats and saved model selections. The selected profile is stored with generated jobs, so a scheduled job continues using the intended Claudian conversation and model.
+
+Active jobs also have an individual profile selector. The assistant dashboard can apply one profile to all active jobs, while Settings provides the default profile for future or unassigned jobs. Nightly review has its own selector and can either use a separate profile or follow the global default.
 
 Recurring jobs remain enabled after completion. One-time jobs are disabled after they finish or fail. Failed jobs are visible in the assistant panel and can be retried.
 

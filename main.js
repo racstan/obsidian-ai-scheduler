@@ -11,7 +11,9 @@ const TICK_MS = 15000;
 const AGENT_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_SETTINGS = {
   assistantTab: 1,
+  defaultProfile: '',
   planningProfile: '',
+  nightlyProfile: '',
   reportFolder: 'AI Reviews',
   reviewTime: '22:00',
   nightlyReviewEnabled: false,
@@ -140,6 +142,10 @@ function normalizeJob(raw, now = new Date()) {
     notify: true,
     output: null,
     attempts: 0,
+    profile: null,
+    conversationId: null,
+    providerId: null,
+    model: null,
   }, raw, { schedule: normalizedSchedule, nextRunAt });
 }
 
@@ -155,6 +161,9 @@ module.exports = class AISchedulerPlugin extends Plugin {
   async onload() {
     const data = await this.loadData() || {};
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings || {});
+    this.settings.defaultProfile = this.settings.defaultProfile || this.settings.planningProfile || '';
+    this.settings.planningProfile = this.settings.planningProfile || this.settings.defaultProfile;
+    this.settings.nightlyProfile = (data.settings && data.settings.nightlyProfile) || '';
     // v2 shipped startup catch-up enabled. Apply the safer opt-in behavior to
     // existing installations as well as new ones.
     if (!data.version || data.version < 3) this.settings.catchUpOnStart = false;
@@ -210,7 +219,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
   }
 
   async saveState() {
-    await this.saveData({ version: 3, settings: this.settings, jobs: this.jobs, activity: this.activity.slice(-50) });
+    await this.saveData({ version: 4, settings: this.settings, jobs: this.jobs, activity: this.activity.slice(-50) });
   }
 
   logActivity(type, message, jobId = null) {
@@ -388,10 +397,12 @@ module.exports = class AISchedulerPlugin extends Plugin {
     job.attempts = Number(job.attempts || 0) + 1;
     await this.saveState();
     try {
+      const execution = await this.resolveJobExecution(job);
+      await this.saveState();
       const executionPrompt = `${job.prompt}\n\nIf this work reveals a concrete future action, you may append at most three follow-up jobs using <assistant-scheduler>[{"title":"...","prompt":"...","schedule":{"kind":"once","at":"ISO-8601"}}]</assistant-scheduler>. Do not create follow-ups unless they are genuinely useful.`;
       const reply = job.routine === 'daily-review'
-        ? await this.runDailyReview(false)
-        : await this.sendToClaudian(executionPrompt, job.tab || this.settings.assistantTab, job.conversationId || null);
+        ? await this.runDailyReview(false, execution)
+        : await this.sendToClaudian(executionPrompt, execution.tab, execution.conversationId);
       job.lastReply = reply || '';
       job.lastStatus = 'completed';
       job.lastError = null;
@@ -452,6 +463,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
   }
 
   async ensureNightlyReviewJob() {
+    const profile = this.settings.nightlyProfile || this.settings.defaultProfile || this.settings.planningProfile || '';
     let job = this.jobs.find(candidate => candidate.routine === 'daily-review');
     if (!this.settings.nightlyReviewEnabled) {
       if (job) { job.enabled = false; job.nextRunAt = null; }
@@ -463,6 +475,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
         title: 'Nightly daily review',
         prompt: '',
         tab: this.settings.assistantTab,
+        profile,
         routine: 'daily-review',
         schedule: { kind: 'daily', time: this.settings.reviewTime },
         notify: true,
@@ -471,12 +484,18 @@ module.exports = class AISchedulerPlugin extends Plugin {
     } else {
       job.enabled = true;
       job.tab = this.settings.assistantTab;
+      if (job.profile !== profile) {
+        job.profile = profile;
+        job.conversationId = null;
+        job.providerId = null;
+        job.model = null;
+      }
       job.schedule = { kind: 'daily', time: this.settings.reviewTime };
       if (!job.nextRunAt || new Date(job.nextRunAt) <= new Date()) job.nextRunAt = nextDailyRun(this.settings.reviewTime);
     }
   }
 
-  async runDailyReview(manual) {
+  async runDailyReview(manual, execution = null) {
     const today = localDateKey();
     const start = new Date();
     start.setHours(0, 0, 0, 0);
@@ -492,7 +511,11 @@ module.exports = class AISchedulerPlugin extends Plugin {
       'Return Markdown only, with these headings: ## Summary, ## Work Completed, ## Important Ideas, ## Open Loops, ## Suggested Next Steps.',
       `Files modified today:\n${fileList}`,
     ].join('\n\n');
-    const reply = await this.sendToClaudian(prompt, this.settings.assistantTab);
+    const nightlyJob = this.jobs.find(candidate => candidate.routine === 'daily-review');
+    const resolved = execution || (nightlyJob
+      ? await this.resolveJobExecution(nightlyJob)
+      : await this.resolveExecutionProfile(this.settings.nightlyProfile || this.settings.defaultProfile || this.settings.planningProfile || ''));
+    const reply = await this.sendToClaudian(prompt, resolved.tab, resolved.conversationId);
     const report = reply || `# Daily Review - ${today}\n\nThe assistant did not return a report.`;
     const path = `${this.settings.reportFolder}/${today}.md`;
     await this.writeOutput(this.settings.reportFolder, `${today}.md`, `# Daily Review - ${today}\n\n${report}`);
@@ -531,6 +554,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
       await this.addJob(Object.assign(
         this.jobFromPlan(plan, parentJob.tab, 'self-talk'),
         {
+          profile: parentJob.profile || null,
           conversationId: parentJob.conversationId || null,
           providerId: parentJob.providerId || null,
           model: parentJob.model || null,
@@ -552,6 +576,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
       title: String(plan.title).slice(0, 120),
       prompt: String(plan.prompt),
       tab: Number(plan.tab || fallbackTab || this.settings.assistantTab),
+      profile: plan.profile || null,
       conversationId: plan.conversationId || null,
       providerId: plan.providerId || null,
       model: plan.model || null,
@@ -603,6 +628,16 @@ module.exports = class AISchedulerPlugin extends Plugin {
         providerId: providerId || null,
         model: conversation && conversation.selectedModel || '',
       });
+      if (providerId && tab.ui && tab.ui.modelSelector && typeof tab.ui.modelSelector.getAvailableModels === 'function') {
+        try {
+          tab.ui.modelSelector.getAvailableModels().forEach(option => add({
+            value: this.profileValue(providerId, option.value),
+            label: `${this.getProviderName(providerId)} / ${option.label || option.value}`,
+            providerId,
+            model: option.value,
+          }));
+        } catch (_) { /* Claudian may be rendering the selector */ }
+      }
     });
     const claudian = this.getClaudianPlugin();
     const settings = claudian && (claudian.settings || claudian.providerHost && claudian.providerHost.settings) || {};
@@ -646,14 +681,14 @@ module.exports = class AISchedulerPlugin extends Plugin {
   }
 
   async resolveExecutionProfile(value) {
-    const selected = value || this.settings.planningProfile;
+    const selected = value === undefined || value === null ? this.settings.planningProfile : value;
     if (String(selected).startsWith('tab:')) {
       const tab = Math.max(1, Number.parseInt(String(selected).slice(4), 10) || 1);
       const view = await this.getClaudianView();
       const runtime = this.getTab(view, tab);
       const conversation = runtime && runtime.conversationId && this.getClaudianPlugin().getConversationSync
         ? this.getClaudianPlugin().getConversationSync(runtime.conversationId) : null;
-      return { tab, conversationId: runtime && runtime.conversationId || null, providerId: conversation && conversation.providerId || null, model: conversation && conversation.selectedModel || null };
+      return { profile: selected, tab, conversationId: runtime && runtime.conversationId || null, providerId: conversation && conversation.providerId || null, model: conversation && conversation.selectedModel || null };
     }
     const profile = this.parseProfileValue(selected);
     if (profile && profile.providerId) {
@@ -666,9 +701,62 @@ module.exports = class AISchedulerPlugin extends Plugin {
       if (conversation && conversation.id && typeof claudian.renameConversation === 'function') {
         await claudian.renameConversation(conversation.id, 'AI Scheduler - Planning');
       }
-      return { tab: this.settings.assistantTab, conversationId: conversation.id, providerId: profile.providerId, model: profile.model || null };
+      return { profile: selected, tab: this.settings.assistantTab, conversationId: conversation.id, providerId: profile.providerId, model: profile.model || null };
     }
-    return { tab: this.settings.assistantTab, conversationId: null, providerId: null, model: null };
+    return { profile: '', tab: this.settings.assistantTab, conversationId: null, providerId: null, model: null };
+  }
+
+  async resolveJobExecution(job) {
+    if (job.conversationId) {
+      return {
+        profile: job.profile || '',
+        tab: job.tab || this.settings.assistantTab,
+        conversationId: job.conversationId,
+        providerId: job.providerId || null,
+        model: job.model || null,
+      };
+    }
+    const selected = job.profile || this.settings.defaultProfile || this.settings.planningProfile || '';
+    const execution = await this.resolveExecutionProfile(selected);
+    Object.assign(job, {
+      profile: execution.profile,
+      tab: execution.tab,
+      conversationId: execution.conversationId,
+      providerId: execution.providerId,
+      model: execution.model,
+    });
+    return execution;
+  }
+
+  async assignJobProfile(job, profileValue) {
+    const execution = await this.resolveExecutionProfile(profileValue);
+    Object.assign(job, {
+      profile: execution.profile,
+      tab: execution.tab,
+      conversationId: execution.conversationId,
+      providerId: execution.providerId,
+      model: execution.model,
+    });
+    await this.saveState();
+    return execution;
+  }
+
+  async applyProfileToActiveJobs(profileValue) {
+    const execution = await this.resolveExecutionProfile(profileValue);
+    for (const job of this.jobs.filter(candidate => candidate.enabled)) {
+      Object.assign(job, {
+        profile: execution.profile,
+        tab: execution.tab,
+        conversationId: execution.conversationId,
+        providerId: execution.providerId,
+        model: execution.model,
+      });
+    }
+    this.settings.defaultProfile = profileValue;
+    this.settings.planningProfile = profileValue;
+    this.settings.nightlyProfile = '';
+    await this.ensureNightlyReviewJob();
+    await this.saveState();
   }
 
   async planAndCreate(goal, selection = this.settings.planningProfile) {
@@ -694,7 +782,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
     for (const plan of plans.slice(0, 10)) {
       jobs.push(await this.addJob(Object.assign(
         this.jobFromPlan(plan, execution.tab, 'planner'),
-        { conversationId: execution.conversationId, providerId: execution.providerId, model: execution.model },
+        { profile: execution.profile, conversationId: execution.conversationId, providerId: execution.providerId, model: execution.model },
       )));
     }
     this.logActivity('planned', `AI created ${jobs.length} job(s)`);
@@ -771,9 +859,33 @@ class AssistantModal extends Modal {
       this.render();
     });
 
+    const profiles = this.plugin.getExecutionProfiles();
+    if (profiles.length) {
+      const globalCard = makeCard(shell.createEl('div'), { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '14px', marginTop: '18px', padding: '12px 14px' });
+      const globalCopy = globalCard.createEl('div');
+      styleElement(globalCopy.createEl('div', { text: 'Default profile for all tasks' }), { fontWeight: '600', fontSize: '13px' });
+      styleElement(globalCopy.createEl('div', { text: 'Choose once, or apply this profile to every active job.' }), { color: 'var(--text-muted)', fontSize: '11px', marginTop: '3px' });
+      const globalControls = styleElement(globalCard.createEl('div'), { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' });
+      const globalSelect = globalControls.createEl('select');
+      styleElement(globalSelect, { maxWidth: '230px', padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--background-modifier-border)', background: 'var(--background-primary)', color: 'var(--text-normal)', fontSize: '11px' });
+      profiles.forEach(profile => globalSelect.createEl('option', { value: profile.value, text: profile.label }));
+      const preferredGlobal = this.plugin.settings.defaultProfile || this.plugin.settings.planningProfile;
+      globalSelect.value = profiles.some(profile => profile.value === preferredGlobal) ? preferredGlobal : profiles[0].value;
+      makeButton(globalControls, 'Apply to active jobs', async button => {
+        button.disabled = true;
+        try { await this.plugin.applyProfileToActiveJobs(globalSelect.value); this.render(); }
+        catch (error) { new Notice(`Could not apply profile: ${errorText(error)}`, 8000); button.disabled = false; }
+      });
+      globalSelect.onchange = async () => {
+        this.plugin.settings.defaultProfile = globalSelect.value;
+        await this.plugin.ensureNightlyReviewJob();
+        await this.plugin.saveState();
+      };
+    }
+
     const stats = styleElement(shell.createEl('div'), { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px', margin: '22px 0' });
     const activeCount = this.plugin.jobs.filter(job => job.enabled).length;
-    const profileCount = this.plugin.getExecutionProfiles().length;
+    const profileCount = profiles.length;
     [[activeCount, 'ACTIVE JOBS'], [profileCount, 'AI PROFILES'], [connected ? 'READY' : 'WAITING', 'RUNTIME']].forEach(([value, label]) => {
       const stat = makeCard(stats, { padding: '13px 14px' });
       styleElement(stat.createEl('div', { text: String(value) }), { fontSize: '20px', fontWeight: '700' });
@@ -793,6 +905,25 @@ class AssistantModal extends Modal {
       const copy = card.createEl('div');
       styleElement(copy.createEl('div', { text: job.title }), { fontWeight: '600' });
       styleElement(copy.createEl('div', { text: describeSchedule(job) }), { marginTop: '4px', color: 'var(--text-muted)', fontSize: '12px' });
+      const profiles = this.plugin.getExecutionProfiles();
+      if (profiles.length) {
+        const profileSelect = copy.createEl('select');
+        styleElement(profileSelect, { marginTop: '8px', maxWidth: '100%', padding: '5px 7px', borderRadius: '6px', border: '1px solid var(--background-modifier-border)', background: 'var(--background-primary)', color: 'var(--text-muted)', fontSize: '11px' });
+        const defaultProfile = this.plugin.settings.defaultProfile || this.plugin.settings.planningProfile;
+        profileSelect.createEl('option', { value: '', text: defaultProfile ? 'Use global default profile' : 'Use fallback Claudian chat' });
+        profiles.forEach(profile => profileSelect.createEl('option', { value: profile.value, text: profile.label }));
+        profileSelect.value = job.profile || '';
+        profileSelect.onchange = async () => {
+          profileSelect.disabled = true;
+          try {
+            await this.plugin.assignJobProfile(job, profileSelect.value);
+            this.render();
+          } catch (error) {
+            new Notice(`Could not change task model: ${errorText(error)}`, 8000);
+            profileSelect.disabled = false;
+          }
+        };
+      }
       makeButton(card, 'Disable', async () => { job.enabled = false; job.nextRunAt = null; await this.plugin.saveState(); this.render(); });
     }
 
@@ -840,7 +971,7 @@ class PlannerModal extends Modal {
     const profiles = this.plugin.getExecutionProfiles();
     if (!profiles.length) profiles.push({ value: 'tab:1', label: 'No Claudian profile found - open Claudian first' });
     profiles.forEach(profile => select.createEl('option', { value: profile.value, text: profile.label }));
-    const preferred = this.plugin.settings.planningProfile;
+    const preferred = this.plugin.settings.defaultProfile || this.plugin.settings.planningProfile;
     select.value = profiles.some(profile => profile.value === preferred) ? preferred : profiles[0].value;
 
     const textarea = shell.createEl('textarea');
@@ -883,12 +1014,17 @@ class AssistantSettingTab extends PluginSettingTab {
     const profiles = this.plugin.getExecutionProfiles();
     if (profiles.length) {
       new Setting(containerEl)
-        .setName('Default planning profile')
-        .setDesc('The provider/model preselected when you ask the AI to plan.')
+        .setName('Default profile for all jobs')
+        .setDesc('The provider/model used by tasks without their own profile, and preselected for planning.')
         .addDropdown(dropdown => {
           profiles.forEach(profile => dropdown.addOption(profile.value, profile.label));
-          dropdown.setValue(profiles.some(profile => profile.value === this.plugin.settings.planningProfile) ? this.plugin.settings.planningProfile : profiles[0].value);
-          dropdown.onChange(async value => { this.plugin.settings.planningProfile = value; await this.plugin.saveState(); });
+          const value = this.plugin.settings.defaultProfile;
+          dropdown.setValue(profiles.some(profile => profile.value === value) ? value : profiles[0].value);
+          dropdown.onChange(async selected => {
+            this.plugin.settings.defaultProfile = selected;
+            await this.plugin.ensureNightlyReviewJob();
+            await this.plugin.saveState();
+          });
         });
     } else {
       containerEl.createEl('p', { text: 'Open Claudian once to expose its provider and model profiles here.' });
@@ -918,6 +1054,21 @@ class AssistantSettingTab extends PluginSettingTab {
           await this.plugin.ensureNightlyReviewJob();
           await this.plugin.saveState();
         }));
+      if (profiles.length) {
+        new Setting(containerEl)
+          .setName('Nightly review profile')
+          .setDesc('Choose a model for the nightly review, or follow the global default.')
+          .addDropdown(dropdown => {
+            dropdown.addOption('', 'Use global default profile');
+            profiles.forEach(profile => dropdown.addOption(profile.value, profile.label));
+            dropdown.setValue(profiles.some(profile => profile.value === this.plugin.settings.nightlyProfile) ? this.plugin.settings.nightlyProfile : '');
+            dropdown.onChange(async value => {
+              this.plugin.settings.nightlyProfile = value;
+              await this.plugin.ensureNightlyReviewJob();
+              await this.plugin.saveState();
+            });
+          });
+      }
       new Setting(containerEl)
         .setName('Report folder')
         .setDesc('Vault folder for daily review notes.')
