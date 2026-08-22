@@ -10,6 +10,21 @@ const nodePath = require('path');
 
 const TICK_MS = 15000;
 const AGENT_TIMEOUT_MS = 30 * 60 * 1000;
+const BACKEND_INFO = {
+  claudian: {
+    name: 'Claudian',
+    pluginId: 'realclaudian',
+    installUrl: 'obsidian://show-plugin?id=realclaudian',
+    communityUrl: 'https://obsidian.md/plugins?id=realclaudian',
+  },
+  copilot: {
+    name: 'Obsidian Copilot',
+    pluginId: 'copilot',
+    installUrl: 'obsidian://show-plugin?id=copilot',
+    communityUrl: 'https://obsidian.md/plugins?id=copilot',
+  },
+};
+
 const DEFAULT_SETTINGS = {
   assistantTab: 1,
   backendMode: 'claudian',
@@ -963,7 +978,10 @@ module.exports = class AISchedulerPlugin extends Plugin {
   async resolveModel(value, action = 'this action') {
     if (this.settings.backendMode === 'copilot') {
       const setup = this.checkCopilotSetup();
-      if (!setup.ok) throw new Error(`${setup.message} It is the active AI Scheduler backend for ${action}.`);
+      if (!setup.ok) {
+        const installHint = setup.needsInstall ? ` Install it from Settings → Community plugins (${setup.communityUrl}).` : '';
+        throw new Error(`${setup.message}${installHint} It is the active AI Scheduler backend for ${action}.`);
+      }
       return { modelRef: 'copilot', tab: null, conversationId: null, providerId: 'copilot', model: null };
     }
     const selected = value === undefined || value === null ? this.settings.executionModel : value;
@@ -971,7 +989,8 @@ module.exports = class AISchedulerPlugin extends Plugin {
       throw new Error(`No model selected for ${action}. Choose a model in AI Scheduler settings first.`);
     }
     if (!this.getClaudianPlugin()) {
-      throw new Error(`Claudian is not installed or enabled. It is required for ${action}.`);
+      const info = BACKEND_INFO.claudian;
+      throw new Error(`${info.name} is not installed or enabled. Install it from Settings → Community plugins (${info.communityUrl}). It is required for ${action}.`);
     }
     const availableModels = this.getModelOptions();
     if (!availableModels.some(model => model.value === selected)) {
@@ -1102,31 +1121,37 @@ module.exports = class AISchedulerPlugin extends Plugin {
     return { reply, jobs };
   }
 
+  backendInfo(mode = this.settings.backendMode) {
+    return BACKEND_INFO[mode === 'copilot' ? 'copilot' : 'claudian'];
+  }
+
   async checkClaudianSetup() {
+    const info = BACKEND_INFO.claudian;
     const claudian = this.getClaudianPlugin();
-    if (!claudian) return { ok: false, message: 'Claudian is not installed or enabled.' };
+    if (!claudian) return { ok: false, needsInstall: true, message: `${info.name} is not installed or enabled.`, installUrl: info.installUrl, communityUrl: info.communityUrl };
     const view = await this.getClaudianView();
     const manager = this.getTabManager(view);
-    if (!view || !manager) return { ok: false, message: 'Claudian is installed, but its chat runtime is not ready. Open Claudian once and try again.' };
+    if (!view || !manager) return { ok: false, needsInstall: false, message: `${info.name} is installed, but its chat runtime is not ready. Open Claudian once and try again.`, installUrl: info.installUrl, communityUrl: info.communityUrl };
     const models = this.getModelOptions();
-    if (!models.some(model => model.providerId)) return { ok: false, message: 'Claudian is open, but no provider/model is configured.' };
-    return { ok: true, message: `Claudian is ready with ${models.length} available model option${models.length === 1 ? '' : 's'}.` };
+    if (!models.some(model => model.providerId)) return { ok: false, needsInstall: false, message: `${info.name} is open, but no provider/model is configured.`, installUrl: info.installUrl, communityUrl: info.communityUrl };
+    return { ok: true, message: `${info.name} is ready with ${models.length} available model option${models.length === 1 ? '' : 's'}.`, installUrl: info.installUrl, communityUrl: info.communityUrl };
   }
 
   checkCopilotSetup() {
+    const info = BACKEND_INFO.copilot;
     const copilot = this.getCopilotPlugin();
-    if (!copilot) return { ok: false, message: 'Obsidian Copilot is not installed or enabled.' };
+    if (!copilot) return { ok: false, needsInstall: true, message: `${info.name} is not installed or enabled.`, installUrl: info.installUrl, communityUrl: info.communityUrl };
     let chain = null;
     try { chain = copilot.chainOwner && typeof copilot.chainOwner.getCurrentChainManager === 'function' ? copilot.chainOwner.getCurrentChainManager() : null; } catch (_) { chain = null; }
     if (!copilot.chatManager || typeof copilot.chatManager.sendMessage !== 'function' || typeof copilot.chatManager.getLLMMessage !== 'function'
       || !chain || typeof chain.runChain !== 'function') {
-      return { ok: false, message: 'Obsidian Copilot is installed, but its automation API is unavailable. Update Copilot.' };
+      return { ok: false, needsInstall: false, message: `${info.name} is installed, but its automation API is unavailable. Update Copilot.`, installUrl: info.installUrl, communityUrl: info.communityUrl };
     }
-    return { ok: true, message: 'Obsidian Copilot is ready. Its active Copilot model will be used.' };
+    return { ok: true, message: `${info.name} is ready. Its active Copilot model will be used.`, installUrl: info.installUrl, communityUrl: info.communityUrl };
   }
 
-  async checkBackendSetup() {
-    return this.settings.backendMode === 'copilot' ? this.checkCopilotSetup() : this.checkClaudianSetup();
+  async checkBackendSetup(mode = this.settings.backendMode) {
+    return mode === 'copilot' ? this.checkCopilotSetup() : this.checkClaudianSetup();
   }
 
   testNotification() {
@@ -1394,6 +1419,35 @@ class JobModal extends Modal {
 class AssistantSettingTab extends PluginSettingTab {
   constructor(app, plugin) { super(app, plugin); this.plugin = plugin; }
 
+  renderBackendStatus(containerEl) {
+    const info = this.plugin.backendInfo();
+    const setting = new Setting(containerEl)
+      .setName('Active backend')
+      .setDesc('Checking readiness...');
+    const update = result => {
+      setting.setDesc('');
+      const desc = setting.descEl;
+      desc.empty();
+      desc.style.color = result.ok ? 'var(--text-success)' : 'var(--text-error)';
+      desc.createEl('span', { text: result.message });
+      if (!result.ok && result.needsInstall) {
+        desc.createEl('span', { text: ' ' });
+        const link = desc.createEl('a', { text: `Install ${info.name}`, href: result.installUrl || info.installUrl });
+        link.target = '_blank';
+      }
+    };
+    const installed = this.plugin.settings.backendMode === 'copilot'
+      ? Boolean(this.plugin.getCopilotPlugin())
+      : Boolean(this.plugin.getClaudianPlugin());
+    if (!installed) {
+      update({ ok: false, needsInstall: true, message: `${info.name} is not installed or enabled.`, installUrl: info.installUrl });
+      return;
+    }
+    void this.plugin.checkBackendSetup().then(update).catch(error => {
+      update({ ok: false, needsInstall: false, message: errorText(error), installUrl: info.installUrl });
+    });
+  }
+
   display() {
     const { containerEl } = this;
     containerEl.empty();
@@ -1401,7 +1455,7 @@ class AssistantSettingTab extends PluginSettingTab {
     containerEl.createEl('p', { text: 'Choose one AI backend. AI Scheduler never runs Claudian and Copilot at the same time.' });
     new Setting(containerEl)
       .setName('AI backend')
-      .setDesc('Claudian uses the four models below. Copilot uses the active model configured in Obsidian Copilot.')
+      .setDesc('Claudian uses the model choices below. Copilot uses the active model configured in Obsidian Copilot.')
       .addDropdown(dropdown => dropdown
         .addOption('claudian', 'Claudian')
         .addOption('copilot', 'Obsidian Copilot')
@@ -1411,55 +1465,50 @@ class AssistantSettingTab extends PluginSettingTab {
           await this.plugin.saveState();
           this.display();
         }));
+    this.renderBackendStatus(containerEl);
+
     const models = this.plugin.settings.backendMode === 'copilot' ? [] : this.plugin.getModelOptions();
     if (this.plugin.settings.backendMode === 'claudian') {
-    new Setting(containerEl)
-      .setName('Available Claudian models')
-      .setDesc('Refresh this list after adding, removing, or changing models in Claudian.')
-      .addButton(button => button.setButtonText('Refresh models').onClick(async () => {
-        button.setDisabled(true);
-        try {
-          await this.plugin.refreshModels();
-          new Notice('Claudian model list refreshed.');
-          this.display();
-        } catch (error) {
-          new Notice(`Could not refresh models: ${errorText(error)}`, 8000);
-          button.setDisabled(false);
-        }
-      }));
-    const addModelSetting = (name, desc, key) => new Setting(containerEl)
-      .setName(name)
-      .setDesc(desc)
-      .addDropdown(dropdown => {
-        dropdown.addOption('', models.length ? 'Select a model' : 'No models found - open Claudian');
-        models.forEach(model => dropdown.addOption(model.value, model.label));
-        const selected = this.plugin.settings[key] || '';
-        dropdown.setValue(models.some(model => model.value === selected) ? selected : '');
-        dropdown.onChange(async value => { this.plugin.settings[key] = value; await this.plugin.saveState(); });
-      });
-     addModelSetting('Planning model', 'Used when Ask AI to plan creates tasks and when AI updates a task.', 'planningModel');
-    addModelSetting('Scheduled task model', 'Used when an enabled task runs, including tasks created by the planner.', 'executionModel');
-    addModelSetting('Daily preview model', 'Used by Run daily preview.', 'dailyReviewModel');
-    addModelSetting('Nightly review model', 'Used by the recurring nightly review and the Run AI nightly review now command.', 'nightlyReviewModel');
+      new Setting(containerEl)
+        .setName('Available Claudian models')
+        .setDesc('Refresh this list after adding, removing, or changing models in Claudian.')
+        .addButton(button => button.setButtonText('Refresh models').onClick(async () => {
+          button.setDisabled(true);
+          try {
+            await this.plugin.refreshModels();
+            new Notice('Claudian model list refreshed.');
+            this.display();
+          } catch (error) {
+            new Notice(`Could not refresh models: ${errorText(error)}`, 8000);
+            button.setDisabled(false);
+          }
+        }));
+      const addModelSetting = (name, desc, key) => new Setting(containerEl)
+        .setName(name)
+        .setDesc(desc)
+        .addDropdown(dropdown => {
+          dropdown.addOption('', models.length ? 'Select a model' : 'No models found - open Claudian');
+          models.forEach(model => dropdown.addOption(model.value, model.label));
+          const selected = this.plugin.settings[key] || '';
+          dropdown.setValue(models.some(model => model.value === selected) ? selected : '');
+          dropdown.onChange(async value => { this.plugin.settings[key] = value; await this.plugin.saveState(); });
+        });
+      addModelSetting('Planning model', 'Used when Ask AI to plan creates tasks and when AI updates a task.', 'planningModel');
+      addModelSetting('Scheduled task model', 'Used when an enabled task runs, including tasks created by the planner.', 'executionModel');
+      addModelSetting('Daily preview model', 'Used by Run daily preview.', 'dailyReviewModel');
+      if (this.plugin.settings.nightlyReviewEnabled) {
+        addModelSetting('Nightly review model', 'Used by the recurring nightly review and the Run AI nightly review now command.', 'nightlyReviewModel');
+      }
     }
 
     new Setting(containerEl)
       .setName('Test notification')
       .setDesc('Send a normal Obsidian notification visible across the app, without using AI.')
       .addButton(button => button.setButtonText('Send test notification').onClick(() => this.plugin.testNotification()));
-    new Setting(containerEl)
-       .setName('Check active backend')
-       .setDesc('Verify that the selected backend is installed and ready for background scheduler work.')
-       .addButton(button => button.setButtonText('Run check').onClick(async () => {
-         button.setDisabled(true);
-         const result = await this.plugin.checkBackendSetup().catch(error => ({ ok: false, message: errorText(error) }));
-        new Notice(result.message, result.ok ? 5000 : 8000);
-        button.setDisabled(false);
-      }));
 
     new Setting(containerEl)
       .setName('Review context')
-      .setDesc('Files the daily and nightly reviews may inspect through Claudian vault tools.')
+      .setDesc('Files the daily and nightly reviews may inspect through the active backend\'s vault tools.')
       .addDropdown(dropdown => dropdown
         .addOption('modified-today', 'Markdown files modified today')
         .addOption('all-markdown', 'All Markdown files')
@@ -1474,6 +1523,7 @@ class AssistantSettingTab extends PluginSettingTab {
         this.plugin.settings.reportFolder = value.trim() || DEFAULT_SETTINGS.reportFolder;
         await this.plugin.saveState();
       }));
+
     new Setting(containerEl)
       .setName('Nightly review')
       .setDesc('Opt-in: create a timestamped review report on a recurring schedule.')
@@ -1484,20 +1534,25 @@ class AssistantSettingTab extends PluginSettingTab {
           await this.plugin.ensureNightlyReviewJob();
           await this.plugin.saveState();
           new Notice(value ? 'Nightly review enabled.' : 'Nightly review disabled.');
+          this.display();
         } catch (error) {
           this.plugin.settings.nightlyReviewEnabled = previous;
           toggle.setValue(previous);
           new Notice(`Could not change nightly review: ${errorText(error)}`, 8000);
         }
       }));
-    new Setting(containerEl)
-      .setName('Nightly review time')
-      .setDesc('Local 24-hour time, for example 22:00.')
-      .addText(text => text.setValue(this.plugin.settings.reviewTime).onChange(async value => {
-        if (/^([01]?\d|2[0-3]):[0-5]\d$/.test(value)) this.plugin.settings.reviewTime = value;
-        await this.plugin.ensureNightlyReviewJob();
-        await this.plugin.saveState();
-      }));
+
+    if (this.plugin.settings.nightlyReviewEnabled) {
+      new Setting(containerEl)
+        .setName('Nightly review time')
+        .setDesc('Local 24-hour time, for example 22:00.')
+        .addText(text => text.setValue(this.plugin.settings.reviewTime).onChange(async value => {
+          if (/^([01]?\d|2[0-3]):[0-5]\d$/.test(value)) this.plugin.settings.reviewTime = value;
+          await this.plugin.ensureNightlyReviewJob();
+          await this.plugin.saveState();
+        }));
+    }
+
     new Setting(containerEl)
       .setName('Completion notifications')
       .setDesc('Show an Obsidian notice when an AI job finishes.')
@@ -1505,23 +1560,24 @@ class AssistantSettingTab extends PluginSettingTab {
         this.plugin.settings.notifyOnCompletion = value;
         await this.plugin.saveState();
       }));
+
     new Setting(containerEl)
       .setName('Run missed jobs after startup')
       .setDesc('Off by default. Enable only if you explicitly want AI work to run after Obsidian was closed.')
       .addToggle(toggle => toggle.setValue(this.plugin.settings.catchUpOnStart).onChange(async value => {
         this.plugin.settings.catchUpOnStart = value;
         await this.plugin.saveState();
+        this.display();
       }));
-    new Setting(containerEl)
-      .setName('Startup catch-up window (hours)')
-      .setDesc('Only jobs missed within this window will run after startup. Disabled while catch-up is off.')
-      .addText(text => {
-        text.setValue(String(this.plugin.settings.catchUpHours));
-        text.inputEl.disabled = !this.plugin.settings.catchUpOnStart;
-        text.onChange(async value => {
+
+    if (this.plugin.settings.catchUpOnStart) {
+      new Setting(containerEl)
+        .setName('Startup catch-up window (hours)')
+        .setDesc('Only jobs missed within this window will run after startup.')
+        .addText(text => text.setValue(String(this.plugin.settings.catchUpHours)).onChange(async value => {
           this.plugin.settings.catchUpHours = Math.max(1, Number.parseInt(value, 10) || 24);
           await this.plugin.saveState();
-        });
-      });
+        }));
+    }
   }
 }
