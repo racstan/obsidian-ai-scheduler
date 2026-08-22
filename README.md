@@ -1,16 +1,16 @@
 # AI Scheduler
 
-> **An autonomous AI assistant for Obsidian: schedules, self-talk, vault reviews, and notifications.**
+> **An AI scheduler for Obsidian: plans, scheduled work, daily previews, reviews, and notifications.**
 
 AI Scheduler is the autonomy layer for [Claudian](https://github.com/YishenTu/claudian). Claudian provides the AI agent, selected provider, model, tools, and vault access. This plugin decides when the agent should wake up, gives it a task, reads the result, creates follow-ups, and writes reports into the vault.
 
 ## What It Does
 
-- **AI planning**: describe an outcome in normal language, choose a Claudian provider/model, and ask the AI to turn it into jobs
-- **Model control**: choose a provider/model for one task, set a default for all tasks, or choose a dedicated nightly-review model
+- **AI planning**: describe an outcome in normal language and ask Claudian to turn it into jobs
+- **Model control**: choose separate Claudian models for planning, scheduled tasks, daily previews, and nightly reviews
 - **Scheduled work**: run jobs once, every day, every week, or after a vault change
 - **Self-talk**: let an AI reply create a small number of future follow-up jobs
-- **Nightly review**: analyze Markdown files changed during the day and write a report to `AI Reviews/YYYY-MM-DD.md`
+- **Daily and nightly reviews**: analyze Markdown context and write timestamped reports to `AI Reviews/YYYY-MM-DD-HHmmss.md`
 - **Notifications**: show an Obsidian notice when work completes or fails
 - **Startup catch-up**: identify jobs that became due while Obsidian was closed
 - **Provider independence**: use whichever provider and model the user configured in Claudian
@@ -34,12 +34,12 @@ The AI is responsible for understanding goals and producing useful work. The plu
 
 ## Nightly Self-Talk
 
-Enable **Nightly review** in the plugin settings, choose a local time, and choose a report folder. At that time, the assistant:
+Enable **Nightly review** in the plugin settings, choose a local time, model, context, and report folder. At that time, the scheduler:
 
-1. Finds Markdown files created or modified since the start of the current day
+1. Collects the configured review context, such as Markdown files created or modified since the start of the current day
 2. Gives their paths to Claudian and asks the agent to read and analyze them with its vault tools
 3. Produces a Markdown report with summary, completed work, important ideas, open loops, and next steps
-4. Writes the report to `<report folder>/YYYY-MM-DD.md`
+4. Writes the report to `<report folder>/YYYY-MM-DD-HHmmss.md`
 
 The review is opt-in because it sends the contents of your selected vault files to the provider configured in Claudian.
 
@@ -67,11 +67,9 @@ The AI planner can create these schedules:
 - **Weekly**: a local time and selected weekdays
 - **Vault event**: react to a Markdown file change, with a cooldown to avoid repeated runs
 
-The planning dialog shows provider/model profiles discovered from Claudian's open chats and saved model selections. The selected profile is stored with generated jobs, so a scheduled job continues using the intended Claudian conversation and model.
+Settings exposes four independent model choices: planning, scheduled task execution, daily preview, and nightly review. Editing a task with **Improve with AI** uses the planning model.
 
-Active jobs also have an individual profile selector. The assistant dashboard can apply one profile to all active jobs, while Settings provides the default profile for future or unassigned jobs. Nightly review has its own selector and can either use a separate profile or follow the global default.
-
-Recurring jobs remain enabled after completion. One-time jobs are disabled after they finish or fail. Failed jobs are visible in the assistant panel and can be retried.
+Recurring jobs remain enabled after completion. One-time jobs are disabled after they finish or fail. Past jobs remain visible in the scheduler and can be edited, run again, or deleted.
 
 ## Requirements
 
@@ -95,9 +93,10 @@ Recurring jobs remain enabled after completion. One-time jobs are disabled after
 
 ## Commands
 
-- **Open AI assistant**: view active jobs and recent activity
+- **Open AI Scheduler**: view scheduled tasks and recent activity
 - **Ask AI to plan a schedule**: describe an outcome and let Claudian generate jobs
-- **Run AI daily review now**: generate today's report immediately
+- **Run AI daily preview**: generate a timestamped report immediately without blocking the dashboard
+- **Run AI nightly review now**: run the nightly review immediately
 - **Enable nightly AI review**: enable the recurring self-talk job
 
 ## Privacy And Safety
