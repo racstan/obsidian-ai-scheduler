@@ -1,9 +1,9 @@
 {
   "id": "ai-scheduler",
   "name": "AI Scheduler",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "minAppVersion": "1.4.0",
-  "description": "AI Scheduler for Claudian with AI planning, scheduled work, daily previews, nightly reviews, and notifications.",
+  "description": "AI Scheduler for Claudian or Obsidian Copilot with AI planning, recurring work, reviews, and notifications.",
   "author": "Rachit Asthana",
   "isDesktopOnly": true
 }

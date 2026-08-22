@@ -1,9 +1,9 @@
 /*
- * AI Scheduler - an autonomy layer for Claudian.
+ * AI Scheduler - an autonomy layer for Claudian and Obsidian Copilot.
  *
- * This plugin deliberately does not call an AI provider directly. Claudian owns
- * providers, models, permissions, and vault tools; this plugin owns when the
- * agent should wake up and what should happen after it replies.
+ * This plugin deliberately does not call an AI provider directly. The selected
+ * backend owns providers, models, permissions, and vault tools; this plugin
+ * owns when the agent should wake up and what should happen after it replies.
  */
 const { Plugin, PluginSettingTab, Modal, Setting, Notice, normalizePath } = require('obsidian');
 const nodePath = require('path');
@@ -12,6 +12,7 @@ const TICK_MS = 15000;
 const AGENT_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_SETTINGS = {
   assistantTab: 1,
+  backendMode: 'claudian',
   planningModel: '',
   executionModel: '',
   dailyReviewModel: '',
@@ -81,6 +82,11 @@ const DAY_SHORT_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function validClock(value) {
   return /^([01]?\d|2[0-3]):[0-5]\d$/.test(String(value || '').trim());
+}
+
+function normalizeMaxIterations(value) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : null;
 }
 
 function normalizeMultiRules(rules) {
@@ -161,12 +167,18 @@ function getScheduleNextRun(schedule, from = new Date()) {
   }
   if (schedule.kind === 'weekly') return validClock(schedule.time) ? nextWeeklyRun(schedule.time, schedule.days, from) : null;
   if (schedule.kind === 'multi') return nextMultiRun(schedule.rules, from);
+  if (schedule.kind === 'hourly' || schedule.kind === 'interval') {
+    const minutes = schedule.kind === 'hourly' ? 60 : Number(schedule.intervalMinutes || schedule.everyMinutes || (Number(schedule.everyHours || 0) * 60));
+    if (!Number.isFinite(minutes) || minutes <= 0) return null;
+    return new Date(from.getTime() + minutes * 60000).toISOString();
+  }
   return validClock(schedule.time) ? nextDailyRun(schedule.time, from) : null;
 }
 
 function contentFromMessage(message) {
   if (!message) return '';
   if (typeof message.content === 'string') return message.content;
+  if (typeof message.message === 'string') return message.message;
   if (Array.isArray(message.content)) {
     return message.content.map(part => typeof part === 'string' ? part : part && part.text || '').join('');
   }
@@ -203,12 +215,14 @@ function extractJson(text) {
 function normalizeJob(raw, now = new Date()) {
   const schedule = raw.schedule || (raw.sendAt ? { kind: 'once', at: raw.sendAt } : { kind: 'once', at: new Date(Date.now() + 60000).toISOString() });
   const normalizedSchedule = {
-    kind: ['once', 'daily', 'weekly', 'multi', 'event'].includes(schedule.kind) ? schedule.kind : 'once',
+    kind: ['once', 'daily', 'weekly', 'multi', 'hourly', 'interval', 'event'].includes(schedule.kind) ? schedule.kind : 'once',
     at: schedule.at,
     time: schedule.time,
     days: schedule.days,
     rules: schedule.rules,
     event: schedule.event,
+    intervalMinutes: schedule.intervalMinutes || schedule.everyMinutes || (Number(schedule.everyHours || 0) * 60),
+    maxIterations: normalizeMaxIterations(schedule.maxIterations || schedule.maxRuns || schedule.iterations),
   };
   const nextRunAt = raw.nextRunAt !== undefined
     ? raw.nextRunAt
@@ -230,6 +244,7 @@ function normalizeJob(raw, now = new Date()) {
     output: null,
     contextPaths: Array.isArray(raw.contextPaths) ? raw.contextPaths : raw.context && Array.isArray(raw.context.paths) ? raw.context.paths : [],
     attempts: 0,
+    runCount: Number(raw.runCount || 0),
     profile: null,
     conversationId: null,
     providerId: null,
@@ -242,6 +257,12 @@ function describeSchedule(job) {
   if (schedule.kind === 'daily') return `daily at ${schedule.time}`;
   if (schedule.kind === 'weekly') return `weekly ${((schedule.days || []).map(Number).filter(day => DAY_SHORT_NAMES[day]).map(day => DAY_SHORT_NAMES[day]).join(', ') || 'at the selected days')} at ${schedule.time}`;
   if (schedule.kind === 'multi') return formatMultiRules(schedule.rules).replace(/\n/g, ' · ') || 'multiple times';
+  if (schedule.kind === 'hourly') return `every hour${schedule.maxIterations ? ` · ${schedule.maxIterations} iterations` : ''}`;
+  if (schedule.kind === 'interval') {
+    const minutes = Number(schedule.intervalMinutes || schedule.everyMinutes || (Number(schedule.everyHours || 0) * 60) || 0);
+    const cadence = minutes % 60 === 0 ? `every ${minutes / 60} hour${minutes === 60 ? '' : 's'}` : `every ${minutes} minutes`;
+    return `${cadence}${schedule.maxIterations ? ` · ${schedule.maxIterations} iterations` : ''}`;
+  }
   if (schedule.kind === 'event') return `when ${schedule.event || 'the vault changes'}`;
   return job.nextRunAt ? formatDate(job.nextRunAt) : 'not scheduled';
 }
@@ -250,6 +271,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
   async onload() {
     const data = await this.loadData() || {};
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings || {});
+    this.settings.backendMode = this.settings.backendMode === 'copilot' ? 'copilot' : 'claudian';
     // Migrate the old profile names to explicit models for each action. The
     // values are still Claudian model references, but users no longer need to
     // understand the internal conversation/profile concept.
@@ -320,7 +342,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
   }
 
   async saveState() {
-    await this.saveData({ version: 5, settings: this.settings, jobs: this.jobs, activity: this.activity.slice(-50) });
+    await this.saveData({ version: 6, settings: this.settings, jobs: this.jobs, activity: this.activity.slice(-50) });
   }
 
   logActivity(type, message, jobId = null) {
@@ -367,7 +389,13 @@ module.exports = class AISchedulerPlugin extends Plugin {
     } else if (job.schedule.kind === 'event') {
       job.nextRunAt = null;
     } else {
-      job.nextRunAt = getScheduleNextRun(job.schedule, new Date());
+      if (job.schedule.maxIterations && job.runCount >= Number(job.schedule.maxIterations)) {
+        job.enabled = false;
+        job.nextRunAt = null;
+        job.status = 'completed';
+      } else {
+        job.nextRunAt = getScheduleNextRun(job.schedule, new Date());
+      }
     }
   }
 
@@ -488,6 +516,59 @@ module.exports = class AISchedulerPlugin extends Plugin {
     return this.lastAssistantReply(view, active, beforeCount);
   }
 
+  getCopilotPlugin() {
+    const plugins = this.app.plugins && this.app.plugins.plugins;
+    if (!plugins) return null;
+    return plugins.copilot || plugins['obsidian-copilot'] || null;
+  }
+
+  async sendToCopilot(prompt, context = null) {
+    const copilot = this.getCopilotPlugin();
+    const chatManager = copilot && copilot.chatManager;
+    const chain = copilot && copilot.chainOwner && typeof copilot.chainOwner.getCurrentChainManager === 'function'
+      ? copilot.chainOwner.getCurrentChainManager() : null;
+    if (!copilot) throw new Error('Obsidian Copilot is not installed or enabled. Install or enable Copilot, then try again.');
+    if (!chatManager || typeof chatManager.sendMessage !== 'function' || typeof chatManager.getLLMMessage !== 'function' || !chain || typeof chain.runChain !== 'function') {
+      throw new Error('Obsidian Copilot is installed, but its automation API is unavailable. Update Copilot and try again.');
+    }
+    const paths = context && Array.isArray(context.paths) ? context.paths : [];
+    const notes = paths
+      .map(path => this.app.vault.getAbstractFileByPath(path))
+      .filter(file => file && !Array.isArray(file.children));
+    const folders = paths
+      .map(path => this.app.vault.getAbstractFileByPath(path))
+      .filter(file => file && Array.isArray(file.children))
+      .map(file => file.path);
+    const messageId = await chatManager.sendMessage(
+      prompt,
+      { notes, urls: [], folders, selectedTextContexts: [], webTabs: [] },
+      'llm_chain',
+      false,
+      false,
+    );
+    const llmMessage = chatManager.getLLMMessage(messageId);
+    if (!llmMessage) throw new Error('Obsidian Copilot did not prepare the scheduler message.');
+    let reply = '';
+    const run = chain.runChain(
+      llmMessage,
+      new AbortController(),
+      message => { reply = typeof message === 'string' ? message : contentFromMessage(message) || reply; },
+      message => { reply = contentFromMessage(message) || reply; },
+      { debug: false },
+    );
+    await Promise.race([
+      run,
+      sleep(AGENT_TIMEOUT_MS).then(() => { throw new Error('AI task timed out after 30 minutes'); }),
+    ]);
+    return String(reply || '').trim();
+  }
+
+  async sendToAI(prompt, execution = {}, context = null) {
+    return this.settings.backendMode === 'copilot'
+      ? this.sendToCopilot(prompt, context)
+      : this.sendToClaudian(prompt, execution.tab, execution.conversationId, context);
+  }
+
   async tick() {
     if (this.running) return;
     const now = Date.now();
@@ -506,6 +587,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
     job.status = 'running';
     job.lastRunAt = new Date().toISOString();
     job.attempts = Number(job.attempts || 0) + 1;
+    job.runCount = Number(job.runCount || 0) + 1;
     await this.saveState();
     try {
       const execution = await this.resolveJobExecution(job);
@@ -513,8 +595,8 @@ module.exports = class AISchedulerPlugin extends Plugin {
       const context = this.getJobContext(job);
       const executionPrompt = `${this.contextPrompt(job.prompt, context.paths)}\n\nIf this work reveals a concrete future action, you may append at most three follow-up jobs using <assistant-scheduler>[{"title":"...","prompt":"...","schedule":{"kind":"once","at":"ISO-8601"}}]</assistant-scheduler>. Do not create follow-ups unless they are genuinely useful.`;
       const reply = job.routine === 'daily-review'
-        ? await this.runDailyReview(false, execution, 'nightly')
-        : await this.sendToClaudian(executionPrompt, execution.tab, execution.conversationId, context);
+         ? await this.runDailyReview(false, execution, 'nightly')
+         : await this.sendToAI(executionPrompt, execution, context);
       job.lastReply = reply || '';
       job.lastStatus = 'completed';
       job.lastError = null;
@@ -527,6 +609,9 @@ module.exports = class AISchedulerPlugin extends Plugin {
         job.enabled = false;
         job.nextRunAt = null;
       } else if (job.schedule.kind === 'event') {
+        job.nextRunAt = null;
+      } else if (job.schedule.maxIterations && job.runCount >= Number(job.schedule.maxIterations)) {
+        job.enabled = false;
         job.nextRunAt = null;
       } else {
         job.nextRunAt = getScheduleNextRun(job.schedule, new Date());
@@ -541,6 +626,9 @@ module.exports = class AISchedulerPlugin extends Plugin {
         job.enabled = false;
         job.nextRunAt = null;
       } else if (job.schedule.kind === 'event') {
+        job.nextRunAt = null;
+      } else if (job.schedule.maxIterations && job.runCount >= Number(job.schedule.maxIterations)) {
+        job.enabled = false;
         job.nextRunAt = null;
       } else {
         job.nextRunAt = getScheduleNextRun(job.schedule, new Date());
@@ -628,7 +716,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
     const prompt = [
       `You are the user's ${kind === 'nightly' ? 'nightly review' : 'daily preview'} scheduler inside Obsidian.`,
       `Today is ${today}. Review the user's work from today and produce a useful report.`,
-      'Use Claudian vault tools to read the listed Markdown files before analyzing them. Respect the user\'s existing Claudian permissions and do not access unrelated files.',
+      'Use the active backend\'s vault tools to read the listed Markdown files before analyzing them. Respect the user\'s existing permissions and do not access unrelated files.',
       'Do not invent activity. Distinguish facts from suggestions.',
       'Return Markdown only, with these headings: ## Summary, ## Work Completed, ## Important Ideas, ## Open Loops, ## Suggested Next Steps.',
       `Files modified today:\n${fileList}`,
@@ -639,9 +727,9 @@ module.exports = class AISchedulerPlugin extends Plugin {
       ? await this.resolveJobExecution(nightlyJob)
       : await this.resolveModel(model, kind === 'nightly' ? 'nightly review' : 'daily preview'));
     const context = this.getPathsContext(files.map(file => file.path));
-    const reply = await this.sendToClaudian(prompt, resolved.tab, resolved.conversationId, context);
+     const reply = await this.sendToAI(prompt, resolved, context);
     const reportTitle = kind === 'nightly' ? 'Nightly Review' : 'Daily Preview';
-    const report = reply || `# ${reportTitle} - ${today}\n\nClaudian did not return a report.`;
+     const report = reply || `# ${reportTitle} - ${today}\n\nThe active AI backend did not return a report.`;
     const timestamp = localTimestampKey(now);
     let filename = `${timestamp}.md`;
     let suffix = 2;
@@ -701,7 +789,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
   contextPrompt(prompt, paths) {
     const contextPaths = Array.isArray(paths) ? paths : [];
     if (!contextPaths.length) return prompt;
-    return `${prompt}\n\nSelected Claudian context:\n${contextPaths.map(path => `- ${path}`).join('\n')}\nUse the attached page/project context and respect the user's Claudian permissions.`;
+     return `${prompt}\n\nSelected task context:\n${contextPaths.map(path => `- ${path}`).join('\n')}\nUse the attached page/project context and respect the user's backend permissions.`;
   }
 
   async writeOutput(folder, filename, content) {
@@ -751,6 +839,8 @@ module.exports = class AISchedulerPlugin extends Plugin {
       time: schedule.time,
       days: schedule.days,
       rules: schedule.rules,
+      intervalMinutes: schedule.intervalMinutes || schedule.everyMinutes || (Number(schedule.everyHours || 0) * 60),
+      maxIterations: normalizeMaxIterations(schedule.maxIterations || schedule.maxRuns || schedule.iterations),
       event: schedule.event,
     };
     return {
@@ -871,6 +961,11 @@ module.exports = class AISchedulerPlugin extends Plugin {
   }
 
   async resolveModel(value, action = 'this action') {
+    if (this.settings.backendMode === 'copilot') {
+      const setup = this.checkCopilotSetup();
+      if (!setup.ok) throw new Error(`${setup.message} It is the active AI Scheduler backend for ${action}.`);
+      return { modelRef: 'copilot', tab: null, conversationId: null, providerId: 'copilot', model: null };
+    }
     const selected = value === undefined || value === null ? this.settings.executionModel : value;
     if (!selected) {
       throw new Error(`No model selected for ${action}. Choose a model in AI Scheduler settings first.`);
@@ -941,6 +1036,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
   async updateJob(job, changes) {
     Object.assign(job, changes);
     job.schedule = Object.assign({}, job.schedule, changes.schedule || {});
+    job.schedule.maxIterations = normalizeMaxIterations(job.schedule.maxIterations || job.schedule.maxRuns || job.schedule.iterations);
     job.nextRunAt = job.schedule.kind === 'event' ? null : getScheduleNextRun(job.schedule, new Date(Date.now() - 1000));
     job.enabled = true;
     job.status = 'scheduled';
@@ -948,17 +1044,19 @@ module.exports = class AISchedulerPlugin extends Plugin {
     await this.saveState();
   }
 
-  async refineJob(job, request) {
+  async refineJob(job, request, contextPaths = job.contextPaths || []) {
     const execution = await this.resolveModel(this.settings.planningModel, 'AI task editing');
     const prompt = [
       'You are editing an existing AI Scheduler job in Obsidian.',
       'Return ONLY one JSON object inside <assistant-scheduler> tags with title, prompt, and schedule.',
       'Preserve the existing schedule unless the user explicitly asks to change it.',
       `Existing job: ${JSON.stringify({ title: job.title, prompt: job.prompt, schedule: job.schedule })}`,
+      `Current context paths: ${JSON.stringify(contextPaths)}`,
       `Requested change: ${request}`,
     ].join('\n\n');
-    const context = this.getJobContext(job);
-    const reply = await this.sendToClaudian(prompt, execution.tab, execution.conversationId, context);
+    const context = this.getPathsContext(contextPaths);
+    if (context.missingPaths.length) throw new Error(`Selected context no longer exists: ${context.missingPaths.join(', ')}`);
+     const reply = await this.sendToAI(prompt, execution, context);
     const plan = extractJson(reply)[0];
     if (!plan || !plan.title || !plan.prompt || !plan.schedule) throw new Error('The AI returned an invalid job edit.');
     return plan;
@@ -975,7 +1073,10 @@ module.exports = class AISchedulerPlugin extends Plugin {
       '- {"kind":"once","at":"ISO-8601 timestamp"}',
        '- {"kind":"daily","time":"HH:MM"}',
        '- {"kind":"weekly","time":"HH:MM","days":[0,1,2,3,4,5,6]}',
-       '- {"kind":"multi","rules":[{"days":[1],"times":["02:00"]},{"days":[6],"times":["15:00"]},{"days":[0,2,3,4,5],"times":["01:00","05:00"]}]}',
+        '- {"kind":"multi","rules":[{"days":[1],"times":["02:00"]},{"days":[6],"times":["15:00"]},{"days":[0,2,3,4,5],"times":["01:00","05:00"]}]}',
+        '- {"kind":"hourly","maxIterations":8}',
+        '- {"kind":"interval","everyMinutes":30,"maxIterations":10}',
+        '- {"kind":"interval","everyHours":2,"maxIterations":null}',
        '- {"kind":"event","event":"modify","cooldownMinutes":10}',
        'Use the user\'s local time. Add output {"folder":"...","filename":"..."} only when a note should be saved.',
        'A prompt should tell the future agent exactly what to do and what vault context to inspect. Multiple requested schedules must become separate jobs or one multi schedule with rules.',
@@ -983,7 +1084,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
        `User goal:\n${goal}`,
     ].join('\n');
     const context = this.getPathsContext(contextPaths);
-    const reply = await this.sendToClaudian(prompt, execution.tab, execution.conversationId, context);
+     const reply = await this.sendToAI(prompt, execution, context);
     const plans = extractJson(reply).filter(item => item && item.title && item.prompt && item.schedule);
     if (!plans.length) throw new Error('The AI returned no valid schedule. Ask it for a concrete time or cadence.');
     const jobs = [];
@@ -1010,6 +1111,22 @@ module.exports = class AISchedulerPlugin extends Plugin {
     const models = this.getModelOptions();
     if (!models.some(model => model.providerId)) return { ok: false, message: 'Claudian is open, but no provider/model is configured.' };
     return { ok: true, message: `Claudian is ready with ${models.length} available model option${models.length === 1 ? '' : 's'}.` };
+  }
+
+  checkCopilotSetup() {
+    const copilot = this.getCopilotPlugin();
+    if (!copilot) return { ok: false, message: 'Obsidian Copilot is not installed or enabled.' };
+    let chain = null;
+    try { chain = copilot.chainOwner && typeof copilot.chainOwner.getCurrentChainManager === 'function' ? copilot.chainOwner.getCurrentChainManager() : null; } catch (_) { chain = null; }
+    if (!copilot.chatManager || typeof copilot.chatManager.sendMessage !== 'function' || typeof copilot.chatManager.getLLMMessage !== 'function'
+      || !chain || typeof chain.runChain !== 'function') {
+      return { ok: false, message: 'Obsidian Copilot is installed, but its automation API is unavailable. Update Copilot.' };
+    }
+    return { ok: true, message: 'Obsidian Copilot is ready. Its active Copilot model will be used.' };
+  }
+
+  async checkBackendSetup() {
+    return this.settings.backendMode === 'copilot' ? this.checkCopilotSetup() : this.checkClaudianSetup();
   }
 
   testNotification() {
@@ -1052,7 +1169,7 @@ function makeCard(parent, styles = {}) {
 function createContextPicker(parent, plugin, initialPaths = []) {
   const card = makeCard(parent, { marginBottom: '14px', padding: '12px 14px' });
   styleElement(card.createEl('div', { text: 'Context for this task' }), { fontWeight: '600', marginBottom: '4px' });
-  styleElement(card.createEl('div', { text: 'Select pages or project folders Claudian should attach when this task runs.' }), { color: 'var(--text-muted)', fontSize: '12px', marginBottom: '8px' });
+   styleElement(card.createEl('div', { text: 'Select pages or project folders the active backend should attach when this task runs.' }), { color: 'var(--text-muted)', fontSize: '12px', marginBottom: '8px' });
   const select = card.createEl('select');
   select.multiple = true;
   select.size = 6;
@@ -1098,13 +1215,12 @@ class AssistantModal extends Modal {
     const actions = styleElement(shell.createEl('div'), { display: 'flex', gap: '10px', flexWrap: 'wrap', paddingBottom: '24px', borderBottom: '1px solid var(--background-modifier-border)' });
     makeButton(actions, 'Ask AI to plan', () => new PlannerModal(this.app, this.plugin).open(), true);
     makeButton(actions, 'Run daily preview', () => this.plugin.startReviewRun(true, 'daily'));
-    makeButton(actions, this.plugin.settings.nightlyReviewEnabled ? 'Disable nightly review' : 'Enable nightly review', async () => {
+     makeButton(actions, this.plugin.settings.nightlyReviewEnabled ? 'Disable nightly review' : 'Enable nightly review', async () => {
       this.plugin.settings.nightlyReviewEnabled = !this.plugin.settings.nightlyReviewEnabled;
       await this.plugin.ensureNightlyReviewJob();
-      await this.plugin.saveState();
-      this.render();
-    });
-    makeButton(actions, 'Run review now', () => this.plugin.startReviewRun(true, 'nightly'));
+       await this.plugin.saveState();
+       this.render();
+     });
 
     const activeCount = this.plugin.jobs.filter(job => job.enabled).length;
     const next = this.plugin.jobs.filter(job => job.enabled && job.nextRunAt).sort((a, b) => new Date(a.nextRunAt) - new Date(b.nextRunAt))[0];
@@ -1200,7 +1316,7 @@ class PlannerModal extends Modal {
     const shell = styleElement(contentEl.createEl('div'), { padding: '28px', maxWidth: '700px', margin: '0 auto' });
     styleElement(shell.createEl('div', { text: 'AI PLANNER' }), { color: 'var(--interactive-accent)', fontSize: '11px', fontWeight: '700', letterSpacing: '0.12em', marginBottom: '8px' });
     styleElement(shell.createEl('h1', { text: 'Plan scheduled work' }), { fontSize: '30px', margin: '0 0 8px', letterSpacing: '-0.03em' });
-    styleElement(shell.createEl('p', { text: 'Describe the outcome. Claudian will turn it into safe, persistent jobs.' }), { margin: '0 0 22px', color: 'var(--text-muted)', lineHeight: '1.5' });
+     styleElement(shell.createEl('p', { text: 'Describe the outcome. Your selected backend will turn it into safe, persistent jobs.' }), { margin: '0 0 22px', color: 'var(--text-muted)', lineHeight: '1.5' });
 
     const contextPicker = createContextPicker(shell, this.plugin);
     styleElement(shell.createEl('div', { text: 'Default result folder for created tasks (optional)' }), { color: 'var(--text-muted)', fontSize: '12px', marginBottom: '4px' });
@@ -1209,7 +1325,7 @@ class PlannerModal extends Modal {
     const textarea = shell.createEl('textarea');
     styleElement(textarea, { width: '100%', minHeight: '170px', resize: 'vertical', margin: '14px 0 8px', padding: '14px', borderRadius: '10px', border: '1px solid var(--background-modifier-border)', background: 'var(--background-primary-alt)', color: 'var(--text-normal)', fontFamily: 'inherit', lineHeight: '1.5', boxSizing: 'border-box' });
     textarea.placeholder = 'Every evening, review the notes I changed today, identify open loops, and create a report in AI Reviews. Remind me every Monday to review unfinished work.';
-    styleElement(shell.createEl('div', { text: 'Examples: review notes, prepare tomorrow, remind me about open loops, or react when a project file changes.' }), { color: 'var(--text-muted)', fontSize: '12px', marginBottom: '22px' });
+     styleElement(shell.createEl('div', { text: 'Examples: review notes every evening, run every 30 minutes for 8 iterations, run every 2 hours until I stop it, remind me every Monday, or react when a project file changes.' }), { color: 'var(--text-muted)', fontSize: '12px', marginBottom: '22px' });
     const footer = styleElement(shell.createEl('div'), { display: 'flex', justifyContent: 'flex-end', gap: '10px' });
     makeButton(footer, 'Cancel', () => this.close());
     makeButton(footer, 'Create AI plan', async button => {
@@ -1240,85 +1356,35 @@ class JobModal extends Modal {
     contentEl.empty();
     const shell = styleElement(contentEl.createEl('div'), { padding: '24px' });
     shell.createEl('h2', { text: 'Edit scheduled task' });
-    styleElement(shell.createEl('p', { text: 'Change the task directly or ask the planning model to rewrite it.' }), { color: 'var(--text-muted)', marginTop: '0' });
-    const title = shell.createEl('input', { type: 'text', value: this.job.title, placeholder: 'Task title' });
-    title.style.width = '100%';
-    title.style.boxSizing = 'border-box';
-    title.style.marginBottom = '10px';
-    const prompt = shell.createEl('textarea', { text: this.job.prompt, placeholder: 'What should Claudian do?' });
-    prompt.value = this.job.prompt || '';
-    styleElement(prompt, { width: '100%', minHeight: '130px', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', padding: '10px', marginBottom: '10px' });
+    styleElement(shell.createEl('p', { text: 'Describe the change in plain language. AI will rewrite the task and save it automatically.' }), { color: 'var(--text-muted)', marginTop: '0' });
+    const current = makeCard(shell, { marginBottom: '14px', padding: '12px 14px' });
+    styleElement(current.createEl('div', { text: this.job.title }), { fontWeight: '600' });
+    styleElement(current.createEl('div', { text: describeSchedule(this.job) }), { color: 'var(--text-muted)', fontSize: '12px', marginTop: '4px' });
+    styleElement(current.createEl('div', { text: this.job.prompt }), { marginTop: '8px', whiteSpace: 'pre-wrap', fontSize: '12px' });
     const contextPicker = createContextPicker(shell, this.plugin, this.job.contextPaths || []);
     styleElement(shell.createEl('div', { text: 'Result folder for this task (optional)' }), { color: 'var(--text-muted)', fontSize: '12px', marginBottom: '4px' });
     const resultFolder = shell.createEl('input', { type: 'text', value: this.job.output && this.job.output.folder || '', placeholder: 'Optional result folder, e.g. Projects/News' });
     styleElement(resultFolder, { width: '100%', boxSizing: 'border-box', marginBottom: '10px' });
-    const kind = shell.createEl('select');
-    ['once', 'daily', 'weekly', 'multi', 'event'].forEach(value => kind.createEl('option', { value, text: value === 'multi' ? 'Multiple weekday times' : value[0].toUpperCase() + value.slice(1) }));
-    kind.value = this.job.schedule.kind || 'once';
-    kind.style.marginBottom = '10px';
-    const schedule = shell.createEl('input', { type: 'text', value: this.job.schedule.kind === 'once' ? (this.job.schedule.at || '') : (this.job.schedule.time || ''), placeholder: 'ISO timestamp or HH:MM' });
-    schedule.style.width = '100%';
-    schedule.style.boxSizing = 'border-box';
-    schedule.style.marginBottom = '10px';
-    const weeklyDays = shell.createEl('input', { type: 'text', value: Array.isArray(this.job.schedule.days) ? this.job.schedule.days.join(',') : '0,1,2,3,4,5,6', placeholder: 'Weekly days: 0=Sun, 1=Mon, ... 6=Sat' });
-    weeklyDays.style.width = '100%';
-    weeklyDays.style.boxSizing = 'border-box';
-    weeklyDays.style.marginBottom = '10px';
-    const multiRules = shell.createEl('textarea', { text: formatMultiRules(this.job.schedule.rules), placeholder: 'One rule per line, for example:\nMon = 02:00\nSat = 15:00\nSun, Tue-Fri = 01:00, 05:00' });
-    multiRules.value = formatMultiRules(this.job.schedule.rules);
-    styleElement(multiRules, { width: '100%', minHeight: '100px', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', padding: '10px', marginBottom: '10px' });
-    styleElement(shell.createEl('div', { text: 'For multiple times, use weekday names and 24-hour times, one rule per line.' }), { color: 'var(--text-muted)', fontSize: '12px', marginBottom: '10px' });
-    const updateScheduleFields = () => {
-      const isOnce = kind.value === 'once';
-      const isWeekly = kind.value === 'weekly';
-      const isMulti = kind.value === 'multi';
-      schedule.style.display = isOnce || (!isWeekly && !isMulti && kind.value !== 'event') ? '' : 'none';
-      weeklyDays.style.display = isWeekly ? '' : 'none';
-      multiRules.style.display = isMulti ? '' : 'none';
-    };
-    kind.onchange = updateScheduleFields;
-    updateScheduleFields();
-    const request = shell.createEl('textarea', { placeholder: 'Optional: tell AI how to improve this task' });
-    styleElement(request, { width: '100%', minHeight: '70px', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', padding: '10px', marginBottom: '12px' });
+    const request = shell.createEl('textarea', { placeholder: 'Example: Change this to run every 30 minutes for 8 iterations, and save each result in Projects/News.' });
+    styleElement(request, { width: '100%', minHeight: '120px', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', padding: '10px', margin: '14px 0 12px' });
     const footer = styleElement(shell.createEl('div'), { display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' });
     makeButton(footer, 'Cancel', () => this.close());
-    makeButton(footer, 'Improve with AI', async button => {
-      if (!request.value.trim()) { new Notice('Describe what should change first.'); return; }
+    makeButton(footer, 'Update task with AI', async button => {
+      const change = request.value.trim();
+      if (!change) { new Notice('Describe the task change first.'); return; }
       button.disabled = true;
       try {
-        const plan = await this.plugin.refineJob(this.job, request.value.trim());
-        title.value = plan.title;
-        prompt.value = plan.prompt;
-        kind.value = plan.schedule.kind || 'once';
-        schedule.value = plan.schedule.kind === 'once' ? (plan.schedule.at || '') : (plan.schedule.time || '');
-        weeklyDays.value = Array.isArray(plan.schedule.days) ? plan.schedule.days.join(',') : weeklyDays.value;
-        multiRules.value = formatMultiRules(plan.schedule.rules);
-        updateScheduleFields();
-        new Notice('AI suggested an updated task. Review it before saving.');
-      } catch (error) { new Notice(`Could not improve task: ${errorText(error)}`, 8000); }
-      button.disabled = false;
-    });
-    makeButton(footer, 'Save changes', async button => {
-      if (!title.value.trim() || !prompt.value.trim()) { new Notice('A task needs a title and instructions.'); return; }
-      const nextSchedule = { kind: kind.value };
-      if (kind.value === 'once') nextSchedule.at = schedule.value.trim();
-      else if (kind.value === 'event') nextSchedule.event = 'modify';
-      else if (kind.value === 'weekly') {
-        nextSchedule.time = schedule.value.trim();
-        nextSchedule.days = weeklyDays.value.split(',').map(value => Number(value.trim())).filter(day => day >= 0 && day <= 6);
-      } else if (kind.value === 'multi') {
-        nextSchedule.rules = parseMultiRulesText(multiRules.value);
-        if (!nextSchedule.rules.length) { new Notice('Add at least one valid multi-time rule.'); return; }
-      } else nextSchedule.time = schedule.value.trim();
-      if (kind.value !== 'event' && !getScheduleNextRun(nextSchedule, new Date(Date.now() - 1000))) { new Notice('Enter a valid schedule value.'); return; }
-      button.disabled = true;
-      try {
+        const contextPaths = contextPicker.getPaths();
+        const plan = await this.plugin.refineJob(this.job, change, contextPaths);
+        const schedule = plan.schedule || this.job.schedule;
+        if (schedule.kind !== 'event' && !getScheduleNextRun(schedule, new Date(Date.now() - 1000))) throw new Error('AI returned an invalid schedule. Ask for a concrete time or cadence.');
         const folder = resultFolder.value.trim();
         const output = folder ? Object.assign({}, this.job.output || {}, { folder }) : null;
-        await this.plugin.updateJob(this.job, { title: title.value.trim(), prompt: prompt.value.trim(), schedule: nextSchedule, contextPaths: contextPicker.getPaths(), output });
+        await this.plugin.updateJob(this.job, { title: String(plan.title).trim(), prompt: String(plan.prompt).trim(), schedule, contextPaths, output });
+        new Notice('AI updated and saved the scheduled task.', 6000);
         this.onSaved();
         this.close();
-      } catch (error) { new Notice(`Could not save task: ${errorText(error)}`, 8000); button.disabled = false; }
+      } catch (error) { new Notice(`Could not update task: ${errorText(error)}`, 8000); button.disabled = false; }
     }, true);
   }
 
@@ -1332,8 +1398,21 @@ class AssistantSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl('h2', { text: 'AI Scheduler' });
-    containerEl.createEl('p', { text: 'Choose a Claudian model separately for each scheduler action. Model choices come from Claudian.' });
-    const models = this.plugin.getModelOptions();
+    containerEl.createEl('p', { text: 'Choose one AI backend. AI Scheduler never runs Claudian and Copilot at the same time.' });
+    new Setting(containerEl)
+      .setName('AI backend')
+      .setDesc('Claudian uses the four models below. Copilot uses the active model configured in Obsidian Copilot.')
+      .addDropdown(dropdown => dropdown
+        .addOption('claudian', 'Claudian')
+        .addOption('copilot', 'Obsidian Copilot')
+        .setValue(this.plugin.settings.backendMode === 'copilot' ? 'copilot' : 'claudian')
+        .onChange(async value => {
+          this.plugin.settings.backendMode = value === 'copilot' ? 'copilot' : 'claudian';
+          await this.plugin.saveState();
+          this.display();
+        }));
+    const models = this.plugin.settings.backendMode === 'copilot' ? [] : this.plugin.getModelOptions();
+    if (this.plugin.settings.backendMode === 'claudian') {
     new Setting(containerEl)
       .setName('Available Claudian models')
       .setDesc('Refresh this list after adding, removing, or changing models in Claudian.')
@@ -1358,21 +1437,22 @@ class AssistantSettingTab extends PluginSettingTab {
         dropdown.setValue(models.some(model => model.value === selected) ? selected : '');
         dropdown.onChange(async value => { this.plugin.settings[key] = value; await this.plugin.saveState(); });
       });
-    addModelSetting('Planning model', 'Used when Ask AI to plan creates tasks and when Improve with AI edits a task.', 'planningModel');
+     addModelSetting('Planning model', 'Used when Ask AI to plan creates tasks and when AI updates a task.', 'planningModel');
     addModelSetting('Scheduled task model', 'Used when an enabled task runs, including tasks created by the planner.', 'executionModel');
     addModelSetting('Daily preview model', 'Used by Run daily preview.', 'dailyReviewModel');
-    addModelSetting('Nightly review model', 'Used by the recurring nightly review and Run review now.', 'nightlyReviewModel');
+    addModelSetting('Nightly review model', 'Used by the recurring nightly review and the Run AI nightly review now command.', 'nightlyReviewModel');
+    }
 
     new Setting(containerEl)
       .setName('Test notification')
       .setDesc('Send a normal Obsidian notification visible across the app, without using AI.')
       .addButton(button => button.setButtonText('Send test notification').onClick(() => this.plugin.testNotification()));
     new Setting(containerEl)
-      .setName('Check Claudian setup')
-      .setDesc('Verify that Claudian is installed, open, and has a configured model.')
-      .addButton(button => button.setButtonText('Run check').onClick(async () => {
-        button.setDisabled(true);
-        const result = await this.plugin.checkClaudianSetup().catch(error => ({ ok: false, message: errorText(error) }));
+       .setName('Check active backend')
+       .setDesc('Verify that the selected backend is installed and ready for background scheduler work.')
+       .addButton(button => button.setButtonText('Run check').onClick(async () => {
+         button.setDisabled(true);
+         const result = await this.plugin.checkBackendSetup().catch(error => ({ ok: false, message: errorText(error) }));
         new Notice(result.message, result.ok ? 5000 : 8000);
         button.setDisabled(false);
       }));
