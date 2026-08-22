@@ -78,7 +78,9 @@ Settings exposes four independent Claudian model choices: planning, scheduled ta
 
 The scheduler settings include a **Refresh models** control that reloads the currently available Claudian models. Each task editor can select pages or project folders for context, choose a result folder, and ask AI to change the schedule, including multiple weekday times or bounded intervals.
 
-Recurring jobs remain enabled after completion. One-time jobs are disabled after they finish or fail. Past jobs remain visible in the scheduler and can be edited, run again, or deleted.
+Each task receives a stable serial number such as `#12`. Tasks without selected context are labeled **Independent**; tasks bound to a page or project folder are labeled **Project-based**. Recurring jobs remain as one scheduled entry and show their run count instead of creating a new row for every run. One-time jobs are summarized under **Past tasks** after they finish or fail. Manually paused jobs appear separately under **Disabled tasks**, where they can be enabled again.
+
+The dashboard also provides bulk Enable all, Disable all, and Delete all actions for user-created tasks. The nightly review is managed from Settings rather than the dashboard.
 
 ## Requirements
 

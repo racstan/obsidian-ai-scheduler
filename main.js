@@ -260,6 +260,7 @@ function normalizeJob(raw, now = new Date()) {
     contextPaths: Array.isArray(raw.contextPaths) ? raw.contextPaths : raw.context && Array.isArray(raw.context.paths) ? raw.context.paths : [],
     attempts: 0,
     runCount: Number(raw.runCount || 0),
+    taskNumber: Number(raw.taskNumber || 0),
     profile: null,
     conversationId: null,
     providerId: null,
@@ -280,6 +281,37 @@ function describeSchedule(job) {
   }
   if (schedule.kind === 'event') return `when ${schedule.event || 'the vault changes'}`;
   return job.nextRunAt ? formatDate(job.nextRunAt) : 'not scheduled';
+}
+
+function describeBinding(job) {
+  return Array.isArray(job && job.contextPaths) && job.contextPaths.length
+    ? 'Project-based task'
+    : 'Independent task';
+}
+
+function isNightlyReviewJob(job) {
+  return Boolean(job && job.routine === 'daily-review');
+}
+
+function isDisabledTask(job) {
+  return Boolean(job && !isNightlyReviewJob(job) && !job.enabled
+    && (job.status === 'disabled' || job.lastStatus === 'disabled'));
+}
+
+function taskIdentity(job) {
+  return String(job && job.taskNumber || job && job.id || `${job && job.title}\n${job && job.prompt}`);
+}
+
+function summarizeTasks(jobs) {
+  const summaries = new Map();
+  for (const job of jobs) {
+    const key = taskIdentity(job);
+    const existing = summaries.get(key);
+    if (!existing || new Date(job.lastRunAt || job.createdAt || 0) > new Date(existing.lastRunAt || existing.createdAt || 0)) {
+      summaries.set(key, job);
+    }
+  }
+  return [...summaries.values()];
 }
 
 module.exports = class AISchedulerPlugin extends Plugin {
@@ -308,6 +340,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
         schedule: { kind: 'once', at: task.sendAt },
         enabled: task.status === 'pending',
       })) : []);
+    this.assignTaskNumbers();
     this.activity = Array.isArray(data.activity) ? data.activity.slice(-50) : [];
     this.running = false;
     this.reviewRunning = false;
@@ -358,6 +391,30 @@ module.exports = class AISchedulerPlugin extends Plugin {
 
   async saveState() {
     await this.saveData({ version: 6, settings: this.settings, jobs: this.jobs, activity: this.activity.slice(-50) });
+  }
+
+  assignTaskNumbers() {
+    const used = new Set();
+    let next = 1;
+    for (const job of this.jobs) {
+      const existing = Number(job.taskNumber);
+      if (Number.isInteger(existing) && existing > 0 && !used.has(existing)) {
+        used.add(existing);
+        next = Math.max(next, existing + 1);
+        job.taskNumber = existing;
+        continue;
+      }
+      while (used.has(next)) next += 1;
+      job.taskNumber = next;
+      used.add(next);
+      next += 1;
+    }
+    for (const job of this.jobs) {
+      if (!isNightlyReviewJob(job) && !job.enabled && job.status === 'scheduled') {
+        job.status = 'disabled';
+        job.lastStatus = 'disabled';
+      }
+    }
   }
 
   logActivity(type, message, jobId = null) {
@@ -675,6 +732,8 @@ module.exports = class AISchedulerPlugin extends Plugin {
     if (job.schedule.kind !== 'event' && !job.nextRunAt) {
       throw new Error(`Cannot create "${job.title}": its schedule is invalid or has no valid time.`);
     }
+    this.assignTaskNumbers();
+    job.taskNumber = Math.max(0, ...this.jobs.map(candidate => Number(candidate.taskNumber) || 0)) + 1;
     this.jobs.push(job);
     await this.saveState();
     return job;
@@ -683,7 +742,12 @@ module.exports = class AISchedulerPlugin extends Plugin {
   async ensureNightlyReviewJob() {
     let job = this.jobs.find(candidate => candidate.routine === 'daily-review');
     if (!this.settings.nightlyReviewEnabled) {
-      if (job) { job.enabled = false; job.nextRunAt = null; }
+      if (job) {
+        job.enabled = false;
+        job.nextRunAt = null;
+        job.status = 'disabled';
+        job.lastStatus = 'disabled';
+      }
       return;
     }
     if (!job) {
@@ -699,6 +763,8 @@ module.exports = class AISchedulerPlugin extends Plugin {
       this.jobs.push(job);
     } else {
       job.enabled = true;
+      job.status = 'scheduled';
+      job.lastStatus = null;
       job.tab = this.settings.assistantTab;
       job.schedule = { kind: 'daily', time: this.settings.reviewTime };
       if (!job.nextRunAt || new Date(job.nextRunAt) <= new Date()) job.nextRunAt = nextDailyRun(this.settings.reviewTime);
@@ -1052,6 +1118,46 @@ module.exports = class AISchedulerPlugin extends Plugin {
     await this.saveState();
   }
 
+  async disableAllJobs() {
+    for (const job of this.jobs.filter(candidate => !isNightlyReviewJob(candidate) && candidate.enabled)) {
+      job.enabled = false;
+      job.nextRunAt = null;
+      job.status = 'disabled';
+      job.lastStatus = 'disabled';
+    }
+    await this.saveState();
+  }
+
+  async enableJob(job) {
+    job.enabled = true;
+    job.status = 'scheduled';
+    job.lastStatus = null;
+    job.lastError = null;
+    job.nextRunAt = job.schedule.kind === 'event'
+      ? new Date().toISOString()
+      : getScheduleNextRun(job.schedule, new Date(Date.now() - 1000));
+    await this.saveState();
+  }
+
+  async enableAllJobs() {
+    for (const job of this.jobs.filter(candidate => !isNightlyReviewJob(candidate) && isDisabledTask(candidate))) {
+      job.enabled = true;
+      job.status = 'scheduled';
+      job.lastStatus = null;
+      job.lastError = null;
+      job.nextRunAt = job.schedule.kind === 'event'
+        ? new Date().toISOString()
+        : getScheduleNextRun(job.schedule, new Date(Date.now() - 1000));
+    }
+    await this.saveState();
+  }
+
+  async deleteAllJobs() {
+    this.jobs = this.jobs.filter(job => isNightlyReviewJob(job));
+    this.logActivity('deleted', 'Deleted all scheduled tasks');
+    await this.saveState();
+  }
+
   async updateJob(job, changes) {
     Object.assign(job, changes);
     job.schedule = Object.assign({}, job.schedule, changes.schedule || {});
@@ -1163,6 +1269,7 @@ module.exports = class AISchedulerPlugin extends Plugin {
   async retryJob(job) {
     job.enabled = true;
     job.status = 'scheduled';
+    job.lastStatus = null;
     job.lastError = null;
     job.nextRunAt = job.schedule.kind === 'event' ? new Date().toISOString() : getScheduleNextRun(job.schedule, new Date(Date.now() - 1000));
     await this.saveState();
@@ -1175,9 +1282,14 @@ function styleElement(element, styles) {
   return element;
 }
 
-function makeButton(parent, label, onClick, primary = false) {
+function makeButton(parent, label, onClick, primary = false, danger = false) {
   const button = parent.createEl('button', { text: label });
   if (primary) button.addClass('mod-cta');
+  if (danger) {
+    button.addClass('mod-warning');
+    button.style.color = 'var(--text-error)';
+    button.style.borderColor = 'var(--text-error)';
+  }
   button.onclick = () => { void onClick(button); };
   return button;
 }
@@ -1240,15 +1352,10 @@ class AssistantModal extends Modal {
     const actions = styleElement(shell.createEl('div'), { display: 'flex', gap: '10px', flexWrap: 'wrap', paddingBottom: '24px', borderBottom: '1px solid var(--background-modifier-border)' });
     makeButton(actions, 'Ask AI to plan', () => new PlannerModal(this.app, this.plugin).open(), true);
     makeButton(actions, 'Run daily preview', () => this.plugin.startReviewRun(true, 'daily'));
-     makeButton(actions, this.plugin.settings.nightlyReviewEnabled ? 'Disable nightly review' : 'Enable nightly review', async () => {
-      this.plugin.settings.nightlyReviewEnabled = !this.plugin.settings.nightlyReviewEnabled;
-      await this.plugin.ensureNightlyReviewJob();
-       await this.plugin.saveState();
-       this.render();
-     });
 
-    const activeCount = this.plugin.jobs.filter(job => job.enabled).length;
-    const next = this.plugin.jobs.filter(job => job.enabled && job.nextRunAt).sort((a, b) => new Date(a.nextRunAt) - new Date(b.nextRunAt))[0];
+    const userJobs = this.plugin.jobs.filter(job => !isNightlyReviewJob(job));
+    const activeCount = userJobs.filter(job => job.enabled).length;
+    const next = userJobs.filter(job => job.enabled && job.nextRunAt).sort((a, b) => new Date(a.nextRunAt) - new Date(b.nextRunAt))[0];
     const stats = styleElement(shell.createEl('div'), { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px', margin: '22px 0' });
     [[activeCount, 'ACTIVE TASKS'], [next ? formatDate(next.nextRunAt) : 'None', 'NEXT RUN'], [this.plugin.settings.nightlyReviewEnabled ? 'ON' : 'OFF', 'NIGHTLY REVIEW']].forEach(([value, label]) => {
       const stat = makeCard(stats, { padding: '13px 14px' });
@@ -1257,7 +1364,22 @@ class AssistantModal extends Modal {
     });
 
     this.renderSection(shell, 'Scheduled tasks', `${activeCount} ${activeCount === 1 ? 'task' : 'tasks'} enabled`);
-    const scheduled = this.plugin.jobs.filter(job => job.enabled).sort((a, b) => String(a.nextRunAt).localeCompare(String(b.nextRunAt)));
+    const bulkActions = styleElement(shell.createEl('div'), { display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: '10px' });
+    makeButton(bulkActions, 'Enable all', async () => {
+      await this.plugin.enableAllJobs();
+      this.render();
+    });
+    makeButton(bulkActions, 'Disable all', async () => {
+      if (!window.confirm('Disable all scheduled tasks?')) return;
+      await this.plugin.disableAllJobs();
+      this.render();
+    }, false, true);
+    makeButton(bulkActions, 'Delete all', async () => {
+      if (!window.confirm('Delete all scheduled tasks? This cannot be undone.')) return;
+      await this.plugin.deleteAllJobs();
+      this.render();
+    }, false, true);
+    const scheduled = userJobs.filter(job => job.enabled).sort((a, b) => String(a.nextRunAt).localeCompare(String(b.nextRunAt)));
     const jobs = shell.createEl('div');
     if (!scheduled.length) {
       const empty = makeCard(jobs, { color: 'var(--text-muted)' });
@@ -1267,37 +1389,65 @@ class AssistantModal extends Modal {
     for (const job of scheduled) {
       const card = makeCard(jobs, { display: 'flex', justifyContent: 'space-between', gap: '14px', alignItems: 'center', marginBottom: '9px' });
       const copy = card.createEl('div');
-      styleElement(copy.createEl('div', { text: job.title }), { fontWeight: '600' });
-      styleElement(copy.createEl('div', { text: describeSchedule(job) }), { marginTop: '4px', color: 'var(--text-muted)', fontSize: '12px' });
+      styleElement(copy.createEl('div', { text: `#${job.taskNumber} · ${job.title}` }), { fontWeight: '600' });
+      styleElement(copy.createEl('div', { text: `${describeBinding(job)} · ${describeSchedule(job)}${job.runCount ? ` · ${job.runCount} run${job.runCount === 1 ? '' : 's'}` : ''}` }), { marginTop: '4px', color: 'var(--text-muted)', fontSize: '12px' });
       const controls = styleElement(card.createEl('div'), { display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' });
       makeButton(controls, 'Edit', () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
       makeButton(controls, 'Disable', async () => {
-        if (job.routine === 'daily-review') {
-          this.plugin.settings.nightlyReviewEnabled = false;
-          await this.plugin.ensureNightlyReviewJob();
-        } else {
-          job.enabled = false;
-          job.nextRunAt = null;
-        }
+        job.enabled = false;
+        job.nextRunAt = null;
+        job.status = 'disabled';
+        job.lastStatus = 'disabled';
         await this.plugin.saveState();
         this.render();
-      });
-      makeButton(controls, 'Delete', async () => { await this.plugin.deleteJob(job); this.render(); });
+      }, false, true);
+      makeButton(controls, 'Delete', async () => {
+        if (!window.confirm(`Delete task #${job.taskNumber}? This cannot be undone.`)) return;
+        await this.plugin.deleteJob(job);
+        this.render();
+      }, false, true);
     }
 
-    const past = this.plugin.jobs.filter(job => !job.enabled).slice(-6).reverse();
+    const disabled = summarizeTasks(userJobs.filter(job => isDisabledTask(job))).slice(-8).reverse();
+    if (disabled.length) {
+      this.renderSection(shell, 'Disabled tasks', 'Paused and ready to enable');
+      const disabledList = shell.createEl('div');
+      for (const job of disabled) {
+        const card = makeCard(disabledList, { display: 'flex', justifyContent: 'space-between', gap: '14px', alignItems: 'center', marginBottom: '9px' });
+        const copy = card.createEl('div');
+        styleElement(copy.createEl('div', { text: `#${job.taskNumber} · ${job.title}` }), { fontWeight: '600' });
+        styleElement(copy.createEl('div', { text: `${describeBinding(job)} · ${describeSchedule(job)} · Disabled` }), { marginTop: '4px', color: 'var(--text-muted)', fontSize: '12px' });
+        const controls = styleElement(card.createEl('div'), { display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' });
+        makeButton(controls, 'Edit', () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
+        makeButton(controls, 'Enable', async () => {
+          await this.plugin.enableJob(job);
+          this.render();
+        });
+        makeButton(controls, 'Delete', async () => {
+          if (!window.confirm(`Delete task #${job.taskNumber}? This cannot be undone.`)) return;
+          await this.plugin.deleteJob(job);
+          this.render();
+        }, false, true);
+      }
+    }
+
+    const past = summarizeTasks(userJobs.filter(job => !job.enabled && !isDisabledTask(job))).slice(-8).reverse();
     if (past.length) {
-      this.renderSection(shell, 'Past tasks', 'Completed, failed, or disabled');
+      this.renderSection(shell, 'Past tasks', 'Completed or failed tasks, summarized per task');
       const pastList = shell.createEl('div');
       for (const job of past) {
         const card = makeCard(pastList, { display: 'flex', justifyContent: 'space-between', gap: '14px', alignItems: 'center', marginBottom: '9px' });
         const copy = card.createEl('div');
-        styleElement(copy.createEl('div', { text: job.title }), { fontWeight: '600' });
-        styleElement(copy.createEl('div', { text: job.lastStatus || job.status || 'disabled' }), { marginTop: '4px', color: 'var(--text-muted)', fontSize: '12px' });
+        styleElement(copy.createEl('div', { text: `#${job.taskNumber} · ${job.title}` }), { fontWeight: '600' });
+        styleElement(copy.createEl('div', { text: `${describeBinding(job)} · ${job.lastStatus || job.status || 'completed'}${job.runCount ? ` · ${job.runCount} run${job.runCount === 1 ? '' : 's'}` : ''}${job.lastRunAt ? ` · Last run ${formatDate(job.lastRunAt)}` : ''}` }), { marginTop: '4px', color: 'var(--text-muted)', fontSize: '12px' });
         const controls = styleElement(card.createEl('div'), { display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' });
         makeButton(controls, 'Edit', () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
         makeButton(controls, 'Run again', async () => { await this.plugin.retryJob(job); this.render(); });
-        makeButton(controls, 'Delete', async () => { await this.plugin.deleteJob(job); this.render(); });
+        makeButton(controls, 'Delete', async () => {
+          if (!window.confirm(`Delete task #${job.taskNumber}? This cannot be undone.`)) return;
+          await this.plugin.deleteJob(job);
+          this.render();
+        }, false, true);
       }
     }
 
