@@ -4,7 +4,7 @@
  * 15s dispatcher can treat every job uniformly.
  */
 import { cronNext, cronUpcoming, describeCron, formatLocalRun, validateCron } from './cron';
-import { Job, MultiRule, TaskSchedule } from './types';
+import { MultiRule, TaskSchedule } from './types';
 import { formatDate } from './util';
 
 export function parseClock(value: unknown): { hour: number; minute: number } {
@@ -104,7 +104,7 @@ export function parseMultiRulesText(value: string): MultiRule[] {
 	try {
 		const parsed = JSON.parse(source);
 		if (Array.isArray(parsed)) return normalizeMultiRules(parsed);
-	} catch (_) { /* use the readable line format below */ }
+	} catch { /* use the readable line format below */ }
 	const rules: MultiRule[] = [];
 	for (const line of source.split(/\r?\n/)) {
 		const match = /^(.+?)\s*=\s*(.+)$/.exec(line.trim());

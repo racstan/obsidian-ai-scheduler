@@ -60,7 +60,7 @@ export async function getClaudianView(host: BackendHost): Promise<AnyRecord | nu
 	if (!claudian) return null;
 	let views = typeof claudian.getAllViews === 'function' ? claudian.getAllViews() : [];
 	if (!views.length && typeof claudian.activateView === 'function') {
-		try { await claudian.activateView(); } catch (_) { /* Claudian may already be opening */ }
+		try { await claudian.activateView(); } catch { /* Claudian may already be opening */ }
 		await sleep(1200);
 	}
 	for (let attempt = 0; attempt < 6; attempt++) {
@@ -246,7 +246,7 @@ export function modelValue(providerId: string, model: string | null | undefined)
 
 export function parseProfileValue(value: string | null | undefined): { providerId: string; model?: string } | null {
 	if (!String(value || '').startsWith('profile:')) return null;
-	try { return JSON.parse(decodeURIComponent(String(value).slice(8))); } catch (_) { return null; }
+	try { return JSON.parse(decodeURIComponent(String(value).slice(8))); } catch { return null; }
 }
 
 export function getClaudianViewSync(host: BackendHost): AnyRecord | null {
@@ -286,7 +286,7 @@ export function getModelOptions(host: BackendHost): ModelOption[] {
 					providerId,
 					model: option.value,
 				}));
-			} catch (_) { /* Claudian may be rendering the selector */ }
+			} catch { /* Claudian may be rendering the selector */ }
 		}
 	});
 	const settings = claudian && (claudian.settings || claudian.providerHost && claudian.providerHost.settings) || {};
@@ -328,7 +328,7 @@ export function checkCopilotSetup(host: BackendHost): { ok: boolean; needsInstal
 	const copilot = getCopilotPlugin(host);
 	if (!copilot) return { ok: false, needsInstall: true, message: `${info.name} is not installed or enabled.`, githubUrl: info.githubUrl };
 	let chain: AnyRecord | null = null;
-	try { chain = copilot.chainOwner && typeof copilot.chainOwner.getCurrentChainManager === 'function' ? copilot.chainOwner.getCurrentChainManager() : null; } catch (_) { chain = null; }
+	try { chain = copilot.chainOwner && typeof copilot.chainOwner.getCurrentChainManager === 'function' ? copilot.chainOwner.getCurrentChainManager() : null; } catch { chain = null; }
 	if (!copilot.chatManager || typeof copilot.chatManager.sendMessage !== 'function' || typeof copilot.chatManager.getLLMMessage !== 'function'
 		|| !chain || typeof chain.runChain !== 'function') {
 		return { ok: false, needsInstall: false, message: `${info.name} is installed, but its automation API is unavailable. Update Copilot.`, githubUrl: info.githubUrl };

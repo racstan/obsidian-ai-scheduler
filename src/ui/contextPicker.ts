@@ -1,15 +1,15 @@
 import { Notice } from 'obsidian';
-import { styleElement, makeButton, makeCard } from './dom';
+import { makeButton, makeCard } from './dom';
 import { ContextOption } from '../context';
 
 export function createContextPicker(parent: HTMLElement, options: ContextOption[], initialPaths: string[], app: { workspace: { getActiveFile?: () => { path: string } | null } }): { getPaths: () => string[] } {
-	const card = makeCard(parent, { marginBottom: '14px', padding: '12px 14px' });
-	styleElement(card.createEl('div', { text: 'Context for this task' }), { fontWeight: '600', marginBottom: '4px' });
-	styleElement(card.createEl('div', { text: 'Select pages or project folders the active backend should attach when this task runs.' }), { color: 'var(--text-muted)', fontSize: '12px', marginBottom: '8px' });
+	const card = makeCard(parent, 'ai-scheduler-card-flush');
+	card.createDiv('ai-scheduler-lead').setText('Context for this task');
+	card.createDiv('ai-scheduler-picker-desc').setText('Select pages or project folders the active backend should attach when this task runs.');
 	const select = card.createEl('select');
 	select.multiple = true;
 	select.size = 6;
-	styleElement(select, { width: '100%', minHeight: '110px', padding: '6px', background: 'var(--background-primary)', color: 'var(--text-normal)' });
+	select.addClass('ai-scheduler-picker-select');
 	const known = new Set(options.map(option => option.path));
 	for (const path of initialPaths) {
 		if (!known.has(path)) options.push({ path, label: `Unavailable: ${path}`, type: 'missing' });
@@ -19,7 +19,7 @@ export function createContextPicker(parent: HTMLElement, options: ContextOption[
 		const element = select.createEl('option', { value: option.path, text: option.label });
 		element.selected = initialPaths.includes(option.path);
 	});
-	const controls = styleElement(card.createEl('div'), { display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' });
+	const controls = card.createDiv('ai-scheduler-picker-controls');
 	makeButton(controls, 'Use active page', () => {
 		const active = app.workspace && app.workspace.getActiveFile && app.workspace.getActiveFile();
 		if (!active) { new Notice('No active Markdown page is open.'); return; }

@@ -82,7 +82,7 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 	activity: ActivityEntry[];
 } {
 	const stored = data || {};
-	const settings = Object.assign({}, DEFAULT_SETTINGS, stored.settings || {}) as AISettings;
+	const settings = Object.assign({}, DEFAULT_SETTINGS, stored.settings || {});
 	settings.backendMode = settings.backendMode === 'copilot' ? 'copilot' : 'claudian';
 	// Migrate the old profile names to explicit models for each action. The
 	// values are still Claudian model references, but users no longer need to

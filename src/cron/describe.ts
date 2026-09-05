@@ -102,7 +102,7 @@ export function describeCron(expression: string): string {
 	let parsed: CronExpression;
 	try {
 		parsed = parseCron(expression);
-	} catch (_) {
+	} catch {
 		return 'Invalid cron expression';
 	}
 	const dayPart = dayPhrase(parsed);
@@ -119,7 +119,7 @@ export function formatLocalRun(date: Date): string {
 export function describeCronUpcoming(expression: string, count = 3, from: Date = new Date()): string[] | null {
 	try {
 		parseCron(expression);
-	} catch (_) {
+	} catch {
 		return null;
 	}
 	const runs = cronUpcoming(expression, count, from);

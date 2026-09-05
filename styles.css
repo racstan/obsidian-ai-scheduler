@@ -1,0 +1,435 @@
+/*
+ * AI Scheduler styles. All plugin UI styling lives here so the TypeScript
+ * sources never assign inline styles, matching Obsidian UI conventions.
+ * Class names are prefixed with "ai-scheduler-" (or "aisch-" where space is
+ * tight) to avoid collisions.
+ */
+
+/* ---- Modal shells ------------------------------------------------------ */
+
+.ai-scheduler-modal {
+	padding: 0;
+}
+
+.ai-scheduler-modal-md {
+	width: min(700px, calc(100vw - 32px));
+}
+
+.ai-scheduler-modal-lg {
+	width: min(760px, calc(100vw - 32px));
+	max-height: min(760px, calc(100vh - 32px));
+}
+
+.ai-scheduler-modal-sm {
+	width: min(680px, calc(100vw - 32px));
+	max-height: min(760px, calc(100vh - 32px));
+}
+
+.ai-scheduler-content {
+	padding: 0;
+	overflow: auto;
+}
+
+.ai-scheduler-shell {
+	padding: 28px;
+	margin: 0 auto;
+}
+
+.ai-scheduler-shell-tight {
+	padding: 24px;
+}
+
+.ai-scheduler-shell-md {
+	max-width: 700px;
+}
+
+.ai-scheduler-shell-lg {
+	max-width: 760px;
+}
+
+.ai-scheduler-title {
+	font-size: 32px;
+	margin: 0 0 8px;
+	letter-spacing: -0.03em;
+}
+
+.ai-scheduler-title-sm {
+	font-size: 30px;
+}
+
+.ai-scheduler-subtitle {
+	margin: 0 0 22px;
+	color: var(--text-muted);
+	max-width: 560px;
+	line-height: 1.5;
+}
+
+.ai-scheduler-eyebrow {
+	color: var(--interactive-accent);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.12em;
+	margin-bottom: 8px;
+}
+
+.ai-scheduler-actions {
+	display: flex;
+	gap: 10px;
+	flex-wrap: wrap;
+	padding-bottom: 24px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ai-scheduler-footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: 10px;
+}
+
+.ai-scheduler-footer-wrap {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+	flex-wrap: wrap;
+}
+
+/* ---- Dashboard ---------------------------------------------------------- */
+
+.ai-scheduler-stats {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 10px;
+	margin: 22px 0;
+}
+
+.ai-scheduler-stat-value {
+	font-size: 17px;
+	font-weight: 700;
+}
+
+.ai-scheduler-stat-label {
+	margin-top: 3px;
+	font-size: 10px;
+	letter-spacing: 0.1em;
+	color: var(--text-muted);
+}
+
+.ai-scheduler-section-heading {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	margin-bottom: 10px;
+}
+
+.ai-scheduler-section-title {
+	margin: 0;
+	font-size: 17px;
+}
+
+.ai-scheduler-section-desc {
+	color: var(--text-muted);
+	font-size: 12px;
+}
+
+.ai-scheduler-row-actions {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	margin-bottom: 10px;
+}
+
+.ai-scheduler-task-actions {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+.ai-scheduler-empty-sub {
+	margin-top: 6px;
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.ai-scheduler-task-card {
+	display: flex;
+	justify-content: space-between;
+	gap: 14px;
+	align-items: center;
+	margin-bottom: 9px;
+}
+
+.ai-scheduler-task-title {
+	font-weight: 600;
+}
+
+.ai-scheduler-task-meta {
+	margin-top: 4px;
+	color: var(--text-muted);
+	font-size: 12px;
+}
+
+.ai-scheduler-task-prompt {
+	margin-top: 8px;
+	white-space: pre-wrap;
+	font-size: 12px;
+}
+
+.ai-scheduler-activity {
+	padding: 6px 16px;
+}
+
+.ai-scheduler-activity-empty {
+	padding: 10px 0;
+	color: var(--text-muted);
+}
+
+.ai-scheduler-activity-row {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 10px 0;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ai-scheduler-activity-time {
+	color: var(--text-muted);
+	font-size: 11px;
+	white-space: nowrap;
+}
+
+/* ---- Cards, buttons, inputs -------------------------------------------- */
+
+.ai-scheduler-card {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	padding: 16px;
+	background: var(--background-primary-alt);
+}
+
+.ai-scheduler-card-stat {
+	padding: 13px 14px;
+}
+
+.ai-scheduler-card-tight {
+	padding: 12px 14px;
+}
+
+.ai-scheduler-card-flush {
+	margin-bottom: 14px;
+}
+
+.ai-scheduler-card-gap {
+	margin-bottom: 18px;
+}
+
+.ai-scheduler-card-ai {
+	margin-top: 18px;
+	padding: 14px;
+}
+
+.ai-scheduler-card-muted {
+	color: var(--text-muted);
+}
+
+.ai-scheduler-button-danger {
+	color: var(--text-error);
+	border-color: var(--text-error);
+}
+
+.ai-scheduler-input {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 6px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+
+.ai-scheduler-input-mono {
+	font-family: monospace;
+}
+
+.ai-scheduler-textarea {
+	width: 100%;
+	box-sizing: border-box;
+	resize: vertical;
+	font-family: inherit;
+	line-height: 1.5;
+	padding: 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 10px;
+	background: var(--background-primary-alt);
+	color: var(--text-normal);
+}
+
+.ai-scheduler-textarea-tall {
+	min-height: 170px;
+	margin: 14px 0 8px;
+}
+
+.ai-scheduler-textarea-short {
+	min-height: 70px;
+	padding: 8px;
+	border-radius: 6px;
+}
+
+.ai-scheduler-textarea-ai {
+	min-height: 90px;
+	padding: 10px;
+	margin-bottom: 10px;
+}
+
+.ai-scheduler-select {
+	width: 100%;
+	padding: 6px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+
+/* ---- Planner ------------------------------------------------------------ */
+
+.ai-scheduler-form-label {
+	color: var(--text-muted);
+	font-size: 12px;
+	margin-bottom: 4px;
+}
+
+.ai-scheduler-form-gap {
+	margin-bottom: 10px;
+}
+
+.ai-scheduler-hint {
+	color: var(--text-muted);
+	font-size: 12px;
+}
+
+.ai-scheduler-hint-gap {
+	margin-bottom: 22px;
+}
+
+.ai-scheduler-result-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+	margin-bottom: 20px;
+}
+
+.ai-scheduler-result-table th {
+	text-align: left;
+	border-bottom: 2px solid var(--background-modifier-border);
+	padding: 8px 10px;
+	white-space: nowrap;
+}
+
+.ai-scheduler-result-table td {
+	border-bottom: 1px solid var(--background-modifier-border);
+	padding: 10px;
+	color: var(--text-muted);
+	vertical-align: top;
+}
+
+.ai-scheduler-result-table td:first-child {
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.ai-scheduler-result-table code {
+	font-size: 12px;
+}
+
+/* ---- Job editor ---------------------------------------------------------- */
+
+.ai-scheduler-lead {
+	font-weight: 600;
+}
+
+.ai-scheduler-gap-4 {
+	margin-bottom: 4px;
+}
+
+.ai-scheduler-gap-6 {
+	margin-bottom: 6px;
+}
+
+.ai-scheduler-gap-8 {
+	margin-bottom: 8px;
+}
+
+.ai-scheduler-kind-row {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	margin-bottom: 10px;
+}
+
+.ai-scheduler-kind-row select {
+	flex-grow: 1;
+}
+
+.ai-scheduler-field-label {
+	font-size: 12px;
+	color: var(--text-muted);
+	margin: 8px 0 4px;
+}
+
+.ai-scheduler-days {
+	display: flex;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.ai-scheduler-preview {
+	margin-top: 10px;
+	font-size: 12px;
+	color: var(--text-muted);
+	line-height: 1.6;
+}
+
+.ai-scheduler-preview-error {
+	color: var(--text-error);
+}
+
+.ai-scheduler-example {
+	font-size: 11px;
+	color: var(--text-faint);
+	margin-top: 6px;
+	line-height: 1.5;
+}
+
+/* ---- Context picker ------------------------------------------------------- */
+
+.ai-scheduler-picker-desc {
+	color: var(--text-muted);
+	font-size: 12px;
+	margin-bottom: 8px;
+}
+
+.ai-scheduler-picker-select {
+	width: 100%;
+	min-height: 110px;
+	padding: 6px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+
+.ai-scheduler-picker-controls {
+	display: flex;
+	gap: 8px;
+	margin-top: 8px;
+	flex-wrap: wrap;
+}
+
+/* ---- Settings -------------------------------------------------------------- */
+
+.ai-scheduler-status-ok {
+	color: var(--text-success);
+}
+
+.ai-scheduler-status-error {
+	color: var(--text-error);
+}

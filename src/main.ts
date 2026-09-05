@@ -28,7 +28,7 @@ import {
 	rescheduleEnabledJob,
 	skipMissedJob,
 } from './engine';
-import { contextPrompt, executionPrompt, plannerPrompt, refinePrompt, reviewPrompt } from './prompts';
+import { executionPrompt, plannerPrompt, refinePrompt, reviewPrompt } from './prompts';
 import { getPathsContext, getVaultContextOptions, JobContext } from './context';
 import * as backends from './backends';
 import { extractJson, errorText, formatDate, isDisabledTask, isNightlyReviewJob, localDateKey, localTimestampKey, logActivityEntry } from './util';
@@ -65,7 +65,7 @@ export class AISchedulerPlugin extends Plugin {
 		this.addRibbonIcon('brain', 'Open AI Scheduler', () => new AssistantModal(this.app, this).open());
 		this.addCommand({
 			id: 'open-assistant',
-			name: 'Open AI Scheduler',
+			name: 'Open assistant dashboard',
 			callback: () => new AssistantModal(this.app, this).open(),
 		});
 		this.addCommand({
@@ -393,7 +393,7 @@ export class AISchedulerPlugin extends Plugin {
 		for (const part of parts) {
 			current = current ? `${current}/${part}` : part;
 			if (!this.app.vault.getAbstractFileByPath(current)) {
-				try { await this.app.vault.createFolder(current); } catch (_) { /* another operation may have created it */ }
+				try { await this.app.vault.createFolder(current); } catch { /* another operation may have created it */ }
 			}
 		}
 	}

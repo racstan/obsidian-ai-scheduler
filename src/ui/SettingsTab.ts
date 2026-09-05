@@ -20,7 +20,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 			setting.setDesc('');
 			const desc = setting.descEl;
 			desc.empty();
-			desc.style.color = result.ok ? 'var(--text-success)' : 'var(--text-error)';
+			desc.addClass(result.ok ? 'ai-scheduler-status-ok' : 'ai-scheduler-status-error');
 			desc.createEl('span', { text: result.message });
 			if (!result.ok && result.needsInstall) {
 				desc.createEl('span', { text: ' ' });
@@ -43,7 +43,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		containerEl.createEl('h2', { text: 'AI Scheduler' });
+		new Setting(containerEl).setName('AI Scheduler').setHeading();
 		containerEl.createEl('p', { text: 'Choose one AI backend. AI Scheduler never runs Claudian and Copilot at the same time.' });
 		new Setting(containerEl)
 			.setName('AI backend')
@@ -52,10 +52,12 @@ export class AssistantSettingTab extends PluginSettingTab {
 				.addOption('claudian', 'Claudian')
 				.addOption('copilot', 'Obsidian Copilot')
 				.setValue(this.plugin.settings.backendMode === 'copilot' ? 'copilot' : 'claudian')
-				.onChange(async value => {
-					this.plugin.settings.backendMode = value === 'copilot' ? 'copilot' : 'claudian';
-					await this.plugin.saveState();
-					this.display();
+				.onChange(value => {
+					void (async () => {
+						this.plugin.settings.backendMode = value === 'copilot' ? 'copilot' : 'claudian';
+						await this.plugin.saveState();
+						this.display();
+					})();
 				}));
 		this.renderBackendStatus(containerEl);
 
@@ -172,7 +174,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 				}));
 		}
 
-		containerEl.createEl('h2', { text: 'Schedule notes (optional)' });
+		new Setting(containerEl).setName('Schedule notes (optional)').setHeading();
 		new Setting(containerEl)
 			.setName('Keep schedule notes in my vault')
 			.setDesc('Off by default. When enabled, every task gets a Markdown note whose frontmatter holds its schedule and prompt — edit the note or the dashboard, both stay in sync. Task results and history stay in data.json, and turning this off never loses anything.')

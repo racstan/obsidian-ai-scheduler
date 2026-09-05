@@ -1,7 +1,7 @@
 /* Shared pure helpers ported from the original main.js. */
 import { ActivityEntry, Job } from './types';
 
-export const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+export const sleep = (ms: number): Promise<void> => new Promise(resolve => window.setTimeout(resolve, ms));
 
 export function id(prefix: string): string {
 	return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -65,7 +65,7 @@ export function extractJson(text: string): Record<string, unknown>[] {
 				try {
 					const parsed = JSON.parse(trimmed.slice(start, end));
 					return (Array.isArray(parsed) ? parsed : [parsed]) as Record<string, unknown>[];
-				} catch (_) { /* keep looking for the end of the JSON value */ }
+				} catch { /* keep looking for the end of the JSON value */ }
 			}
 		}
 	}

@@ -5,7 +5,7 @@ import { SCHEDULE_KINDS, ScheduleKind, TaskSchedule } from '../types';
 import { DAY_SHORT_NAMES, describeSchedule, formatMultiRules, getScheduleNextRun, parseMultiRulesText, previewSchedule, validClock } from '../schedule';
 import { validateCron } from '../cron';
 import { createContextPicker } from './contextPicker';
-import { makeButton, makeCard, styleElement } from './dom';
+import { makeButton, makeCard } from './dom';
 
 const KIND_LABELS: Record<ScheduleKind, string> = {
 	once: 'Once at a specific time',
@@ -31,6 +31,7 @@ export class JobModal extends Modal {
 	private inputs: HTMLInputElement[] = [];
 	private multiArea: HTMLTextAreaElement | null = null;
 	private dayChecks: HTMLInputElement[] = [];
+	private cronInput: HTMLInputElement | null = null;
 	private kindSelect: HTMLSelectElement | null = null;
 
 	constructor(app: AISchedulerPlugin['app'], plugin: AISchedulerPlugin, job: import('../types').Job, onSaved: () => void) {
@@ -43,27 +44,28 @@ export class JobModal extends Modal {
 
 	onOpen(): void {
 		const { contentEl } = this;
-		this.modalEl.style.width = 'min(680px, calc(100vw - 32px))';
-		this.modalEl.style.maxHeight = 'min(760px, calc(100vh - 32px))';
+		this.modalEl.addClass('ai-scheduler-modal');
+		this.modalEl.addClass('ai-scheduler-modal-sm');
+		contentEl.addClass('ai-scheduler-content');
 		contentEl.empty();
-		styleElement(contentEl, { padding: '0', overflow: 'auto' });
-		const shell = styleElement(contentEl.createEl('div'), { padding: '24px' });
+		const shell = contentEl.createDiv('ai-scheduler-shell ai-scheduler-shell-tight');
 		shell.createEl('h2', { text: 'Edit scheduled task' });
-		styleElement(shell.createEl('p', { text: 'Adjust the schedule directly, or describe a change in plain language and let AI rewrite it.' }), { color: 'var(--text-muted)', marginTop: '0' });
+		shell.createEl('p', { text: 'Adjust the schedule directly, or describe a change in plain language and let AI rewrite it.' }).addClass('ai-scheduler-subtitle');
 
-		const current = makeCard(shell, { marginBottom: '14px', padding: '12px 14px' });
-		styleElement(current.createEl('div', { text: this.job.title }), { fontWeight: '600' });
-		styleElement(current.createEl('div', { text: describeSchedule(this.job) }), { color: 'var(--text-muted)', fontSize: '12px', marginTop: '4px' });
-		styleElement(current.createEl('div', { text: this.job.prompt }), { marginTop: '8px', whiteSpace: 'pre-wrap', fontSize: '12px' });
+		const current = makeCard(shell, 'ai-scheduler-card-tight', 'ai-scheduler-card-flush');
+		current.createEl('div', { text: this.job.title }).addClass('ai-scheduler-task-title');
+		current.createEl('div', { text: describeSchedule(this.job) }).addClass('ai-scheduler-task-meta');
+		current.createEl('div', { text: this.job.prompt }).addClass('ai-scheduler-task-prompt');
 
 		this.renderScheduleEditor(shell);
 
 		const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), this.job.contextPaths || [], this.app);
-		styleElement(shell.createEl('div', { text: 'Result folder for this task (optional)' }), { color: 'var(--text-muted)', fontSize: '12px', marginBottom: '4px' });
+		shell.createDiv('ai-scheduler-form-label').setText('Result folder for this task (optional)');
 		const resultFolder = shell.createEl('input', { type: 'text', value: this.job.output && this.job.output.folder || '', placeholder: 'Optional result folder, e.g. Projects/News' });
-		styleElement(resultFolder, { width: '100%', boxSizing: 'border-box', marginBottom: '10px' });
+		resultFolder.addClass('ai-scheduler-input');
+		resultFolder.addClass('ai-scheduler-form-gap');
 
-		const footer = styleElement(shell.createEl('div'), { display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' });
+		const footer = shell.createDiv('ai-scheduler-footer-wrap');
 		makeButton(footer, 'Cancel', () => this.close());
 		makeButton(footer, 'Save schedule changes', async () => {
 			try {
@@ -81,10 +83,11 @@ export class JobModal extends Modal {
 			}
 		}, true);
 
-		const aiSection = makeCard(shell, { marginTop: '18px', padding: '14px' });
-		styleElement(aiSection.createEl('div', { text: 'Edit with AI (optional)' }), { fontWeight: '600', marginBottom: '6px' });
+		const aiSection = makeCard(shell, 'ai-scheduler-card-ai');
+		aiSection.createDiv('ai-scheduler-lead ai-scheduler-gap-6').setText('Edit with AI (optional)');
 		const request = aiSection.createEl('textarea', { placeholder: 'Example: Change this to run every 30 minutes for 8 iterations, and save each result in Projects/News.' });
-		styleElement(request, { width: '100%', minHeight: '90px', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', padding: '10px', marginBottom: '10px' });
+		request.addClass('ai-scheduler-textarea');
+		request.addClass('ai-scheduler-textarea-ai');
 		makeButton(aiSection, 'Update task with AI', async button => {
 			const change = request.value.trim();
 			if (!change) { new Notice('Describe the task change first.'); return; }
@@ -107,25 +110,25 @@ export class JobModal extends Modal {
 	/* Manual schedule editor: one dynamic field group per kind, with a live
 	 * next-runs preview. Cron expressions are validated on every keystroke. */
 	private renderScheduleEditor(shell: HTMLElement): void {
-		const card = makeCard(shell, { marginBottom: '14px', padding: '12px 14px' });
-		styleElement(card.createEl('div', { text: 'Schedule' }), { fontWeight: '600', marginBottom: '8px' });
+		const card = makeCard(shell, 'ai-scheduler-card-tight', 'ai-scheduler-card-flush');
+		card.createDiv('ai-scheduler-lead ai-scheduler-gap-8').setText('Schedule');
 
-		const kindRow = styleElement(card.createEl('div'), { display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px' });
+		const kindRow = card.createDiv('ai-scheduler-kind-row');
 		this.kindSelect = kindRow.createEl('select');
-		styleElement(this.kindSelect, { flexGrow: '1' });
 		SCHEDULE_KINDS.forEach(option => {
 			const element = this.kindSelect!.createEl('option', { value: option, text: KIND_LABELS[option] });
 			element.selected = option === this.kind;
 		});
 
-		const fields = card.createEl('div');
-		const preview = styleElement(card.createEl('div'), { marginTop: '10px', fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.6' });
+		const fields = card.createDiv();
+		const preview = card.createDiv('ai-scheduler-preview');
 
 		const rerenderFields = () => {
 			fields.empty();
 			this.inputs = [];
 			this.multiArea = null;
 			this.dayChecks = [];
+			this.cronInput = null;
 			this.renderKindFields(fields, () => this.updatePreview(preview));
 			this.updatePreview(preview);
 		};
@@ -143,20 +146,20 @@ export class JobModal extends Modal {
 		if (schedule.kind === 'cron' && schedule.expression) {
 			const error = validateCron(schedule.expression);
 			if (error) {
-				styleElement(preview.createEl('div', { text: error }), { color: 'var(--text-error)' });
+				preview.createEl('div', { text: error }).addClass('ai-scheduler-preview-error');
 				return;
 			}
 		}
 		if (schedule.kind === 'event') {
-			preview.createEl('div', { text: 'Runs when the vault changes, after a cooldown.' });
+			preview.setText('Runs when the vault changes, after a cooldown.');
 			return;
 		}
 		const runs = previewSchedule(schedule, 3);
 		if (!runs.length) {
-			preview.createEl('div', { text: 'No upcoming runs with the current values.' });
+			preview.setText('No upcoming runs with the current values.');
 			return;
 		}
-		preview.createEl('div', { text: `Next runs: ${runs.join('  ·  ')}` });
+		preview.setText(`Next runs: ${runs.join('  ·  ')}`);
 	}
 
 	private renderKindFields(container: HTMLElement, onChange: () => void): void {
@@ -166,21 +169,13 @@ export class JobModal extends Modal {
 			if (attributes.value !== undefined) element.value = attributes.value;
 			if (attributes.min !== undefined) element.min = attributes.min;
 			if (attributes.placeholder !== undefined) element.placeholder = attributes.placeholder;
-			styleElement(element, {
-				padding: '6px',
-				border: '1px solid var(--background-modifier-border)',
-				borderRadius: '6px',
-				background: 'var(--background-primary)',
-				color: 'var(--text-normal)',
-				boxSizing: 'border-box',
-				width: '100%',
-			});
-			if (attributes.monospace) element.style.fontFamily = 'monospace';
+			element.addClass('ai-scheduler-input');
+			if (attributes.monospace) element.addClass('ai-scheduler-input-mono');
 			element.oninput = onChange;
 			this.inputs.push(element);
 			return element;
 		};
-		const label = (text: string) => styleElement(container.createEl('div', { text }), { fontSize: '12px', color: 'var(--text-muted)', margin: '8px 0 4px' });
+		const label = (text: string) => container.createDiv('ai-scheduler-field-label').setText(text);
 
 		switch (this.kind) {
 			case 'once': {
@@ -202,7 +197,7 @@ export class JobModal extends Modal {
 				label('Time (HH:MM)');
 				input({ type: 'time', value: schedule.time || '09:00' });
 				label('Days');
-				const row = styleElement(container.createEl('div'), { display: 'flex', gap: '10px', flexWrap: 'wrap' });
+				const row = container.createDiv('ai-scheduler-days');
 				DAY_SHORT_NAMES.forEach((day, index) => {
 					const item = row.createEl('label');
 					const checkbox = item.createEl('input', { type: 'checkbox' });
@@ -216,7 +211,8 @@ export class JobModal extends Modal {
 			case 'multi': {
 				label('Rules, one per line: days = HH:MM, HH:MM (e.g. Mon-Fri = 09:00)');
 				const area = container.createEl('textarea', { text: formatMultiRules(schedule.rules) });
-				styleElement(area, { width: '100%', minHeight: '70px', boxSizing: 'border-box', fontFamily: 'inherit', padding: '8px', border: '1px solid var(--background-modifier-border)', borderRadius: '6px', background: 'var(--background-primary)', color: 'var(--text-normal)' });
+				area.addClass('ai-scheduler-textarea');
+				area.addClass('ai-scheduler-textarea-short');
 				area.oninput = onChange;
 				this.multiArea = area;
 				break;
@@ -236,8 +232,8 @@ export class JobModal extends Modal {
 			case 'event': {
 				label('Vault event');
 				const select = container.createEl('select');
+				select.addClass('ai-scheduler-select');
 				select.createEl('option', { value: 'modify', text: 'Any file is modified or created' });
-				styleElement(select, { padding: '6px', border: '1px solid var(--background-modifier-border)', borderRadius: '6px', background: 'var(--background-primary)', color: 'var(--text-normal)' });
 				select.onchange = onChange;
 				label('Cooldown minutes between runs');
 				input({ type: 'number', value: String(this.job.cooldownMinutes ?? 10), min: '1' });
@@ -245,13 +241,13 @@ export class JobModal extends Modal {
 			}
 			case 'cron': {
 				label('5-field cron: minute, hour, day-of-month, month, day-of-week (0 = Sunday)');
-				input({
+				this.cronInput = input({
 					type: 'text',
 					value: schedule.expression || '',
 					placeholder: '*/15 * * * *   or   0 9 * * 1-5',
 					monospace: true,
 				});
-				styleElement(container.createEl('div', { text: 'Examples: */15 * * * * every 15 minutes · 0 9 * * 1-5 weekdays at 09:00 · 0 22 * * * daily at 22:00' }), { fontSize: '11px', color: 'var(--text-faint)', marginTop: '6px', lineHeight: '1.5' });
+				container.createDiv('ai-scheduler-example').setText('Examples: */15 * * * * every 15 minutes · 0 9 * * 1-5 weekdays at 09:00 · 0 22 * * * daily at 22:00');
 				break;
 			}
 		}
@@ -304,8 +300,7 @@ export class JobModal extends Modal {
 					};
 				}
 				case 'cron': {
-					const field = this.inputs.find(input => input.style.fontFamily === 'monospace');
-					return { schedule: { kind: 'cron', expression: field ? field.value.trim() : previous.expression || '' } };
+					return { schedule: { kind: 'cron', expression: this.cronInput ? this.cronInput.value.trim() : previous.expression || '' } };
 				}
 			}
 		};
@@ -343,6 +338,7 @@ export class JobModal extends Modal {
 		this.inputs = [];
 		this.multiArea = null;
 		this.dayChecks = [];
+		this.cronInput = null;
 		this.kindSelect = null;
 	}
 }

@@ -349,7 +349,7 @@ function describeCron(expression) {
   let parsed;
   try {
     parsed = parseCron(expression);
-  } catch (_) {
+  } catch (e) {
     return "Invalid cron expression";
   }
   const dayPart = dayPhrase(parsed);
@@ -361,7 +361,7 @@ function formatLocalRun(date) {
 }
 
 // src/util.ts
-var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+var sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
 function id(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -413,7 +413,7 @@ function extractJson(text) {
         try {
           const parsed = JSON.parse(trimmed.slice(start, end));
           return Array.isArray(parsed) ? parsed : [parsed];
-        } catch (_) {
+        } catch (e) {
         }
       }
     }
@@ -536,7 +536,7 @@ function parseMultiRulesText(value) {
   try {
     const parsed = JSON.parse(source);
     if (Array.isArray(parsed)) return normalizeMultiRules(parsed);
-  } catch (_) {
+  } catch (e) {
   }
   const rules = [];
   for (const line of source.split(/\r?\n/)) {
@@ -905,7 +905,7 @@ async function getClaudianView(host) {
   if (!views.length && typeof claudian.activateView === "function") {
     try {
       await claudian.activateView();
-    } catch (_) {
+    } catch (e) {
     }
     await sleep(1200);
   }
@@ -1066,7 +1066,7 @@ function parseProfileValue(value) {
   if (!String(value || "").startsWith("profile:")) return null;
   try {
     return JSON.parse(decodeURIComponent(String(value).slice(8)));
-  } catch (_) {
+  } catch (e) {
     return null;
   }
 }
@@ -1106,7 +1106,7 @@ ${profile.model || ""}`;
           providerId,
           model: option.value
         }));
-      } catch (_) {
+      } catch (e) {
       }
     }
   });
@@ -1149,7 +1149,7 @@ function checkCopilotSetup(host) {
   let chain = null;
   try {
     chain = copilot.chainOwner && typeof copilot.chainOwner.getCurrentChainManager === "function" ? copilot.chainOwner.getCurrentChainManager() : null;
-  } catch (_) {
+  } catch (e) {
     chain = null;
   }
   if (!copilot.chatManager || typeof copilot.chatManager.sendMessage !== "function" || typeof copilot.chatManager.getLLMMessage !== "function" || !chain || typeof chain.runChain !== "function") {
@@ -1234,30 +1234,23 @@ async function resolveJobExecution(host, job) {
 var import_obsidian6 = require("obsidian");
 
 // src/ui/dom.ts
-function styleElement(element, styles) {
-  Object.assign(element.style, styles);
-  return element;
-}
 function makeButton(parent, label, onClick, primary = false, danger = false) {
   const button = parent.createEl("button", { text: label });
   if (primary) button.addClass("mod-cta");
   if (danger) {
     button.addClass("mod-warning");
-    button.style.color = "var(--text-error)";
-    button.style.borderColor = "var(--text-error)";
+    button.addClass("ai-scheduler-button-danger");
   }
   button.onclick = () => {
     void onClick(button);
   };
   return button;
 }
-function makeCard(parent, styles = {}) {
-  return styleElement(parent.createEl("div"), Object.assign({
-    border: "1px solid var(--background-modifier-border)",
-    borderRadius: "12px",
-    padding: "16px",
-    background: "var(--background-primary-alt)"
-  }, styles));
+function makeCard(parent, ...extraClasses) {
+  const card = parent.createEl("div");
+  card.addClass("ai-scheduler-card");
+  for (const extra of extraClasses) card.addClass(extra);
+  return card;
 }
 
 // src/ui/JobModal.ts
@@ -1266,13 +1259,13 @@ var import_obsidian4 = require("obsidian");
 // src/ui/contextPicker.ts
 var import_obsidian3 = require("obsidian");
 function createContextPicker(parent, options, initialPaths, app) {
-  const card = makeCard(parent, { marginBottom: "14px", padding: "12px 14px" });
-  styleElement(card.createEl("div", { text: "Context for this task" }), { fontWeight: "600", marginBottom: "4px" });
-  styleElement(card.createEl("div", { text: "Select pages or project folders the active backend should attach when this task runs." }), { color: "var(--text-muted)", fontSize: "12px", marginBottom: "8px" });
+  const card = makeCard(parent, "ai-scheduler-card-flush");
+  card.createDiv("ai-scheduler-lead").setText("Context for this task");
+  card.createDiv("ai-scheduler-picker-desc").setText("Select pages or project folders the active backend should attach when this task runs.");
   const select = card.createEl("select");
   select.multiple = true;
   select.size = 6;
-  styleElement(select, { width: "100%", minHeight: "110px", padding: "6px", background: "var(--background-primary)", color: "var(--text-normal)" });
+  select.addClass("ai-scheduler-picker-select");
   const known = new Set(options.map((option) => option.path));
   for (const path of initialPaths) {
     if (!known.has(path)) options.push({ path, label: `Unavailable: ${path}`, type: "missing" });
@@ -1282,7 +1275,7 @@ function createContextPicker(parent, options, initialPaths, app) {
     const element = select.createEl("option", { value: option.path, text: option.label });
     element.selected = initialPaths.includes(option.path);
   });
-  const controls = styleElement(card.createEl("div"), { display: "flex", gap: "8px", marginTop: "8px", flexWrap: "wrap" });
+  const controls = card.createDiv("ai-scheduler-picker-controls");
   makeButton(controls, "Use active page", () => {
     const active = app.workspace && app.workspace.getActiveFile && app.workspace.getActiveFile();
     if (!active) {
@@ -1316,6 +1309,7 @@ var JobModal = class extends import_obsidian4.Modal {
     this.inputs = [];
     this.multiArea = null;
     this.dayChecks = [];
+    this.cronInput = null;
     this.kindSelect = null;
     this.plugin = plugin;
     this.job = job;
@@ -1324,23 +1318,24 @@ var JobModal = class extends import_obsidian4.Modal {
   }
   onOpen() {
     const { contentEl } = this;
-    this.modalEl.style.width = "min(680px, calc(100vw - 32px))";
-    this.modalEl.style.maxHeight = "min(760px, calc(100vh - 32px))";
+    this.modalEl.addClass("ai-scheduler-modal");
+    this.modalEl.addClass("ai-scheduler-modal-sm");
+    contentEl.addClass("ai-scheduler-content");
     contentEl.empty();
-    styleElement(contentEl, { padding: "0", overflow: "auto" });
-    const shell = styleElement(contentEl.createEl("div"), { padding: "24px" });
+    const shell = contentEl.createDiv("ai-scheduler-shell ai-scheduler-shell-tight");
     shell.createEl("h2", { text: "Edit scheduled task" });
-    styleElement(shell.createEl("p", { text: "Adjust the schedule directly, or describe a change in plain language and let AI rewrite it." }), { color: "var(--text-muted)", marginTop: "0" });
-    const current = makeCard(shell, { marginBottom: "14px", padding: "12px 14px" });
-    styleElement(current.createEl("div", { text: this.job.title }), { fontWeight: "600" });
-    styleElement(current.createEl("div", { text: describeSchedule(this.job) }), { color: "var(--text-muted)", fontSize: "12px", marginTop: "4px" });
-    styleElement(current.createEl("div", { text: this.job.prompt }), { marginTop: "8px", whiteSpace: "pre-wrap", fontSize: "12px" });
+    shell.createEl("p", { text: "Adjust the schedule directly, or describe a change in plain language and let AI rewrite it." }).addClass("ai-scheduler-subtitle");
+    const current = makeCard(shell, "ai-scheduler-card-tight", "ai-scheduler-card-flush");
+    current.createEl("div", { text: this.job.title }).addClass("ai-scheduler-task-title");
+    current.createEl("div", { text: describeSchedule(this.job) }).addClass("ai-scheduler-task-meta");
+    current.createEl("div", { text: this.job.prompt }).addClass("ai-scheduler-task-prompt");
     this.renderScheduleEditor(shell);
     const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), this.job.contextPaths || [], this.app);
-    styleElement(shell.createEl("div", { text: "Result folder for this task (optional)" }), { color: "var(--text-muted)", fontSize: "12px", marginBottom: "4px" });
+    shell.createDiv("ai-scheduler-form-label").setText("Result folder for this task (optional)");
     const resultFolder = shell.createEl("input", { type: "text", value: this.job.output && this.job.output.folder || "", placeholder: "Optional result folder, e.g. Projects/News" });
-    styleElement(resultFolder, { width: "100%", boxSizing: "border-box", marginBottom: "10px" });
-    const footer = styleElement(shell.createEl("div"), { display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap" });
+    resultFolder.addClass("ai-scheduler-input");
+    resultFolder.addClass("ai-scheduler-form-gap");
+    const footer = shell.createDiv("ai-scheduler-footer-wrap");
     makeButton(footer, "Cancel", () => this.close());
     makeButton(footer, "Save schedule changes", async () => {
       try {
@@ -1360,10 +1355,11 @@ var JobModal = class extends import_obsidian4.Modal {
         new import_obsidian4.Notice(`Could not update task: ${errorText(error)}`, 8e3);
       }
     }, true);
-    const aiSection = makeCard(shell, { marginTop: "18px", padding: "14px" });
-    styleElement(aiSection.createEl("div", { text: "Edit with AI (optional)" }), { fontWeight: "600", marginBottom: "6px" });
+    const aiSection = makeCard(shell, "ai-scheduler-card-ai");
+    aiSection.createDiv("ai-scheduler-lead ai-scheduler-gap-6").setText("Edit with AI (optional)");
     const request = aiSection.createEl("textarea", { placeholder: "Example: Change this to run every 30 minutes for 8 iterations, and save each result in Projects/News." });
-    styleElement(request, { width: "100%", minHeight: "90px", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit", padding: "10px", marginBottom: "10px" });
+    request.addClass("ai-scheduler-textarea");
+    request.addClass("ai-scheduler-textarea-ai");
     makeButton(aiSection, "Update task with AI", async (button) => {
       const change = request.value.trim();
       if (!change) {
@@ -1391,22 +1387,22 @@ var JobModal = class extends import_obsidian4.Modal {
   /* Manual schedule editor: one dynamic field group per kind, with a live
    * next-runs preview. Cron expressions are validated on every keystroke. */
   renderScheduleEditor(shell) {
-    const card = makeCard(shell, { marginBottom: "14px", padding: "12px 14px" });
-    styleElement(card.createEl("div", { text: "Schedule" }), { fontWeight: "600", marginBottom: "8px" });
-    const kindRow = styleElement(card.createEl("div"), { display: "flex", gap: "8px", alignItems: "center", marginBottom: "10px" });
+    const card = makeCard(shell, "ai-scheduler-card-tight", "ai-scheduler-card-flush");
+    card.createDiv("ai-scheduler-lead ai-scheduler-gap-8").setText("Schedule");
+    const kindRow = card.createDiv("ai-scheduler-kind-row");
     this.kindSelect = kindRow.createEl("select");
-    styleElement(this.kindSelect, { flexGrow: "1" });
     SCHEDULE_KINDS.forEach((option) => {
       const element = this.kindSelect.createEl("option", { value: option, text: KIND_LABELS[option] });
       element.selected = option === this.kind;
     });
-    const fields = card.createEl("div");
-    const preview = styleElement(card.createEl("div"), { marginTop: "10px", fontSize: "12px", color: "var(--text-muted)", lineHeight: "1.6" });
+    const fields = card.createDiv();
+    const preview = card.createDiv("ai-scheduler-preview");
     const rerenderFields = () => {
       fields.empty();
       this.inputs = [];
       this.multiArea = null;
       this.dayChecks = [];
+      this.cronInput = null;
       this.renderKindFields(fields, () => this.updatePreview(preview));
       this.updatePreview(preview);
     };
@@ -1423,20 +1419,20 @@ var JobModal = class extends import_obsidian4.Modal {
     if (schedule.kind === "cron" && schedule.expression) {
       const error = validateCron(schedule.expression);
       if (error) {
-        styleElement(preview.createEl("div", { text: error }), { color: "var(--text-error)" });
+        preview.createEl("div", { text: error }).addClass("ai-scheduler-preview-error");
         return;
       }
     }
     if (schedule.kind === "event") {
-      preview.createEl("div", { text: "Runs when the vault changes, after a cooldown." });
+      preview.setText("Runs when the vault changes, after a cooldown.");
       return;
     }
     const runs = previewSchedule(schedule, 3);
     if (!runs.length) {
-      preview.createEl("div", { text: "No upcoming runs with the current values." });
+      preview.setText("No upcoming runs with the current values.");
       return;
     }
-    preview.createEl("div", { text: `Next runs: ${runs.join("  \xB7  ")}` });
+    preview.setText(`Next runs: ${runs.join("  \xB7  ")}`);
   }
   renderKindFields(container, onChange) {
     var _a;
@@ -1446,21 +1442,13 @@ var JobModal = class extends import_obsidian4.Modal {
       if (attributes.value !== void 0) element.value = attributes.value;
       if (attributes.min !== void 0) element.min = attributes.min;
       if (attributes.placeholder !== void 0) element.placeholder = attributes.placeholder;
-      styleElement(element, {
-        padding: "6px",
-        border: "1px solid var(--background-modifier-border)",
-        borderRadius: "6px",
-        background: "var(--background-primary)",
-        color: "var(--text-normal)",
-        boxSizing: "border-box",
-        width: "100%"
-      });
-      if (attributes.monospace) element.style.fontFamily = "monospace";
+      element.addClass("ai-scheduler-input");
+      if (attributes.monospace) element.addClass("ai-scheduler-input-mono");
       element.oninput = onChange;
       this.inputs.push(element);
       return element;
     };
-    const label = (text) => styleElement(container.createEl("div", { text }), { fontSize: "12px", color: "var(--text-muted)", margin: "8px 0 4px" });
+    const label = (text) => container.createDiv("ai-scheduler-field-label").setText(text);
     switch (this.kind) {
       case "once": {
         label("Date and time");
@@ -1481,7 +1469,7 @@ var JobModal = class extends import_obsidian4.Modal {
         label("Time (HH:MM)");
         input({ type: "time", value: schedule.time || "09:00" });
         label("Days");
-        const row = styleElement(container.createEl("div"), { display: "flex", gap: "10px", flexWrap: "wrap" });
+        const row = container.createDiv("ai-scheduler-days");
         DAY_SHORT_NAMES.forEach((day, index) => {
           const item = row.createEl("label");
           const checkbox = item.createEl("input", { type: "checkbox" });
@@ -1495,7 +1483,8 @@ var JobModal = class extends import_obsidian4.Modal {
       case "multi": {
         label("Rules, one per line: days = HH:MM, HH:MM (e.g. Mon-Fri = 09:00)");
         const area = container.createEl("textarea", { text: formatMultiRules(schedule.rules) });
-        styleElement(area, { width: "100%", minHeight: "70px", boxSizing: "border-box", fontFamily: "inherit", padding: "8px", border: "1px solid var(--background-modifier-border)", borderRadius: "6px", background: "var(--background-primary)", color: "var(--text-normal)" });
+        area.addClass("ai-scheduler-textarea");
+        area.addClass("ai-scheduler-textarea-short");
         area.oninput = onChange;
         this.multiArea = area;
         break;
@@ -1515,8 +1504,8 @@ var JobModal = class extends import_obsidian4.Modal {
       case "event": {
         label("Vault event");
         const select = container.createEl("select");
+        select.addClass("ai-scheduler-select");
         select.createEl("option", { value: "modify", text: "Any file is modified or created" });
-        styleElement(select, { padding: "6px", border: "1px solid var(--background-modifier-border)", borderRadius: "6px", background: "var(--background-primary)", color: "var(--text-normal)" });
         select.onchange = onChange;
         label("Cooldown minutes between runs");
         input({ type: "number", value: String((_a = this.job.cooldownMinutes) != null ? _a : 10), min: "1" });
@@ -1524,13 +1513,13 @@ var JobModal = class extends import_obsidian4.Modal {
       }
       case "cron": {
         label("5-field cron: minute, hour, day-of-month, month, day-of-week (0 = Sunday)");
-        input({
+        this.cronInput = input({
           type: "text",
           value: schedule.expression || "",
           placeholder: "*/15 * * * *   or   0 9 * * 1-5",
           monospace: true
         });
-        styleElement(container.createEl("div", { text: "Examples: */15 * * * * every 15 minutes \xB7 0 9 * * 1-5 weekdays at 09:00 \xB7 0 22 * * * daily at 22:00" }), { fontSize: "11px", color: "var(--text-faint)", marginTop: "6px", lineHeight: "1.5" });
+        container.createDiv("ai-scheduler-example").setText("Examples: */15 * * * * every 15 minutes \xB7 0 9 * * 1-5 weekdays at 09:00 \xB7 0 22 * * * daily at 22:00");
         break;
       }
     }
@@ -1580,8 +1569,7 @@ var JobModal = class extends import_obsidian4.Modal {
           };
         }
         case "cron": {
-          const field = this.inputs.find((input) => input.style.fontFamily === "monospace");
-          return { schedule: { kind: "cron", expression: field ? field.value.trim() : previous.expression || "" } };
+          return { schedule: { kind: "cron", expression: this.cronInput ? this.cronInput.value.trim() : previous.expression || "" } };
         }
       }
     };
@@ -1617,6 +1605,7 @@ var JobModal = class extends import_obsidian4.Modal {
     this.inputs = [];
     this.multiArea = null;
     this.dayChecks = [];
+    this.cronInput = null;
     this.kindSelect = null;
   }
 };
@@ -1635,23 +1624,25 @@ var PlannerModal = class extends import_obsidian5.Modal {
   }
   async renderForm() {
     const { contentEl } = this;
-    this.modalEl.style.width = "min(700px, calc(100vw - 32px))";
-    this.modalEl.style.padding = "0";
+    this.modalEl.addClass("ai-scheduler-modal");
+    this.modalEl.addClass("ai-scheduler-modal-md");
+    contentEl.addClass("ai-scheduler-content");
     contentEl.empty();
-    styleElement(contentEl, { padding: "0", overflow: "auto" });
-    const shell = styleElement(contentEl.createEl("div"), { padding: "28px", maxWidth: "700px", margin: "0 auto" });
-    styleElement(shell.createEl("div", { text: "AI PLANNER" }), { color: "var(--interactive-accent)", fontSize: "11px", fontWeight: "700", letterSpacing: "0.12em", marginBottom: "8px" });
-    styleElement(shell.createEl("h1", { text: "Plan scheduled work" }), { fontSize: "30px", margin: "0 0 8px", letterSpacing: "-0.03em" });
-    styleElement(shell.createEl("p", { text: "Describe the outcome. Your selected backend will turn it into safe, persistent jobs." }), { margin: "0 0 22px", color: "var(--text-muted)", lineHeight: "1.5" });
+    const shell = contentEl.createDiv("ai-scheduler-shell ai-scheduler-shell-md");
+    shell.createDiv("ai-scheduler-eyebrow").setText("AI PLANNER");
+    shell.createEl("h1", { text: "Plan scheduled work" }).addClass("ai-scheduler-title ai-scheduler-title-sm");
+    shell.createEl("p", { text: "Describe the outcome. Your selected backend will turn it into safe, persistent jobs." }).addClass("ai-scheduler-subtitle");
     const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), [], this.app);
-    styleElement(shell.createEl("div", { text: "Default result folder for created tasks (optional)" }), { color: "var(--text-muted)", fontSize: "12px", marginBottom: "4px" });
+    shell.createDiv("ai-scheduler-form-label").setText("Default result folder for created tasks (optional)");
     const resultFolder = shell.createEl("input", { type: "text", placeholder: "Optional result folder for created tasks, e.g. Projects/News" });
-    styleElement(resultFolder, { width: "100%", boxSizing: "border-box", marginBottom: "10px" });
+    resultFolder.addClass("ai-scheduler-input");
+    resultFolder.addClass("ai-scheduler-form-gap");
     const textarea = shell.createEl("textarea");
-    styleElement(textarea, { width: "100%", minHeight: "170px", resize: "vertical", margin: "14px 0 8px", padding: "14px", borderRadius: "10px", border: "1px solid var(--background-modifier-border)", background: "var(--background-primary-alt)", color: "var(--text-normal)", fontFamily: "inherit", lineHeight: "1.5", boxSizing: "border-box" });
+    textarea.addClass("ai-scheduler-textarea");
+    textarea.addClass("ai-scheduler-textarea-tall");
     textarea.placeholder = "Every evening, review the notes I changed today, identify open loops, and create a report in AI Reviews. Remind me every Monday to review unfinished work.";
-    styleElement(shell.createEl("div", { text: "Examples: review notes every evening, run every 30 minutes for 8 iterations, run every 2 hours until I stop it, remind me every Monday, or react when a project file changes." }), { color: "var(--text-muted)", fontSize: "12px", marginBottom: "22px" });
-    const footer = styleElement(shell.createEl("div"), { display: "flex", justifyContent: "flex-end", gap: "10px" });
+    shell.createDiv("ai-scheduler-hint ai-scheduler-hint-gap").setText("Examples: review notes every evening, run every 30 minutes for 8 iterations, run every 2 hours until I stop it, remind me every Monday, or react when a project file changes.");
+    const footer = shell.createDiv("ai-scheduler-footer");
     makeButton(footer, "Cancel", () => this.close());
     makeButton(footer, "Create AI plan", async (button) => {
       const goal = textarea.value.trim();
@@ -1675,46 +1666,34 @@ var PlannerModal = class extends import_obsidian5.Modal {
    * English, and the next concrete run times) before moving on. */
   renderResults() {
     const { contentEl } = this;
-    this.modalEl.style.width = "min(760px, calc(100vw - 32px))";
-    this.modalEl.style.padding = "0";
+    this.modalEl.addClass("ai-scheduler-modal");
+    this.modalEl.addClass("ai-scheduler-modal-lg");
+    contentEl.addClass("ai-scheduler-content");
     contentEl.empty();
-    styleElement(contentEl, { padding: "0", overflow: "auto" });
-    const shell = styleElement(contentEl.createEl("div"), { padding: "28px", maxWidth: "760px", margin: "0 auto" });
-    styleElement(shell.createEl("h1", { text: "Schedule created" }), { fontSize: "28px", margin: "0 0 8px", letterSpacing: "-0.03em" });
-    styleElement(shell.createEl("p", { text: "Your tasks are scheduled. The cron form is shown for reference \u2014 the scheduler uses it behind the scenes." }), { margin: "0 0 18px", color: "var(--text-muted)", lineHeight: "1.5" });
-    const table = styleElement(shell.createEl("table"), { width: "100%", borderCollapse: "collapse", fontSize: "13px", marginBottom: "20px" });
+    const shell = contentEl.createDiv("ai-scheduler-shell ai-scheduler-shell-lg");
+    shell.createEl("h1", { text: "Schedule created" }).addClass("ai-scheduler-title ai-scheduler-title-sm");
+    shell.createEl("p", { text: "Your tasks are scheduled. The cron form is shown for reference \u2014 the scheduler uses it behind the scenes." }).addClass("ai-scheduler-subtitle");
+    const table = shell.createEl("table");
+    table.addClass("ai-scheduler-result-table");
     const head = table.createEl("tr");
     ["Task", "Cron form", "Schedule", "Next runs"].forEach((label) => {
-      styleElement(table.createEl("th", { text: label }), { textAlign: "left", borderBottom: "2px solid var(--background-modifier-border)", padding: "8px 10px", whiteSpace: "nowrap" });
+      head.createEl("th", { text: label });
     });
-    void head;
     for (const planned of this.planned || []) {
       const row = table.createEl("tr");
       const runs = previewSchedule(planned.schedule, 3);
       const cronForm = cronFormFor(planned.schedule);
-      const cells = [
-        `#${planned.taskNumber} \xB7 ${planned.title}`,
-        cronForm != null ? cronForm : "",
-        describeSchedule({ schedule: planned.schedule }),
-        runs.length ? runs.join(" \xB7 ") : "on trigger"
-      ];
-      cells.forEach((value, index) => {
-        const cell = row.createEl("td");
-        if (index === 1 && cronForm) {
-          const code = cell.createEl("code", { text: cronForm });
-          styleElement(code, { fontSize: "12px" });
-        } else if (index === 0) {
-          styleElement(cell, { fontWeight: "600" });
-          cell.createEl("span", { text: value });
-        } else {
-          cell.createEl("span", { text: value });
-        }
-        styleElement(cell, { borderBottom: "1px solid var(--background-modifier-border)", padding: "10px", color: index === 0 ? "var(--text-normal)" : "var(--text-muted)", verticalAlign: "top" });
-      });
+      const titleCell = row.createEl("td");
+      titleCell.setText(`#${planned.taskNumber} \xB7 ${planned.title}`);
+      const cronCell = row.createEl("td");
+      if (cronForm) cronCell.createEl("code", { text: cronForm });
+      else cronCell.setText("\u2014");
+      row.createEl("td").setText(describeSchedule({ schedule: planned.schedule }));
+      row.createEl("td").setText(runs.length ? runs.join(" \xB7 ") : "on trigger");
     }
-    const summary = makeCard(shell, { padding: "12px 14px", marginBottom: "18px", color: "var(--text-muted)", fontSize: "12px" });
-    summary.createEl("div", { text: "You can edit any task from the dashboard or its schedule note; the AI can also rewrite schedules in plain language." });
-    const footer = styleElement(shell.createEl("div"), { display: "flex", justifyContent: "flex-end", gap: "10px" });
+    const summary = makeCard(shell, "ai-scheduler-card-tight", "ai-scheduler-card-gap");
+    summary.createEl("div", { text: "You can edit any task from the dashboard or its schedule note; the AI can also rewrite schedules in plain language." }).addClass("ai-scheduler-hint");
+    const footer = shell.createDiv("ai-scheduler-footer");
     makeButton(footer, "Close", () => this.close());
     makeButton(footer, "Open AI Scheduler", () => {
       this.close();
@@ -1737,28 +1716,27 @@ var AssistantModal = class extends import_obsidian6.Modal {
   }
   render() {
     const { contentEl } = this;
-    this.modalEl.style.width = "min(760px, calc(100vw - 32px))";
-    this.modalEl.style.maxHeight = "min(760px, calc(100vh - 32px))";
-    this.modalEl.style.padding = "0";
+    this.modalEl.addClass("ai-scheduler-modal");
+    this.modalEl.addClass("ai-scheduler-modal-lg");
+    contentEl.addClass("ai-scheduler-content");
     contentEl.empty();
-    styleElement(contentEl, { padding: "0", overflow: "auto" });
-    const shell = styleElement(contentEl.createEl("div"), { padding: "28px", maxWidth: "760px", margin: "0 auto" });
-    styleElement(shell.createEl("h1", { text: "AI Scheduler" }), { fontSize: "32px", margin: "0 0 8px", letterSpacing: "-0.03em" });
-    styleElement(shell.createEl("p", { text: "Plan work, run reviews, and manage scheduled tasks from one place." }), { margin: "0 0 24px", color: "var(--text-muted)", maxWidth: "560px", lineHeight: "1.5" });
-    const actions = styleElement(shell.createEl("div"), { display: "flex", gap: "10px", flexWrap: "wrap", paddingBottom: "24px", borderBottom: "1px solid var(--background-modifier-border)" });
+    const shell = contentEl.createDiv("ai-scheduler-shell ai-scheduler-shell-lg");
+    shell.createEl("h1", { text: "AI Scheduler" }).addClass("ai-scheduler-title");
+    shell.createEl("p", { text: "Plan work, run reviews, and manage scheduled tasks from one place." }).addClass("ai-scheduler-subtitle");
+    const actions = shell.createDiv("ai-scheduler-actions");
     makeButton(actions, "Ask AI to plan", () => new PlannerModal(this.app, this.plugin).open(), true);
     makeButton(actions, "Run daily preview", () => this.plugin.startReviewRun(true, "daily"));
     const userJobs = this.plugin.jobs.filter((job) => !isNightlyReviewJob(job));
     const activeCount = userJobs.filter((job) => job.enabled).length;
     const next = userJobs.filter((job) => job.enabled && job.nextRunAt).sort((a, b) => new Date(a.nextRunAt).getTime() - new Date(b.nextRunAt).getTime())[0];
-    const stats = styleElement(shell.createEl("div"), { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "10px", margin: "22px 0" });
+    const stats = shell.createDiv("ai-scheduler-stats");
     [[activeCount, "ACTIVE TASKS"], [next ? formatDate(next.nextRunAt) : "None", "NEXT RUN"], [this.plugin.settings.nightlyReviewEnabled ? "ON" : "OFF", "NIGHTLY REVIEW"]].forEach(([value, label]) => {
-      const stat = makeCard(stats, { padding: "13px 14px" });
-      styleElement(stat.createEl("div", { text: String(value) }), { fontSize: "17px", fontWeight: "700" });
-      styleElement(stat.createEl("div", { text: label }), { marginTop: "3px", fontSize: "10px", letterSpacing: "0.1em", color: "var(--text-muted)" });
+      const stat = makeCard(stats, "ai-scheduler-card-stat");
+      stat.createEl("div", { text: String(value) }).addClass("ai-scheduler-stat-value");
+      stat.createEl("div", { text: label }).addClass("ai-scheduler-stat-label");
     });
     this.renderSection(shell, "Scheduled tasks", `${activeCount} ${activeCount === 1 ? "task" : "tasks"} enabled`);
-    const bulkActions = styleElement(shell.createEl("div"), { display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end", marginBottom: "10px" });
+    const bulkActions = shell.createDiv("ai-scheduler-row-actions");
     makeButton(bulkActions, "Enable all", async () => {
       await this.plugin.enableAllJobs();
       this.render();
@@ -1774,18 +1752,18 @@ var AssistantModal = class extends import_obsidian6.Modal {
       this.render();
     }, false, true);
     const scheduled = userJobs.filter((job) => job.enabled).sort((a, b) => String(a.nextRunAt).localeCompare(String(b.nextRunAt)));
-    const jobs = shell.createEl("div");
+    const jobs = shell.createDiv();
     if (!scheduled.length) {
-      const empty = makeCard(jobs, { color: "var(--text-muted)" });
+      const empty = makeCard(jobs, "ai-scheduler-card-muted");
       empty.createEl("div", { text: "No scheduled tasks yet." });
-      styleElement(empty.createEl("div", { text: "Ask AI to plan a schedule from a plain-language goal." }), { marginTop: "6px", fontSize: "12px" });
+      empty.createEl("div", { text: "Ask AI to plan a schedule from a plain-language goal." }).addClass("ai-scheduler-empty-sub");
     }
     for (const job of scheduled) {
-      const card = makeCard(jobs, { display: "flex", justifyContent: "space-between", gap: "14px", alignItems: "center", marginBottom: "9px" });
-      const copy = card.createEl("div");
-      styleElement(copy.createEl("div", { text: `#${job.taskNumber} \xB7 ${job.title}` }), { fontWeight: "600" });
-      styleElement(copy.createEl("div", { text: `${describeBinding(job)} \xB7 ${describeSchedule(job)}${job.runCount ? ` \xB7 ${job.runCount} run${job.runCount === 1 ? "" : "s"}` : ""}` }), { marginTop: "4px", color: "var(--text-muted)", fontSize: "12px" });
-      const controls = styleElement(card.createEl("div"), { display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" });
+      const card = makeCard(jobs, "ai-scheduler-task-card");
+      const copy = card.createDiv();
+      copy.createEl("div", { text: `#${job.taskNumber} \xB7 ${job.title}` }).addClass("ai-scheduler-task-title");
+      copy.createEl("div", { text: `${describeBinding(job)} \xB7 ${describeSchedule(job)}${job.runCount ? ` \xB7 ${job.runCount} run${job.runCount === 1 ? "" : "s"}` : ""}` }).addClass("ai-scheduler-task-meta");
+      const controls = card.createDiv("ai-scheduler-task-actions");
       makeButton(controls, "Edit", () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
       makeButton(controls, "Disable", async () => {
         job.enabled = false;
@@ -1804,13 +1782,13 @@ var AssistantModal = class extends import_obsidian6.Modal {
     const disabled = summarizeTasks(userJobs.filter((job) => isDisabledTask(job))).slice(-8).reverse();
     if (disabled.length) {
       this.renderSection(shell, "Disabled tasks", "Paused and ready to enable");
-      const disabledList = shell.createEl("div");
+      const disabledList = shell.createDiv();
       for (const job of disabled) {
-        const card = makeCard(disabledList, { display: "flex", justifyContent: "space-between", gap: "14px", alignItems: "center", marginBottom: "9px" });
-        const copy = card.createEl("div");
-        styleElement(copy.createEl("div", { text: `#${job.taskNumber} \xB7 ${job.title}` }), { fontWeight: "600" });
-        styleElement(copy.createEl("div", { text: `${describeBinding(job)} \xB7 ${describeSchedule(job)} \xB7 Disabled` }), { marginTop: "4px", color: "var(--text-muted)", fontSize: "12px" });
-        const controls = styleElement(card.createEl("div"), { display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" });
+        const card = makeCard(disabledList, "ai-scheduler-task-card");
+        const copy = card.createDiv();
+        copy.createEl("div", { text: `#${job.taskNumber} \xB7 ${job.title}` }).addClass("ai-scheduler-task-title");
+        copy.createEl("div", { text: `${describeBinding(job)} \xB7 ${describeSchedule(job)} \xB7 Disabled` }).addClass("ai-scheduler-task-meta");
+        const controls = card.createDiv("ai-scheduler-task-actions");
         makeButton(controls, "Edit", () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
         makeButton(controls, "Enable", async () => {
           await this.plugin.enableJob(job);
@@ -1826,13 +1804,13 @@ var AssistantModal = class extends import_obsidian6.Modal {
     const past = summarizeTasks(userJobs.filter((job) => !job.enabled && !isDisabledTask(job))).slice(-8).reverse();
     if (past.length) {
       this.renderSection(shell, "Past tasks", "Completed or failed tasks, summarized per task");
-      const pastList = shell.createEl("div");
+      const pastList = shell.createDiv();
       for (const job of past) {
-        const card = makeCard(pastList, { display: "flex", justifyContent: "space-between", gap: "14px", alignItems: "center", marginBottom: "9px" });
-        const copy = card.createEl("div");
-        styleElement(copy.createEl("div", { text: `#${job.taskNumber} \xB7 ${job.title}` }), { fontWeight: "600" });
-        styleElement(copy.createEl("div", { text: `${describeBinding(job)} \xB7 ${job.lastStatus || job.status || "completed"}${job.runCount ? ` \xB7 ${job.runCount} run${job.runCount === 1 ? "" : "s"}` : ""}${job.lastRunAt ? ` \xB7 Last run ${formatDate(job.lastRunAt)}` : ""}` }), { marginTop: "4px", color: "var(--text-muted)", fontSize: "12px" });
-        const controls = styleElement(card.createEl("div"), { display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" });
+        const card = makeCard(pastList, "ai-scheduler-task-card");
+        const copy = card.createDiv();
+        copy.createEl("div", { text: `#${job.taskNumber} \xB7 ${job.title}` }).addClass("ai-scheduler-task-title");
+        copy.createEl("div", { text: `${describeBinding(job)} \xB7 ${job.lastStatus || job.status || "completed"}${job.runCount ? ` \xB7 ${job.runCount} run${job.runCount === 1 ? "" : "s"}` : ""}${job.lastRunAt ? ` \xB7 Last run ${formatDate(job.lastRunAt)}` : ""}` }).addClass("ai-scheduler-task-meta");
+        const controls = card.createDiv("ai-scheduler-task-actions");
         makeButton(controls, "Edit", () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
         makeButton(controls, "Run again", async () => {
           await this.plugin.retryJob(job);
@@ -1852,18 +1830,18 @@ var AssistantModal = class extends import_obsidian6.Modal {
       await this.plugin.clearActivity();
       this.render();
     });
-    const activityCard = makeCard(shell.createEl("div"), { padding: "6px 16px" });
-    if (!activity.length) styleElement(activityCard.createEl("div", { text: "Reviews, task runs, and notifications will appear here." }), { padding: "10px 0", color: "var(--text-muted)" });
+    const activityCard = makeCard(shell.createDiv(), "ai-scheduler-activity");
+    if (!activity.length) activityCard.createEl("div", { text: "Reviews, task runs, and notifications will appear here." }).addClass("ai-scheduler-activity-empty");
     for (const event of activity) {
-      const row = styleElement(activityCard.createEl("div"), { display: "flex", justifyContent: "space-between", gap: "12px", padding: "10px 0", borderBottom: "1px solid var(--background-modifier-border)" });
+      const row = activityCard.createDiv("ai-scheduler-activity-row");
       row.createEl("span", { text: event.message });
-      styleElement(row.createEl("span", { text: formatDate(event.at) }), { color: "var(--text-muted)", fontSize: "11px", whiteSpace: "nowrap" });
+      row.createEl("span", { text: formatDate(event.at) }).addClass("ai-scheduler-activity-time");
     }
   }
   renderSection(parent, title, description) {
-    const heading = styleElement(parent.createEl("div"), { display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "10px" });
-    styleElement(heading.createEl("h2", { text: title }), { margin: "0", fontSize: "17px" });
-    styleElement(heading.createEl("span", { text: description }), { color: "var(--text-muted)", fontSize: "12px" });
+    const heading = parent.createDiv("ai-scheduler-section-heading");
+    heading.createEl("h2", { text: title }).addClass("ai-scheduler-section-title");
+    heading.createEl("span", { text: description }).addClass("ai-scheduler-section-desc");
     return heading;
   }
   onClose() {
@@ -1885,7 +1863,7 @@ var AssistantSettingTab = class extends import_obsidian7.PluginSettingTab {
       setting.setDesc("");
       const desc = setting.descEl;
       desc.empty();
-      desc.style.color = result.ok ? "var(--text-success)" : "var(--text-error)";
+      desc.addClass(result.ok ? "ai-scheduler-status-ok" : "ai-scheduler-status-error");
       desc.createEl("span", { text: result.message });
       if (!result.ok && result.needsInstall) {
         desc.createEl("span", { text: " " });
@@ -1905,12 +1883,14 @@ var AssistantSettingTab = class extends import_obsidian7.PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "AI Scheduler" });
+    new import_obsidian7.Setting(containerEl).setName("AI Scheduler").setHeading();
     containerEl.createEl("p", { text: "Choose one AI backend. AI Scheduler never runs Claudian and Copilot at the same time." });
-    new import_obsidian7.Setting(containerEl).setName("AI backend").setDesc("Claudian uses the model choices below. Copilot uses the active model configured in Obsidian Copilot.").addDropdown((dropdown) => dropdown.addOption("claudian", "Claudian").addOption("copilot", "Obsidian Copilot").setValue(this.plugin.settings.backendMode === "copilot" ? "copilot" : "claudian").onChange(async (value) => {
-      this.plugin.settings.backendMode = value === "copilot" ? "copilot" : "claudian";
-      await this.plugin.saveState();
-      this.display();
+    new import_obsidian7.Setting(containerEl).setName("AI backend").setDesc("Claudian uses the model choices below. Copilot uses the active model configured in Obsidian Copilot.").addDropdown((dropdown) => dropdown.addOption("claudian", "Claudian").addOption("copilot", "Obsidian Copilot").setValue(this.plugin.settings.backendMode === "copilot" ? "copilot" : "claudian").onChange((value) => {
+      void (async () => {
+        this.plugin.settings.backendMode = value === "copilot" ? "copilot" : "claudian";
+        await this.plugin.saveState();
+        this.display();
+      })();
     }));
     this.renderBackendStatus(containerEl);
     const models = this.plugin.settings.backendMode === "copilot" ? [] : this.plugin.getModelOptions();
@@ -1988,7 +1968,7 @@ var AssistantSettingTab = class extends import_obsidian7.PluginSettingTab {
         await this.plugin.saveState();
       }));
     }
-    containerEl.createEl("h2", { text: "Schedule notes (optional)" });
+    new import_obsidian7.Setting(containerEl).setName("Schedule notes (optional)").setHeading();
     new import_obsidian7.Setting(containerEl).setName("Keep schedule notes in my vault").setDesc("Off by default. When enabled, every task gets a Markdown note whose frontmatter holds its schedule and prompt \u2014 edit the note or the dashboard, both stay in sync. Task results and history stay in data.json, and turning this off never loses anything.").addToggle((toggle) => toggle.setValue(this.plugin.settings.scheduleNotesEnabled).onChange(async (value) => {
       this.plugin.settings.scheduleNotesEnabled = value;
       await this.plugin.saveState();
@@ -2314,7 +2294,7 @@ var AISchedulerPlugin = class extends import_obsidian9.Plugin {
     this.addRibbonIcon("brain", "Open AI Scheduler", () => new AssistantModal(this.app, this).open());
     this.addCommand({
       id: "open-assistant",
-      name: "Open AI Scheduler",
+      name: "Open assistant dashboard",
       callback: () => new AssistantModal(this.app, this).open()
     });
     this.addCommand({
@@ -2625,7 +2605,7 @@ ${report}`);
       if (!this.app.vault.getAbstractFileByPath(current)) {
         try {
           await this.app.vault.createFolder(current);
-        } catch (_) {
+        } catch (e) {
         }
       }
     }

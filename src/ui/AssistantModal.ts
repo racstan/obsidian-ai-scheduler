@@ -2,7 +2,7 @@ import { Modal } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
 import { formatDate, describeBinding, isDisabledTask, isNightlyReviewJob, summarizeTasks } from '../util';
 import { describeSchedule } from '../schedule';
-import { makeButton, makeCard, styleElement } from './dom';
+import { makeButton, makeCard } from './dom';
 import { JobModal } from './JobModal';
 import { PlannerModal } from './PlannerModal';
 
@@ -18,31 +18,30 @@ export class AssistantModal extends Modal {
 
 	render(): void {
 		const { contentEl } = this;
-		this.modalEl.style.width = 'min(760px, calc(100vw - 32px))';
-		this.modalEl.style.maxHeight = 'min(760px, calc(100vh - 32px))';
-		this.modalEl.style.padding = '0';
+		this.modalEl.addClass('ai-scheduler-modal');
+		this.modalEl.addClass('ai-scheduler-modal-lg');
+		contentEl.addClass('ai-scheduler-content');
 		contentEl.empty();
-		styleElement(contentEl, { padding: '0', overflow: 'auto' });
-		const shell = styleElement(contentEl.createEl('div'), { padding: '28px', maxWidth: '760px', margin: '0 auto' });
-		styleElement(shell.createEl('h1', { text: 'AI Scheduler' }), { fontSize: '32px', margin: '0 0 8px', letterSpacing: '-0.03em' });
-		styleElement(shell.createEl('p', { text: 'Plan work, run reviews, and manage scheduled tasks from one place.' }), { margin: '0 0 24px', color: 'var(--text-muted)', maxWidth: '560px', lineHeight: '1.5' });
+		const shell = contentEl.createDiv('ai-scheduler-shell ai-scheduler-shell-lg');
+		shell.createEl('h1', { text: 'AI Scheduler' }).addClass('ai-scheduler-title');
+		shell.createEl('p', { text: 'Plan work, run reviews, and manage scheduled tasks from one place.' }).addClass('ai-scheduler-subtitle');
 
-		const actions = styleElement(shell.createEl('div'), { display: 'flex', gap: '10px', flexWrap: 'wrap', paddingBottom: '24px', borderBottom: '1px solid var(--background-modifier-border)' });
+		const actions = shell.createDiv('ai-scheduler-actions');
 		makeButton(actions, 'Ask AI to plan', () => new PlannerModal(this.app, this.plugin).open(), true);
 		makeButton(actions, 'Run daily preview', () => this.plugin.startReviewRun(true, 'daily'));
 
 		const userJobs = this.plugin.jobs.filter(job => !isNightlyReviewJob(job));
 		const activeCount = userJobs.filter(job => job.enabled).length;
 		const next = userJobs.filter(job => job.enabled && job.nextRunAt).sort((a, b) => new Date(a.nextRunAt as string).getTime() - new Date(b.nextRunAt as string).getTime())[0];
-		const stats = styleElement(shell.createEl('div'), { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px', margin: '22px 0' });
+		const stats = shell.createDiv('ai-scheduler-stats');
 		[[activeCount, 'ACTIVE TASKS'], [next ? formatDate(next.nextRunAt) : 'None', 'NEXT RUN'], [this.plugin.settings.nightlyReviewEnabled ? 'ON' : 'OFF', 'NIGHTLY REVIEW']].forEach(([value, label]) => {
-			const stat = makeCard(stats, { padding: '13px 14px' });
-			styleElement(stat.createEl('div', { text: String(value) }), { fontSize: '17px', fontWeight: '700' });
-			styleElement(stat.createEl('div', { text: label as string }), { marginTop: '3px', fontSize: '10px', letterSpacing: '0.1em', color: 'var(--text-muted)' });
+			const stat = makeCard(stats, 'ai-scheduler-card-stat');
+			stat.createEl('div', { text: String(value) }).addClass('ai-scheduler-stat-value');
+			stat.createEl('div', { text: label as string }).addClass('ai-scheduler-stat-label');
 		});
 
 		this.renderSection(shell, 'Scheduled tasks', `${activeCount} ${activeCount === 1 ? 'task' : 'tasks'} enabled`);
-		const bulkActions = styleElement(shell.createEl('div'), { display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: '10px' });
+		const bulkActions = shell.createDiv('ai-scheduler-row-actions');
 		makeButton(bulkActions, 'Enable all', async () => {
 			await this.plugin.enableAllJobs();
 			this.render();
@@ -58,18 +57,18 @@ export class AssistantModal extends Modal {
 			this.render();
 		}, false, true);
 		const scheduled = userJobs.filter(job => job.enabled).sort((a, b) => String(a.nextRunAt).localeCompare(String(b.nextRunAt)));
-		const jobs = shell.createEl('div');
+		const jobs = shell.createDiv();
 		if (!scheduled.length) {
-			const empty = makeCard(jobs, { color: 'var(--text-muted)' });
+			const empty = makeCard(jobs, 'ai-scheduler-card-muted');
 			empty.createEl('div', { text: 'No scheduled tasks yet.' });
-			styleElement(empty.createEl('div', { text: 'Ask AI to plan a schedule from a plain-language goal.' }), { marginTop: '6px', fontSize: '12px' });
+			empty.createEl('div', { text: 'Ask AI to plan a schedule from a plain-language goal.' }).addClass('ai-scheduler-empty-sub');
 		}
 		for (const job of scheduled) {
-			const card = makeCard(jobs, { display: 'flex', justifyContent: 'space-between', gap: '14px', alignItems: 'center', marginBottom: '9px' });
-			const copy = card.createEl('div');
-			styleElement(copy.createEl('div', { text: `#${job.taskNumber} · ${job.title}` }), { fontWeight: '600' });
-			styleElement(copy.createEl('div', { text: `${describeBinding(job)} · ${describeSchedule(job)}${job.runCount ? ` · ${job.runCount} run${job.runCount === 1 ? '' : 's'}` : ''}` }), { marginTop: '4px', color: 'var(--text-muted)', fontSize: '12px' });
-			const controls = styleElement(card.createEl('div'), { display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' });
+			const card = makeCard(jobs, 'ai-scheduler-task-card');
+			const copy = card.createDiv();
+			copy.createEl('div', { text: `#${job.taskNumber} · ${job.title}` }).addClass('ai-scheduler-task-title');
+			copy.createEl('div', { text: `${describeBinding(job)} · ${describeSchedule(job)}${job.runCount ? ` · ${job.runCount} run${job.runCount === 1 ? '' : 's'}` : ''}` }).addClass('ai-scheduler-task-meta');
+			const controls = card.createDiv('ai-scheduler-task-actions');
 			makeButton(controls, 'Edit', () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
 			makeButton(controls, 'Disable', async () => {
 				job.enabled = false;
@@ -89,13 +88,13 @@ export class AssistantModal extends Modal {
 		const disabled = summarizeTasks(userJobs.filter(job => isDisabledTask(job))).slice(-8).reverse();
 		if (disabled.length) {
 			this.renderSection(shell, 'Disabled tasks', 'Paused and ready to enable');
-			const disabledList = shell.createEl('div');
+			const disabledList = shell.createDiv();
 			for (const job of disabled) {
-				const card = makeCard(disabledList, { display: 'flex', justifyContent: 'space-between', gap: '14px', alignItems: 'center', marginBottom: '9px' });
-				const copy = card.createEl('div');
-				styleElement(copy.createEl('div', { text: `#${job.taskNumber} · ${job.title}` }), { fontWeight: '600' });
-				styleElement(copy.createEl('div', { text: `${describeBinding(job)} · ${describeSchedule(job)} · Disabled` }), { marginTop: '4px', color: 'var(--text-muted)', fontSize: '12px' });
-				const controls = styleElement(card.createEl('div'), { display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' });
+				const card = makeCard(disabledList, 'ai-scheduler-task-card');
+				const copy = card.createDiv();
+				copy.createEl('div', { text: `#${job.taskNumber} · ${job.title}` }).addClass('ai-scheduler-task-title');
+				copy.createEl('div', { text: `${describeBinding(job)} · ${describeSchedule(job)} · Disabled` }).addClass('ai-scheduler-task-meta');
+				const controls = card.createDiv('ai-scheduler-task-actions');
 				makeButton(controls, 'Edit', () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
 				makeButton(controls, 'Enable', async () => {
 					await this.plugin.enableJob(job);
@@ -112,13 +111,13 @@ export class AssistantModal extends Modal {
 		const past = summarizeTasks(userJobs.filter(job => !job.enabled && !isDisabledTask(job))).slice(-8).reverse();
 		if (past.length) {
 			this.renderSection(shell, 'Past tasks', 'Completed or failed tasks, summarized per task');
-			const pastList = shell.createEl('div');
+			const pastList = shell.createDiv();
 			for (const job of past) {
-				const card = makeCard(pastList, { display: 'flex', justifyContent: 'space-between', gap: '14px', alignItems: 'center', marginBottom: '9px' });
-				const copy = card.createEl('div');
-				styleElement(copy.createEl('div', { text: `#${job.taskNumber} · ${job.title}` }), { fontWeight: '600' });
-				styleElement(copy.createEl('div', { text: `${describeBinding(job)} · ${job.lastStatus || job.status || 'completed'}${job.runCount ? ` · ${job.runCount} run${job.runCount === 1 ? '' : 's'}` : ''}${job.lastRunAt ? ` · Last run ${formatDate(job.lastRunAt)}` : ''}` }), { marginTop: '4px', color: 'var(--text-muted)', fontSize: '12px' });
-				const controls = styleElement(card.createEl('div'), { display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' });
+				const card = makeCard(pastList, 'ai-scheduler-task-card');
+				const copy = card.createDiv();
+				copy.createEl('div', { text: `#${job.taskNumber} · ${job.title}` }).addClass('ai-scheduler-task-title');
+				copy.createEl('div', { text: `${describeBinding(job)} · ${job.lastStatus || job.status || 'completed'}${job.runCount ? ` · ${job.runCount} run${job.runCount === 1 ? '' : 's'}` : ''}${job.lastRunAt ? ` · Last run ${formatDate(job.lastRunAt)}` : ''}` }).addClass('ai-scheduler-task-meta');
+				const controls = card.createDiv('ai-scheduler-task-actions');
 				makeButton(controls, 'Edit', () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
 				makeButton(controls, 'Run again', async () => { await this.plugin.retryJob(job); this.render(); });
 				makeButton(controls, 'Delete', async () => {
@@ -136,19 +135,19 @@ export class AssistantModal extends Modal {
 			await this.plugin.clearActivity();
 			this.render();
 		});
-		const activityCard = makeCard(shell.createEl('div'), { padding: '6px 16px' });
-		if (!activity.length) styleElement(activityCard.createEl('div', { text: 'Reviews, task runs, and notifications will appear here.' }), { padding: '10px 0', color: 'var(--text-muted)' });
+		const activityCard = makeCard(shell.createDiv(), 'ai-scheduler-activity');
+		if (!activity.length) activityCard.createEl('div', { text: 'Reviews, task runs, and notifications will appear here.' }).addClass('ai-scheduler-activity-empty');
 		for (const event of activity) {
-			const row = styleElement(activityCard.createEl('div'), { display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '10px 0', borderBottom: '1px solid var(--background-modifier-border)' });
+			const row = activityCard.createDiv('ai-scheduler-activity-row');
 			row.createEl('span', { text: event.message });
-			styleElement(row.createEl('span', { text: formatDate(event.at) }), { color: 'var(--text-muted)', fontSize: '11px', whiteSpace: 'nowrap' });
+			row.createEl('span', { text: formatDate(event.at) }).addClass('ai-scheduler-activity-time');
 		}
 	}
 
 	renderSection(parent: HTMLElement, title: string, description: string): HTMLDivElement {
-		const heading = styleElement(parent.createEl('div'), { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '10px' });
-		styleElement(heading.createEl('h2', { text: title }), { margin: '0', fontSize: '17px' });
-		styleElement(heading.createEl('span', { text: description }), { color: 'var(--text-muted)', fontSize: '12px' });
+		const heading = parent.createDiv('ai-scheduler-section-heading');
+		heading.createEl('h2', { text: title }).addClass('ai-scheduler-section-title');
+		heading.createEl('span', { text: description }).addClass('ai-scheduler-section-desc');
 		return heading;
 	}
 

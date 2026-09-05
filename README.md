@@ -115,7 +115,7 @@ The dashboard also provides bulk Enable all, Disable all, and Delete all actions
 
 ### Option 2: Manual install
 
-1. Download `main.js` and `manifest.json` from the latest Release
+1. Download `main.js`, `manifest.json`, and `styles.css` from the latest Release
 2. Put them in `<your-vault>\\.obsidian\\plugins\\ai-scheduler\\`
 3. Enable **AI Scheduler** under Community plugins
 
