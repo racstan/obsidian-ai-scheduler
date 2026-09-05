@@ -115,7 +115,6 @@ export class AISchedulerPlugin extends Plugin {
 		await this.saveState();
 		await this.catchUpOnStart();
 		if (this.settings.scheduleNotesEnabled) await this.notesSync.syncAll();
-		console.log(`[ai-scheduler] scheduler loaded, jobs: ${this.jobs.length}${recovered ? `, recovered ${recovered} interrupted run(s)` : ''}`);
 	}
 
 	async saveState(): Promise<void> {

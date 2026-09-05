@@ -259,7 +259,7 @@ export class ScheduleNotesSync {
 		this.debounceTimer = window.setTimeout(() => {
 			this.debounceTimer = null;
 			void this.syncAll().catch(error => {
-				console.log('[ai-scheduler] schedule note sync failed:', error);
+				console.error('[ai-scheduler] schedule note sync failed:', error);
 			});
 		}, 600);
 	}

@@ -21,9 +21,9 @@ export class AssistantSettingTab extends PluginSettingTab {
 			const desc = setting.descEl;
 			desc.empty();
 			desc.addClass(result.ok ? 'ai-scheduler-status-ok' : 'ai-scheduler-status-error');
-			desc.createEl('span', { text: result.message });
+			desc.createSpan({ text: result.message });
 			if (!result.ok && result.needsInstall) {
-				desc.createEl('span', { text: ' ' });
+				desc.createSpan({ text: ' ' });
 				const link = desc.createEl('a', { text: `Open ${info.name} on GitHub`, href: result.githubUrl || info.githubUrl });
 				link.target = '_blank';
 			}
@@ -43,7 +43,6 @@ export class AssistantSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		new Setting(containerEl).setName('AI Scheduler').setHeading();
 		containerEl.createEl('p', { text: 'Choose one AI backend. AI Scheduler never runs Claudian and Copilot at the same time.' });
 		new Setting(containerEl)
 			.setName('AI backend')
@@ -66,16 +65,18 @@ export class AssistantSettingTab extends PluginSettingTab {
 			new Setting(containerEl)
 				.setName('Available Claudian models')
 				.setDesc('Refresh this list after adding, removing, or changing models in Claudian.')
-				.addButton(button => button.setButtonText('Refresh models').onClick(async () => {
-					button.setDisabled(true);
-					try {
-						await this.plugin.refreshModels();
-						new Notice('Claudian model list refreshed.');
-						this.display();
-					} catch (error) {
-						new Notice(`Could not refresh models: ${errorText(error)}`, 8000);
-						button.setDisabled(false);
-					}
+				.addButton(button => button.setButtonText('Refresh models').onClick(() => {
+					void (async () => {
+						button.setDisabled(true);
+						try {
+							await this.plugin.refreshModels();
+							new Notice('Claudian model list refreshed.');
+							this.display();
+						} catch (error) {
+							new Notice(`Could not refresh models: ${errorText(error)}`, 8000);
+							button.setDisabled(false);
+						}
+					})();
 				}));
 			const addModelSetting = (name: string, desc: string, key: 'planningModel' | 'executionModel' | 'dailyReviewModel' | 'nightlyReviewModel') => new Setting(containerEl)
 				.setName(name)
@@ -85,7 +86,12 @@ export class AssistantSettingTab extends PluginSettingTab {
 					models.forEach(model => dropdown.addOption(model.value, model.label));
 					const selected = this.plugin.settings[key] || '';
 					dropdown.setValue(models.some(model => model.value === selected) ? selected : '');
-					dropdown.onChange(async value => { this.plugin.settings[key] = value; await this.plugin.saveState(); });
+					dropdown.onChange(value => {
+						void (async () => {
+							this.plugin.settings[key] = value;
+							await this.plugin.saveState();
+						})();
+					});
 				});
 			addModelSetting('Planning model', 'Used when Ask AI to plan creates tasks and when AI updates a task.', 'planningModel');
 			addModelSetting('Scheduled task model', 'Used when an enabled task runs, including tasks created by the planner.', 'executionModel');
@@ -108,69 +114,86 @@ export class AssistantSettingTab extends PluginSettingTab {
 				.addOption('all-markdown', 'All Markdown files')
 				.addOption('no-files', 'No automatic files')
 				.setValue(this.plugin.settings.reviewContextMode)
-				.onChange(async value => { this.plugin.settings.reviewContextMode = value as typeof this.plugin.settings.reviewContextMode; await this.plugin.saveState(); }));
+				.onChange(value => {
+					void (async () => {
+						this.plugin.settings.reviewContextMode = value as typeof this.plugin.settings.reviewContextMode;
+						await this.plugin.saveState();
+					})();
+				}));
 
 		new Setting(containerEl)
 			.setName('Review report folder')
 			.setDesc('Reports are saved as YYYY-MM-DD-HHmmss.md so every run is preserved.')
-			.addText(text => text.setValue(this.plugin.settings.reportFolder).onChange(async value => {
-				this.plugin.settings.reportFolder = value.trim() || 'AI Reviews';
-				await this.plugin.saveState();
+			.addText(text => text.setValue(this.plugin.settings.reportFolder).onChange(value => {
+				void (async () => {
+					this.plugin.settings.reportFolder = value.trim() || 'AI Reviews';
+					await this.plugin.saveState();
+				})();
 			}));
 
 		new Setting(containerEl)
 			.setName('Nightly review')
 			.setDesc('Opt-in: create a timestamped review report on a recurring schedule.')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.nightlyReviewEnabled).onChange(async value => {
-				const previous = this.plugin.settings.nightlyReviewEnabled;
-				try {
-					this.plugin.settings.nightlyReviewEnabled = value;
-					await this.plugin.ensureNightlyReviewJob();
-					await this.plugin.saveState();
-					new Notice(value ? 'Nightly review enabled.' : 'Nightly review disabled.');
-					this.display();
-				} catch (error) {
-					this.plugin.settings.nightlyReviewEnabled = previous;
-					toggle.setValue(previous);
-					new Notice(`Could not change nightly review: ${errorText(error)}`, 8000);
-				}
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.nightlyReviewEnabled).onChange(value => {
+				void (async () => {
+					const previous = this.plugin.settings.nightlyReviewEnabled;
+					try {
+						this.plugin.settings.nightlyReviewEnabled = value;
+						await this.plugin.ensureNightlyReviewJob();
+						await this.plugin.saveState();
+						new Notice(value ? 'Nightly review enabled.' : 'Nightly review disabled.');
+						this.display();
+					} catch (error) {
+						this.plugin.settings.nightlyReviewEnabled = previous;
+						toggle.setValue(previous);
+						new Notice(`Could not change nightly review: ${errorText(error)}`, 8000);
+					}
+				})();
 			}));
 
 		if (this.plugin.settings.nightlyReviewEnabled) {
 			new Setting(containerEl)
 				.setName('Nightly review time')
 				.setDesc('Local 24-hour time, for example 22:00.')
-				.addText(text => text.setValue(this.plugin.settings.reviewTime).onChange(async value => {
-					if (/^([01]?\d|2[0-3]):[0-5]\d$/.test(value)) this.plugin.settings.reviewTime = value;
-					await this.plugin.ensureNightlyReviewJob();
-					await this.plugin.saveState();
+				.addText(text => text.setValue(this.plugin.settings.reviewTime).onChange(value => {
+					void (async () => {
+						if (/^([01]?\d|2[0-3]):[0-5]\d$/.test(value)) this.plugin.settings.reviewTime = value;
+						await this.plugin.ensureNightlyReviewJob();
+						await this.plugin.saveState();
+					})();
 				}));
 		}
 
 		new Setting(containerEl)
 			.setName('Completion notifications')
 			.setDesc('Show an Obsidian notice when an AI job finishes.')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.notifyOnCompletion).onChange(async value => {
-				this.plugin.settings.notifyOnCompletion = value;
-				await this.plugin.saveState();
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.notifyOnCompletion).onChange(value => {
+				void (async () => {
+					this.plugin.settings.notifyOnCompletion = value;
+					await this.plugin.saveState();
+				})();
 			}));
 
 		new Setting(containerEl)
 			.setName('Run missed jobs after startup')
 			.setDesc('Off by default. Enable only if you explicitly want AI work to run after Obsidian was closed.')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.catchUpOnStart).onChange(async value => {
-				this.plugin.settings.catchUpOnStart = value;
-				await this.plugin.saveState();
-				this.display();
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.catchUpOnStart).onChange(value => {
+				void (async () => {
+					this.plugin.settings.catchUpOnStart = value;
+					await this.plugin.saveState();
+					this.display();
+				})();
 			}));
 
 		if (this.plugin.settings.catchUpOnStart) {
 			new Setting(containerEl)
 				.setName('Startup catch-up window (hours)')
 				.setDesc('Only jobs missed within this window will run after startup.')
-				.addText(text => text.setValue(String(this.plugin.settings.catchUpHours)).onChange(async value => {
-					this.plugin.settings.catchUpHours = Math.max(1, Number.parseInt(value, 10) || 24);
-					await this.plugin.saveState();
+				.addText(text => text.setValue(String(this.plugin.settings.catchUpHours)).onChange(value => {
+					void (async () => {
+						this.plugin.settings.catchUpHours = Math.max(1, Number.parseInt(value, 10) || 24);
+						await this.plugin.saveState();
+					})();
 				}));
 		}
 
@@ -178,40 +201,46 @@ export class AssistantSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Keep schedule notes in my vault')
 			.setDesc('Off by default. When enabled, every task gets a Markdown note whose frontmatter holds its schedule and prompt — edit the note or the dashboard, both stay in sync. Task results and history stay in data.json, and turning this off never loses anything.')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.scheduleNotesEnabled).onChange(async value => {
-				this.plugin.settings.scheduleNotesEnabled = value;
-				await this.plugin.saveState();
-				if (value) {
-					try {
-						const written = await this.plugin.notesSync.syncAll();
-						new Notice(written ? `Schedule notes created or updated in ${this.plugin.settings.scheduleFolder}.` : 'Schedule notes are up to date.');
-					} catch (error) {
-						new Notice(`Could not write schedule notes: ${errorText(error)}`, 8000);
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.scheduleNotesEnabled).onChange(value => {
+				void (async () => {
+					this.plugin.settings.scheduleNotesEnabled = value;
+					await this.plugin.saveState();
+					if (value) {
+						try {
+							const written = await this.plugin.notesSync.syncAll();
+							new Notice(written ? `Schedule notes created or updated in ${this.plugin.settings.scheduleFolder}.` : 'Schedule notes are up to date.');
+						} catch (error) {
+							new Notice(`Could not write schedule notes: ${errorText(error)}`, 8000);
+						}
 					}
-				}
-				this.display();
+					this.display();
+				})();
 			}));
 
 		if (this.plugin.settings.scheduleNotesEnabled) {
 			new Setting(containerEl)
 				.setName('Schedule notes folder')
 				.setDesc('Existing notes keep working after a rename of this folder; new notes are created here.')
-				.addText(text => text.setValue(this.plugin.settings.scheduleFolder).onChange(async value => {
-					this.plugin.settings.scheduleFolder = value.trim() || 'AI Schedules';
-					await this.plugin.saveState();
+				.addText(text => text.setValue(this.plugin.settings.scheduleFolder).onChange(value => {
+					void (async () => {
+						this.plugin.settings.scheduleFolder = value.trim() || 'AI Schedules';
+						await this.plugin.saveState();
+					})();
 				}));
 			new Setting(containerEl)
 				.setName('Sync notes now')
 				.setDesc('Reconcile all task notes with the current schedule, including notes created by hand.')
-				.addButton(button => button.setButtonText('Sync now').onClick(async () => {
-					button.setDisabled(true);
-					try {
-						const written = await this.plugin.notesSync.syncAll();
-						new Notice(written ? `${written} note(s) reconciled.` : 'All schedule notes are up to date.');
-					} catch (error) {
-						new Notice(`Could not sync schedule notes: ${errorText(error)}`, 8000);
-					}
-					button.setDisabled(false);
+				.addButton(button => button.setButtonText('Sync now').onClick(() => {
+					void (async () => {
+						button.setDisabled(true);
+						try {
+							const written = await this.plugin.notesSync.syncAll();
+							new Notice(written ? `${written} note(s) reconciled.` : 'All schedule notes are up to date.');
+						} catch (error) {
+							new Notice(`Could not sync schedule notes: ${errorText(error)}`, 8000);
+						}
+						button.setDisabled(false);
+					})();
 				}));
 		}
 	}

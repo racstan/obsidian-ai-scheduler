@@ -98,7 +98,7 @@ export class PlannerModal extends Modal {
 		}
 
 		const summary = makeCard(shell, 'ai-scheduler-card-tight', 'ai-scheduler-card-gap');
-		summary.createEl('div', { text: 'You can edit any task from the dashboard or its schedule note; the AI can also rewrite schedules in plain language.' }).addClass('ai-scheduler-hint');
+		summary.createDiv({ text: 'You can edit any task from the dashboard or its schedule note; the AI can also rewrite schedules in plain language.' }).addClass('ai-scheduler-hint');
 		const footer = shell.createDiv('ai-scheduler-footer');
 		makeButton(footer, 'Close', () => this.close());
 		makeButton(footer, 'Open AI Scheduler', () => {

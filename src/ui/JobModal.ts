@@ -53,9 +53,9 @@ export class JobModal extends Modal {
 		shell.createEl('p', { text: 'Adjust the schedule directly, or describe a change in plain language and let AI rewrite it.' }).addClass('ai-scheduler-subtitle');
 
 		const current = makeCard(shell, 'ai-scheduler-card-tight', 'ai-scheduler-card-flush');
-		current.createEl('div', { text: this.job.title }).addClass('ai-scheduler-task-title');
-		current.createEl('div', { text: describeSchedule(this.job) }).addClass('ai-scheduler-task-meta');
-		current.createEl('div', { text: this.job.prompt }).addClass('ai-scheduler-task-prompt');
+		current.createDiv({ text: this.job.title }).addClass('ai-scheduler-task-title');
+		current.createDiv({ text: describeSchedule(this.job) }).addClass('ai-scheduler-task-meta');
+		current.createDiv({ text: this.job.prompt }).addClass('ai-scheduler-task-prompt');
 
 		this.renderScheduleEditor(shell);
 
@@ -146,7 +146,7 @@ export class JobModal extends Modal {
 		if (schedule.kind === 'cron' && schedule.expression) {
 			const error = validateCron(schedule.expression);
 			if (error) {
-				preview.createEl('div', { text: error }).addClass('ai-scheduler-preview-error');
+				preview.createDiv({ text: error }).addClass('ai-scheduler-preview-error');
 				return;
 			}
 		}

@@ -46,7 +46,7 @@ export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date(
 		prompt: '',
 		tab: 1,
 		enabled: true,
-		status: 'scheduled' as JobStatus,
+		status: 'scheduled',
 		createdAt: new Date().toISOString(),
 		lastRunAt: null,
 		lastStatus: null,

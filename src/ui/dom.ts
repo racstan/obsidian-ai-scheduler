@@ -10,7 +10,7 @@ export function makeButton(parent: HTMLElement, label: string, onClick: (button:
 }
 
 export function makeCard(parent: HTMLElement, ...extraClasses: string[]): HTMLDivElement {
-	const card = parent.createEl('div');
+	const card = parent.createDiv();
 	card.addClass('ai-scheduler-card');
 	for (const extra of extraClasses) card.addClass(extra);
 	return card;
