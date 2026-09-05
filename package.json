@@ -1,0 +1,28 @@
+{
+  "name": "obsidian-ai-scheduler",
+  "version": "2.1.1",
+  "description": "Schedule AI planning, recurring work, reviews, and notifications through Claudian or Copilot.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs dev",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "test": "node scripts/run-tests.mjs",
+    "smoke": "node scripts/run-smoke.mjs",
+    "check": "tsc -noEmit -skipLibCheck"
+  },
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "ai",
+    "scheduler"
+  ],
+  "author": "Rachit Asthana",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/obsidian": "npm:obsidian@^1.8.7",
+    "esbuild": "^0.25.0",
+    "obsidian": "^1.8.7",
+    "typescript": "^5.7.2"
+  }
+}

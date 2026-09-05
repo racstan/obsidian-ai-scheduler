@@ -10,6 +10,8 @@ AI Scheduler is the autonomy layer for [Claudian](https://github.com/YishenTu/cl
 - **Backend modes**: use Claudian mode or Obsidian Copilot mode, with only one active at a time
 - **Model control**: choose separate Claudian models for planning, scheduled tasks, daily previews, and nightly reviews; Copilot uses its active model
 - **Scheduled work**: run jobs once, hourly, every N minutes or hours for a bounded number of iterations, every day, every week, or after a vault change
+- **Cron schedules**: advanced cadences such as `*/15 * * * *` or `0 9 * * 1-5`, emitted by the AI planner from plain language or typed manually, validated live with a next-runs preview
+- **Schedule notes (optional)**: mirror every task into a Markdown note whose frontmatter holds its definition; edit the note or the dashboard, both stay in sync
 - **Flexible frequency**: create multiple weekday/time rules in one schedule, such as Monday at 02:00 and Saturday at 15:00
 - **Task context**: attach a Markdown page or a vault project folder to a task; the current page/project list is refreshed every time the editor opens
 - **Per-task results**: save each task's output to its own vault folder instead of one global location
@@ -73,8 +75,23 @@ The AI planner can create these schedules:
 - **Interval**: run every N minutes or hours, optionally for a fixed number of iterations
 - **Multiple weekday times**: several weekday/time rules in one job
 - **Vault event**: react to a Markdown file change, with a cooldown to avoid repeated runs
+- **Cron**: a standard 5-field cron expression for anything the simpler kinds cannot express
 
-Settings exposes four independent Claudian model choices: planning, scheduled task execution, daily preview, and nightly review. In Copilot mode, Copilot's active model is used. Editing a task is AI-first: describe the change and the planning backend rewrites and saves the task automatically.
+Settings exposes four independent Claudian model choices: planning, scheduled task execution, daily preview, and nightly review. In Copilot mode, Copilot's active model is used. Editing a task works both ways: adjust the schedule directly in the task editor (every kind has its own fields, including a cron expression input with live validation), or describe a change in plain language and let the planning backend rewrite and save the task automatically.
+
+## Cron Schedules
+
+For cadences that the simple kinds cannot express, ask in plain language — "every 15 minutes", "weekdays at 9 and 17" — and the planner emits a standard 5-field cron expression (minute, hour, day-of-month, month, day-of-week, where 0 = Sunday), evaluated in your local time. You can also type or paste an expression yourself in the task editor; it is validated on every keystroke and the editor shows the next three run times before you save.
+
+After planning, the plugin shows a table of the created schedules with the cron form, a plain-English rendering, and the next concrete run times, so you always see exactly what was scheduled. The same table appears in each task editor and, when schedule notes are enabled, inside every schedule note.
+
+Expressions are evaluated by a small dependency-free engine bundled with the plugin (adapted from [cron-parser](https://github.com/harrisiirak/cron-parser), the same semantics the Cron plugin uses). Daylight-saving transitions behave predictably: a wall time that does not exist on a spring-forward day is skipped, and an ambiguous fall-back time fires once.
+
+## Schedule Notes (Optional)
+
+Off by default. When you enable **Keep schedule notes in my vault** in settings, every task is mirrored into a Markdown note inside the folder you choose (default `AI Schedules`). The note's YAML frontmatter carries the task definition — schedule, prompt, enabled state, context paths, result folder — and the body renders a schedule table in cron form that updates automatically.
+
+Notes are two-way synced: edit the frontmatter by hand and the task updates; create a note with a valid definition and it becomes a task; delete a note and the task is removed. Because task definitions keep living in the plugin data as well, turning notes off later loses nothing — the notes simply stop updating. Task results, run history, and the activity log always stay in the plugin data, not in the notes.
 
 The scheduler settings include a **Refresh models** control that reloads the currently available Claudian models. Each task editor can select pages or project folders for context, choose a result folder, and ask AI to change the schedule, including multiple weekday times or bounded intervals.
 
@@ -117,8 +134,20 @@ The release assets contain the complete installable plugin package.
 - The plugin does not contain an AI model or provider API key.
 - Prompts and vault content are sent wherever Claudian's configured provider sends them.
 - Nightly review is disabled by default and must be explicitly enabled.
-- Jobs are stored in Obsidian's plugin data directory.
+- Jobs are stored in Obsidian's plugin data directory. Schedule notes are opt-in and store only task definitions you explicitly mirror into your vault.
 - Recurring AI jobs can consume provider quota, so review generated prompts and disable jobs you do not want.
+
+## Development
+
+The plugin is built from TypeScript source with esbuild. There are no runtime dependencies — the cron engine is bundled source code.
+
+```bash
+npm install
+npm run dev     # watch build
+npm run build   # typecheck + production bundle -> main.js
+npm test        # unit tests (cron engine, schedule math, engine decisions)
+npm run smoke   # loads the built main.js with a stubbed Obsidian backend
+```
 
 ## License
 
