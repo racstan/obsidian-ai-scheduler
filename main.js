@@ -451,11 +451,11 @@ function logActivityEntry(activity, type, message, jobId = null) {
 
 // src/schedule.ts
 function parseClock(value) {
-  const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(value || "").trim());
+  const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(value ? String(value).trim() : "");
   return match ? { hour: Number(match[1]), minute: Number(match[2]) } : { hour: 22, minute: 0 };
 }
 function validClock(value) {
-  return /^([01]?\d|2[0-3]):[0-5]\d$/.test(String(value || "").trim());
+  return /^([01]?\d|2[0-3]):[0-5]\d$/.test(value ? String(value).trim() : "");
 }
 function nextDailyRun(time, from = /* @__PURE__ */ new Date()) {
   const clock = parseClock(time);
@@ -1706,6 +1706,24 @@ var PlannerModal = class extends import_obsidian5.Modal {
 };
 
 // src/ui/AssistantModal.ts
+var ConfirmModal = class extends import_obsidian6.Modal {
+  constructor(app, message, onConfirm) {
+    super(app);
+    this.message = message;
+    this.onConfirm = onConfirm;
+  }
+  onOpen() {
+    this.contentEl.createEl("h3", { text: "Confirm" });
+    this.contentEl.createEl("p", { text: this.message });
+    new import_obsidian6.Setting(this.contentEl).addButton((btn) => btn.setButtonText("Cancel").onClick(() => this.close())).addButton((btn) => btn.setButtonText("Confirm").setCta().onClick(() => {
+      this.onConfirm();
+      this.close();
+    }));
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
 var AssistantModal = class extends import_obsidian6.Modal {
   constructor(app, plugin) {
     super(app);
@@ -1741,15 +1759,21 @@ var AssistantModal = class extends import_obsidian6.Modal {
       await this.plugin.enableAllJobs();
       this.render();
     });
-    makeButton(bulkActions, "Disable all", async () => {
-      if (!window.confirm("Disable all scheduled tasks?")) return;
-      await this.plugin.disableAllJobs();
-      this.render();
+    makeButton(bulkActions, "Disable all", () => {
+      new ConfirmModal(this.app, "Disable all scheduled tasks?", () => {
+        void (async () => {
+          await this.plugin.disableAllJobs();
+          this.render();
+        })();
+      }).open();
     }, false, true);
-    makeButton(bulkActions, "Delete all", async () => {
-      if (!window.confirm("Delete all scheduled tasks? This cannot be undone.")) return;
-      await this.plugin.deleteAllJobs();
-      this.render();
+    makeButton(bulkActions, "Delete all", () => {
+      new ConfirmModal(this.app, "Delete all scheduled tasks? This cannot be undone.", () => {
+        void (async () => {
+          await this.plugin.deleteAllJobs();
+          this.render();
+        })();
+      }).open();
     }, false, true);
     const scheduled = userJobs.filter((job) => job.enabled).sort((a, b) => String(a.nextRunAt).localeCompare(String(b.nextRunAt)));
     const jobs = shell.createDiv();
@@ -1773,10 +1797,13 @@ var AssistantModal = class extends import_obsidian6.Modal {
         await this.plugin.saveState();
         this.render();
       }, false, true);
-      makeButton(controls, "Delete", async () => {
-        if (!window.confirm(`Delete task #${job.taskNumber}? This cannot be undone.`)) return;
-        await this.plugin.deleteJob(job);
-        this.render();
+      makeButton(controls, "Delete", () => {
+        new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
+          void (async () => {
+            await this.plugin.deleteJob(job);
+            this.render();
+          })();
+        }).open();
       }, false, true);
     }
     const disabled = summarizeTasks(userJobs.filter((job) => isDisabledTask(job))).slice(-8).reverse();
@@ -1794,10 +1821,13 @@ var AssistantModal = class extends import_obsidian6.Modal {
           await this.plugin.enableJob(job);
           this.render();
         });
-        makeButton(controls, "Delete", async () => {
-          if (!window.confirm(`Delete task #${job.taskNumber}? This cannot be undone.`)) return;
-          await this.plugin.deleteJob(job);
-          this.render();
+        makeButton(controls, "Delete", () => {
+          new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
+            void (async () => {
+              await this.plugin.deleteJob(job);
+              this.render();
+            })();
+          }).open();
         }, false, true);
       }
     }
@@ -1816,10 +1846,13 @@ var AssistantModal = class extends import_obsidian6.Modal {
           await this.plugin.retryJob(job);
           this.render();
         });
-        makeButton(controls, "Delete", async () => {
-          if (!window.confirm(`Delete task #${job.taskNumber}? This cannot be undone.`)) return;
-          await this.plugin.deleteJob(job);
-          this.render();
+        makeButton(controls, "Delete", () => {
+          new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
+            void (async () => {
+              await this.plugin.deleteJob(job);
+              this.render();
+            })();
+          }).open();
         }, false, true);
       }
     }
@@ -1855,6 +1888,9 @@ var AssistantSettingTab = class extends import_obsidian7.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
+  }
+  getSettingDefinitions() {
+    return [];
   }
   renderBackendStatus(containerEl) {
     const info = BACKEND_INFO[this.plugin.settings.backendMode === "copilot" ? "copilot" : "claudian"];

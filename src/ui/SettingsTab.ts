@@ -11,6 +11,10 @@ export class AssistantSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
+	getSettingDefinitions() {
+		return []; // Return empty array to suppress the missing method warning until fully migrated to declarative settings
+	}
+
 	renderBackendStatus(containerEl: HTMLElement): void {
 		const info = BACKEND_INFO[this.plugin.settings.backendMode === 'copilot' ? 'copilot' : 'claudian'];
 		const setting = new Setting(containerEl)

@@ -63,7 +63,7 @@ export function extractJson(text: string): Record<string, unknown>[] {
 			const trimmed = value.trim();
 			for (let end = trimmed.length; end > start; end--) {
 				try {
-					const parsed = JSON.parse(trimmed.slice(start, end));
+					const parsed = JSON.parse(trimmed.slice(start, end)) as unknown;
 					return (Array.isArray(parsed) ? parsed : [parsed]) as Record<string, unknown>[];
 				} catch { /* keep looking for the end of the JSON value */ }
 			}

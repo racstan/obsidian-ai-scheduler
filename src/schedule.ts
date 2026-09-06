@@ -8,12 +8,12 @@ import { MultiRule, TaskSchedule } from './types';
 import { formatDate } from './util';
 
 export function parseClock(value: unknown): { hour: number; minute: number } {
-	const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(value || '').trim());
+	const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(value ? String(value).trim() : '');
 	return match ? { hour: Number(match[1]), minute: Number(match[2]) } : { hour: 22, minute: 0 };
 }
 
 export function validClock(value: unknown): boolean {
-	return /^([01]?\d|2[0-3]):[0-5]\d$/.test(String(value || '').trim());
+	return /^([01]?\d|2[0-3]):[0-5]\d$/.test(value ? String(value).trim() : '');
 }
 
 export function nextDailyRun(time: string, from: Date = new Date()): string {
@@ -102,7 +102,7 @@ export function parseMultiRulesText(value: string): MultiRule[] {
 	const source = String(value || '').trim();
 	if (!source) return [];
 	try {
-		const parsed = JSON.parse(source);
+		const parsed = JSON.parse(source) as unknown;
 		if (Array.isArray(parsed)) return normalizeMultiRules(parsed);
 	} catch { /* use the readable line format below */ }
 	const rules: MultiRule[] = [];

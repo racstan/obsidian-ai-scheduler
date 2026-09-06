@@ -1,10 +1,29 @@
-import { Modal } from 'obsidian';
+import { App, Modal, Setting } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
 import { formatDate, describeBinding, isDisabledTask, isNightlyReviewJob, summarizeTasks } from '../util';
 import { describeSchedule } from '../schedule';
 import { makeButton, makeCard } from './dom';
 import { JobModal } from './JobModal';
 import { PlannerModal } from './PlannerModal';
+
+export class ConfirmModal extends Modal {
+	constructor(app: App, public message: string, public onConfirm: () => void) {
+		super(app);
+	}
+	onOpen(): void {
+		this.contentEl.createEl('h3', { text: 'Confirm' });
+		this.contentEl.createEl('p', { text: this.message });
+		new Setting(this.contentEl)
+			.addButton(btn => btn.setButtonText('Cancel').onClick(() => this.close()))
+			.addButton(btn => btn.setButtonText('Confirm').setCta().onClick(() => {
+				this.onConfirm();
+				this.close();
+			}));
+	}
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
 
 export class AssistantModal extends Modal {
 	plugin: AISchedulerPlugin;
@@ -46,15 +65,21 @@ export class AssistantModal extends Modal {
 			await this.plugin.enableAllJobs();
 			this.render();
 		});
-		makeButton(bulkActions, 'Disable all', async () => {
-			if (!window.confirm('Disable all scheduled tasks?')) return;
-			await this.plugin.disableAllJobs();
-			this.render();
+		makeButton(bulkActions, 'Disable all', () => {
+			new ConfirmModal(this.app, 'Disable all scheduled tasks?', () => {
+				void (async () => {
+					await this.plugin.disableAllJobs();
+					this.render();
+				})();
+			}).open();
 		}, false, true);
-		makeButton(bulkActions, 'Delete all', async () => {
-			if (!window.confirm('Delete all scheduled tasks? This cannot be undone.')) return;
-			await this.plugin.deleteAllJobs();
-			this.render();
+		makeButton(bulkActions, 'Delete all', () => {
+			new ConfirmModal(this.app, 'Delete all scheduled tasks? This cannot be undone.', () => {
+				void (async () => {
+					await this.plugin.deleteAllJobs();
+					this.render();
+				})();
+			}).open();
 		}, false, true);
 		const scheduled = userJobs.filter(job => job.enabled).sort((a, b) => String(a.nextRunAt).localeCompare(String(b.nextRunAt)));
 		const jobs = shell.createDiv();
@@ -78,10 +103,13 @@ export class AssistantModal extends Modal {
 				await this.plugin.saveState();
 				this.render();
 			}, false, true);
-			makeButton(controls, 'Delete', async () => {
-				if (!window.confirm(`Delete task #${job.taskNumber}? This cannot be undone.`)) return;
-				await this.plugin.deleteJob(job);
-				this.render();
+			makeButton(controls, 'Delete', () => {
+				new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
+					void (async () => {
+						await this.plugin.deleteJob(job);
+						this.render();
+					})();
+				}).open();
 			}, false, true);
 		}
 
@@ -100,10 +128,13 @@ export class AssistantModal extends Modal {
 					await this.plugin.enableJob(job);
 					this.render();
 				});
-				makeButton(controls, 'Delete', async () => {
-					if (!window.confirm(`Delete task #${job.taskNumber}? This cannot be undone.`)) return;
-					await this.plugin.deleteJob(job);
-					this.render();
+				makeButton(controls, 'Delete', () => {
+					new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
+						void (async () => {
+							await this.plugin.deleteJob(job);
+							this.render();
+						})();
+					}).open();
 				}, false, true);
 			}
 		}
@@ -120,10 +151,13 @@ export class AssistantModal extends Modal {
 				const controls = card.createDiv('ai-scheduler-task-actions');
 				makeButton(controls, 'Edit', () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
 				makeButton(controls, 'Run again', async () => { await this.plugin.retryJob(job); this.render(); });
-				makeButton(controls, 'Delete', async () => {
-					if (!window.confirm(`Delete task #${job.taskNumber}? This cannot be undone.`)) return;
-					await this.plugin.deleteJob(job);
-					this.render();
+				makeButton(controls, 'Delete', () => {
+					new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
+						void (async () => {
+							await this.plugin.deleteJob(job);
+							this.render();
+						})();
+					}).open();
 				}, false, true);
 			}
 		}

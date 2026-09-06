@@ -1,6 +1,6 @@
 {
   "name": "obsidian-ai-scheduler",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Schedule AI planning, recurring work, reviews, and notifications through Claudian or Copilot.",
   "main": "main.js",
   "scripts": {
