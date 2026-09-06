@@ -451,11 +451,13 @@ function logActivityEntry(activity, type, message, jobId = null) {
 
 // src/schedule.ts
 function parseClock(value) {
-  const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(value ? String(value).trim() : "");
+  const str = typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : "";
+  const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(str);
   return match ? { hour: Number(match[1]), minute: Number(match[2]) } : { hour: 22, minute: 0 };
 }
 function validClock(value) {
-  return /^([01]?\d|2[0-3]):[0-5]\d$/.test(value ? String(value).trim() : "");
+  const str = typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : "";
+  return /^([01]?\d|2[0-3]):[0-5]\d$/.test(str);
 }
 function nextDailyRun(time, from = /* @__PURE__ */ new Date()) {
   const clock = parseClock(time);
@@ -889,14 +891,17 @@ function getPathsContext(app, paths) {
 var import_obsidian2 = require("obsidian");
 var AGENT_TIMEOUT_MS = 30 * 60 * 1e3;
 function pluginRegistry(host) {
+  var _a;
   const app = host.app;
-  const registry = app.plugins && app.plugins.plugins;
+  const registry = (_a = app.plugins) == null ? void 0 : _a.plugins;
   return registry || null;
 }
 function getClaudianPlugin(host) {
+  var _a;
   const plugins = pluginRegistry(host);
   if (!plugins) return null;
-  return plugins.realclaudian || plugins.claudian || null;
+  const candidate = (_a = plugins.realclaudian) != null ? _a : plugins.claudian;
+  return candidate != null ? candidate : null;
 }
 async function getClaudianView(host) {
   const claudian = getClaudianPlugin(host);
@@ -935,11 +940,13 @@ function getTab(host, view, number) {
   return item && typeof manager.getTab === "function" ? manager.getTab(item.id) : null;
 }
 function tabIsBusy(view, tab) {
+  var _a;
   if (!tab) return false;
   const manager = getTabManager(view);
-  const item = manager && typeof manager.getTabBarItems === "function" ? manager.getTabBarItems().find((candidate) => candidate.id === tab.id) : null;
+  const items = manager && typeof manager.getTabBarItems === "function" ? manager.getTabBarItems() : [];
+  const item = items.find((candidate) => candidate.id === tab.id);
   const working = manager && typeof manager.isTabWorking === "function" ? manager.isTabWorking(tab.id) : false;
-  return Boolean(working || tab.state && tab.state.isStreaming || tab.isStreaming || item && (item.isWorking || item.isStreaming));
+  return Boolean(working || ((_a = tab.state) == null ? void 0 : _a.isStreaming) || tab.isStreaming || (item == null ? void 0 : item.isWorking) || (item == null ? void 0 : item.isStreaming));
 }
 async function waitForTabIdle(view, tab) {
   const started = Date.now();
@@ -949,22 +956,30 @@ async function waitForTabIdle(view, tab) {
   }
 }
 function getTabMessages(host, view, tab) {
-  const direct = tab && tab.state && Array.isArray(tab.state.messages) ? tab.state.messages : [];
-  if (direct.length) return direct;
-  const conversationId = tab && tab.conversationId;
+  var _a;
+  const direct = (_a = tab == null ? void 0 : tab.state) == null ? void 0 : _a.messages;
+  if (Array.isArray(direct) && direct.length) return direct;
+  const conversationId = tab == null ? void 0 : tab.conversationId;
   const claudian = getClaudianPlugin(host);
   const conversation = conversationId && claudian && typeof claudian.getConversationSync === "function" ? claudian.getConversationSync(conversationId) : null;
-  return conversation && Array.isArray(conversation.messages) ? conversation.messages : [];
+  return Array.isArray(conversation == null ? void 0 : conversation.messages) ? conversation.messages : [];
 }
 function lastAssistantReply(host, view, tab, beforeCount) {
   const messages = getTabMessages(host, view, tab);
-  const candidates = messages.slice(Math.max(0, beforeCount)).filter((message2) => message2.role === "assistant");
-  const fallback = messages.filter((message2) => message2.role === "assistant");
+  const isAssistant = (message2) => {
+    if (message2 && typeof message2 === "object" && "role" in message2) {
+      return message2.role === "assistant";
+    }
+    return false;
+  };
+  const candidates = messages.slice(Math.max(0, beforeCount)).filter(isAssistant);
+  const fallback = messages.filter(isAssistant);
   const messagesToUse = candidates.length ? candidates : fallback;
   const message = messagesToUse[messagesToUse.length - 1];
   return contentFromMessage(message).trim();
 }
 async function sendToClaudian(host, prompt, tabNumber = host.settings.assistantTab, conversationId = null, context = null) {
+  var _a;
   const view = await getClaudianView(host);
   const manager = getTabManager(view);
   if (!view || !manager) throw new Error("Claudian is installed but its chat view is not ready. Open the Claudian view once, then try again.");
@@ -982,7 +997,7 @@ async function sendToClaudian(host, prompt, tabNumber = host.settings.assistantT
   }
   const active = getActiveTab(view, manager) || target;
   const beforeCount = getTabMessages(host, view, active).length;
-  const controller = active && active.controllers && active.controllers.inputController;
+  const controller = (_a = active == null ? void 0 : active.controllers) == null ? void 0 : _a.inputController;
   if (!controller || typeof controller.sendMessage !== "function") throw new Error("Claudian input controller is unavailable.");
   const turnRequest = { text: prompt };
   if (context && context.linkedContentPath) turnRequest.linkedContentPath = context.linkedContentPath;
@@ -1001,21 +1016,23 @@ async function sendToClaudian(host, prompt, tabNumber = host.settings.assistantT
   return lastAssistantReply(host, view, active, beforeCount);
 }
 function getCopilotPlugin(host) {
+  var _a;
   const plugins = pluginRegistry(host);
   if (!plugins) return null;
-  return plugins.copilot || plugins["obsidian-copilot"] || null;
+  const candidate = (_a = plugins.copilot) != null ? _a : plugins["obsidian-copilot"];
+  return candidate != null ? candidate : null;
 }
 async function sendToCopilot(host, prompt, context = null) {
   const copilot = getCopilotPlugin(host);
-  const chatManager = copilot && copilot.chatManager;
-  const chain = copilot && copilot.chainOwner && typeof copilot.chainOwner.getCurrentChainManager === "function" ? copilot.chainOwner.getCurrentChainManager() : null;
+  const chatManager = copilot == null ? void 0 : copilot.chatManager;
+  const chain = (copilot == null ? void 0 : copilot.chainOwner) && typeof copilot.chainOwner.getCurrentChainManager === "function" ? copilot.chainOwner.getCurrentChainManager() : null;
   if (!copilot) throw new Error("Obsidian Copilot is not installed or enabled. Install or enable Copilot, then try again.");
   if (!chatManager || typeof chatManager.sendMessage !== "function" || typeof chatManager.getLLMMessage !== "function" || !chain || typeof chain.runChain !== "function") {
     throw new Error("Obsidian Copilot is installed, but its automation API is unavailable. Update Copilot and try again.");
   }
   const paths = context && Array.isArray(context.paths) ? context.paths : [];
-  const notes = paths.map((path) => host.app.vault.getAbstractFileByPath(path)).filter((file) => file && !Array.isArray(file.children));
-  const folders = paths.map((path) => host.app.vault.getAbstractFileByPath(path)).filter((file) => file && Array.isArray(file.children)).map((file) => file.path);
+  const notes = paths.map((path) => host.app.vault.getAbstractFileByPath(path)).filter((file) => file instanceof import_obsidian2.TFile);
+  const folders = paths.map((path) => host.app.vault.getAbstractFileByPath(path)).filter((file) => file instanceof import_obsidian2.TFolder).map((folder) => folder.path);
   const messageId = await chatManager.sendMessage(
     prompt,
     { notes, urls: [], folders, selectedTextContexts: [], webTabs: [] },
@@ -1043,7 +1060,7 @@ async function sendToCopilot(host, prompt, context = null) {
       throw new Error("AI task timed out after 30 minutes");
     })
   ]);
-  return String(reply || "").trim();
+  return (reply || "").trim();
 }
 function sendToAI(host, prompt, execution = {}, context = null) {
   return host.settings.backendMode === "copilot" ? sendToCopilot(host, prompt, context) : sendToClaudian(host, prompt, execution.tab, execution.conversationId || null, context);
@@ -1057,7 +1074,10 @@ function getProviderName(providerId) {
     pi: "Pi",
     acp: "ACP"
   };
-  return names[providerId || ""] || providerId || "Claudian";
+  if (providerId && providerId in names) {
+    return names[providerId];
+  }
+  return providerId || "Claudian";
 }
 function modelValue(providerId, model) {
   return `profile:${encodeURIComponent(JSON.stringify({ providerId, model: model || "" }))}`;
@@ -1065,7 +1085,17 @@ function modelValue(providerId, model) {
 function parseProfileValue(value) {
   if (!String(value || "").startsWith("profile:")) return null;
   try {
-    return JSON.parse(decodeURIComponent(String(value).slice(8)));
+    const parsed = JSON.parse(decodeURIComponent(String(value).slice(8)));
+    if (parsed && typeof parsed === "object" && "providerId" in parsed) {
+      const record = parsed;
+      if (typeof record.providerId === "string") {
+        return {
+          providerId: record.providerId,
+          model: typeof record.model === "string" ? record.model : void 0
+        };
+      }
+    }
+    return null;
   } catch (e) {
     return null;
   }
@@ -1075,6 +1105,7 @@ function getClaudianViewSync(host) {
   return claudian && typeof claudian.getAllViews === "function" ? claudian.getAllViews()[0] || null : null;
 }
 function getModelOptions(host) {
+  var _a;
   const profiles = [];
   const seen = /* @__PURE__ */ new Set();
   const add = (profile) => {
@@ -1090,17 +1121,19 @@ ${profile.model || ""}`;
   const claudian = getClaudianPlugin(host);
   const tabs = manager && typeof manager.getAllTabs === "function" ? manager.getAllTabs() : [];
   tabs.forEach((tab) => {
+    var _a2;
     const conversation = tab.conversationId && claudian && typeof claudian.getConversationSync === "function" ? claudian.getConversationSync(tab.conversationId) : null;
-    const providerId = conversation && conversation.providerId;
-    if (providerId && conversation.selectedModel) add({
+    const providerId = conversation == null ? void 0 : conversation.providerId;
+    if (providerId && (conversation == null ? void 0 : conversation.selectedModel)) add({
       value: modelValue(providerId, conversation.selectedModel),
       label: `${getProviderName(providerId)} / ${conversation.selectedModel}`,
       providerId,
       model: conversation.selectedModel
     });
-    if (providerId && tab.ui && tab.ui.modelSelector && typeof tab.ui.modelSelector.getAvailableModels === "function") {
+    const modelSelector = (_a2 = tab.ui) == null ? void 0 : _a2.modelSelector;
+    if (providerId && modelSelector && typeof modelSelector.getAvailableModels === "function") {
       try {
-        tab.ui.modelSelector.getAvailableModels().forEach((option) => add({
+        modelSelector.getAvailableModels().forEach((option) => add({
           value: modelValue(providerId, option.value),
           label: `${getProviderName(providerId)} / ${option.label || option.value}`,
           providerId,
@@ -1110,9 +1143,9 @@ ${profile.model || ""}`;
       }
     }
   });
-  const settings = claudian && (claudian.settings || claudian.providerHost && claudian.providerHost.settings) || {};
-  const savedModels = settings.savedProviderModel || {};
-  const last = settings.lastSelectedChatModel;
+  const settings = (claudian == null ? void 0 : claudian.settings) || ((_a = claudian == null ? void 0 : claudian.providerHost) == null ? void 0 : _a.settings);
+  const savedModels = (settings == null ? void 0 : settings.savedProviderModel) || {};
+  const last = settings == null ? void 0 : settings.lastSelectedChatModel;
   if (last && last.providerId) add({
     value: modelValue(last.providerId, last.model),
     label: `${getProviderName(last.providerId)} / ${last.model || "default model"}`,
@@ -1123,15 +1156,15 @@ ${profile.model || ""}`;
     value: modelValue(providerId, model),
     label: `${getProviderName(providerId)} / ${model || "default model"}`,
     providerId,
-    model: String(model || "")
+    model: model || ""
   }));
-  const settingsProvider = settings.settingsProvider;
-  const settingsModel = settingsProvider && (savedModels[settingsProvider] || settings.model);
+  const settingsProvider = settings == null ? void 0 : settings.settingsProvider;
+  const settingsModel = settingsProvider ? savedModels[settingsProvider] || (settings == null ? void 0 : settings.model) : void 0;
   if (settingsProvider) add({
     value: modelValue(settingsProvider, settingsModel),
     label: `${getProviderName(settingsProvider)} / ${settingsModel || "current model"}`,
     providerId: settingsProvider,
-    model: String(settingsModel || "")
+    model: settingsModel || ""
   });
   return profiles;
 }
@@ -1198,9 +1231,9 @@ async function resolveModel(host, value, action = "this action") {
     const runtime = getTab(host, view, tab);
     if (!runtime) throw new Error(`The Claudian chat selected for ${action} no longer exists. Refresh the model list and choose another model.`);
     const claudian = getClaudianPlugin(host);
-    const conversation = runtime && runtime.conversationId && claudian && typeof claudian.getConversationSync === "function" ? claudian.getConversationSync(runtime.conversationId) : null;
+    const conversation = runtime.conversationId && claudian && typeof claudian.getConversationSync === "function" ? claudian.getConversationSync(runtime.conversationId) : null;
     if (!conversation || !conversation.providerId) throw new Error(`The Claudian chat selected for ${action} has no configured provider.`);
-    return { modelRef: selected, tab, conversationId: runtime && runtime.conversationId || null, providerId: conversation && conversation.providerId || null, model: conversation && conversation.selectedModel || null };
+    return { modelRef: selected, tab, conversationId: runtime.conversationId || null, providerId: conversation.providerId, model: conversation.selectedModel || null };
   }
   const profile = parseProfileValue(selected);
   if (profile && profile.providerId) {
@@ -1214,10 +1247,11 @@ async function resolveModel(host, value, action = "this action") {
         ...profile.model ? { selectedModel: profile.model } : {}
       });
     } catch (error) {
-      throw new Error(`Claudian could not create the selected model for ${action}: ${String((error == null ? void 0 : error.message) || error)}`);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Claudian could not create the selected model for ${action}: ${message}`);
     }
     if (!conversation || !conversation.id) throw new Error(`Claudian returned no conversation for ${action}.`);
-    if (conversation && conversation.id && typeof claudian.renameConversation === "function") {
+    if (conversation.id && typeof claudian.renameConversation === "function") {
       await claudian.renameConversation(conversation.id, "AI Scheduler - Planning");
     }
     return { modelRef: selected, tab: host.settings.assistantTab, conversationId: conversation.id, providerId: profile.providerId, model: profile.model || null };
@@ -1629,7 +1663,7 @@ var PlannerModal = class extends import_obsidian5.Modal {
     contentEl.addClass("ai-scheduler-content");
     contentEl.empty();
     const shell = contentEl.createDiv("ai-scheduler-shell ai-scheduler-shell-md");
-    shell.createDiv("ai-scheduler-eyebrow").setText("AI PLANNER");
+    shell.createDiv("ai-scheduler-eyebrow").setText("AI Planner");
     shell.createEl("h1", { text: "Plan scheduled work" }).addClass("ai-scheduler-title ai-scheduler-title-sm");
     shell.createEl("p", { text: "Describe the outcome. Your selected backend will turn it into safe, persistent jobs." }).addClass("ai-scheduler-subtitle");
     const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), [], this.app);
@@ -1640,8 +1674,8 @@ var PlannerModal = class extends import_obsidian5.Modal {
     const textarea = shell.createEl("textarea");
     textarea.addClass("ai-scheduler-textarea");
     textarea.addClass("ai-scheduler-textarea-tall");
-    textarea.placeholder = "Every evening, review the notes I changed today, identify open loops, and create a report in AI Reviews. Remind me every Monday to review unfinished work.";
-    shell.createDiv("ai-scheduler-hint ai-scheduler-hint-gap").setText("Examples: review notes every evening, run every 30 minutes for 8 iterations, run every 2 hours until I stop it, remind me every Monday, or react when a project file changes.");
+    textarea.placeholder = "Every evening, review recently changed notes, identify open loops, and create a report. Remind me to review unfinished work every week.";
+    shell.createDiv("ai-scheduler-hint ai-scheduler-hint-gap").setText("Examples: review notes every evening, run every 30 minutes for 8 iterations, run every 2 hours until stopped, or react when a project file changes.");
     const footer = shell.createDiv("ai-scheduler-footer");
     makeButton(footer, "Cancel", () => this.close());
     makeButton(footer, "Create AI plan", async (button) => {
@@ -1917,6 +1951,9 @@ var AssistantSettingTab = class extends import_obsidian7.PluginSettingTab {
     });
   }
   display() {
+    this.renderSettings();
+  }
+  renderSettings() {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("p", { text: "Choose one AI backend. AI Scheduler never runs Claudian and Copilot at the same time." });
@@ -1924,7 +1961,7 @@ var AssistantSettingTab = class extends import_obsidian7.PluginSettingTab {
       void (async () => {
         this.plugin.settings.backendMode = value === "copilot" ? "copilot" : "claudian";
         await this.plugin.saveState();
-        this.display();
+        this.renderSettings();
       })();
     }));
     this.renderBackendStatus(containerEl);
@@ -1936,7 +1973,7 @@ var AssistantSettingTab = class extends import_obsidian7.PluginSettingTab {
           try {
             await this.plugin.refreshModels();
             new import_obsidian7.Notice("Claudian model list refreshed.");
-            this.display();
+            this.renderSettings();
           } catch (error) {
             new import_obsidian7.Notice(`Could not refresh models: ${errorText(error)}`, 8e3);
             button.setDisabled(false);
@@ -1985,7 +2022,7 @@ var AssistantSettingTab = class extends import_obsidian7.PluginSettingTab {
           await this.plugin.ensureNightlyReviewJob();
           await this.plugin.saveState();
           new import_obsidian7.Notice(value ? "Nightly review enabled." : "Nightly review disabled.");
-          this.display();
+          this.renderSettings();
         } catch (error) {
           this.plugin.settings.nightlyReviewEnabled = previous;
           toggle.setValue(previous);
@@ -2012,7 +2049,7 @@ var AssistantSettingTab = class extends import_obsidian7.PluginSettingTab {
       void (async () => {
         this.plugin.settings.catchUpOnStart = value;
         await this.plugin.saveState();
-        this.display();
+        this.renderSettings();
       })();
     }));
     if (this.plugin.settings.catchUpOnStart) {
@@ -2036,7 +2073,7 @@ var AssistantSettingTab = class extends import_obsidian7.PluginSettingTab {
             new import_obsidian7.Notice(`Could not write schedule notes: ${errorText(error)}`, 8e3);
           }
         }
-        this.display();
+        this.renderSettings();
       })();
     }));
     if (this.plugin.settings.scheduleNotesEnabled) {

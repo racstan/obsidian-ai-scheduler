@@ -34,7 +34,7 @@ export class PlannerModal extends Modal {
 		contentEl.addClass('ai-scheduler-content');
 		contentEl.empty();
 		const shell = contentEl.createDiv('ai-scheduler-shell ai-scheduler-shell-md');
-		shell.createDiv('ai-scheduler-eyebrow').setText('AI PLANNER');
+		shell.createDiv('ai-scheduler-eyebrow').setText('AI Planner');
 		shell.createEl('h1', { text: 'Plan scheduled work' }).addClass('ai-scheduler-title ai-scheduler-title-sm');
 		shell.createEl('p', { text: 'Describe the outcome. Your selected backend will turn it into safe, persistent jobs.' }).addClass('ai-scheduler-subtitle');
 
@@ -46,8 +46,8 @@ export class PlannerModal extends Modal {
 		const textarea = shell.createEl('textarea');
 		textarea.addClass('ai-scheduler-textarea');
 		textarea.addClass('ai-scheduler-textarea-tall');
-		textarea.placeholder = 'Every evening, review the notes I changed today, identify open loops, and create a report in AI Reviews. Remind me every Monday to review unfinished work.';
-		shell.createDiv('ai-scheduler-hint ai-scheduler-hint-gap').setText('Examples: review notes every evening, run every 30 minutes for 8 iterations, run every 2 hours until I stop it, remind me every Monday, or react when a project file changes.');
+		textarea.placeholder = 'Every evening, review recently changed notes, identify open loops, and create a report. Remind me to review unfinished work every week.';
+		shell.createDiv('ai-scheduler-hint ai-scheduler-hint-gap').setText('Examples: review notes every evening, run every 30 minutes for 8 iterations, run every 2 hours until stopped, or react when a project file changes.');
 		const footer = shell.createDiv('ai-scheduler-footer');
 		makeButton(footer, 'Cancel', () => this.close());
 		makeButton(footer, 'Create AI plan', async button => {

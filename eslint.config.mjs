@@ -3,19 +3,23 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
 	{ ignores: ['main.js', '.tmp-tests/**', '.tmp-smoke/**', 'node_modules/**', 'scripts/**'] },
-	...tseslint.configs.recommendedTypeChecked.map(config => ({
-		...config,
-		files: ['src/**/*.ts', 'tests/**/*.ts'],
-	})),
+	...obsidian.configs.recommended,
 	{
-		files: ['src/**/*.ts', 'tests/**/*.ts'],
-		plugins: { obsidianmd: obsidian },
-		rules: { ...obsidian.configs.recommended.rules },
 		languageOptions: {
 			parserOptions: {
 				projectService: true,
 				tsconfigRootDir: import.meta.dirname,
 			},
 		},
+		rules: {
+			'obsidianmd/ui/sentence-case': [
+				'warn',
+				{
+					brands: ['Obsidian', 'Markdown', 'Claudian', 'Copilot', 'Obsidian Copilot', 'AI Scheduler', 'AI Planner', 'AI reviews'],
+					acronyms: ['AI', 'UI', 'ID', 'OK', 'DST'],
+				},
+			],
+		},
 	},
 );
+

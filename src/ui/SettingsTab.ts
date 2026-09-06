@@ -44,7 +44,11 @@ export class AssistantSettingTab extends PluginSettingTab {
 		});
 	}
 
-	display(): void {
+	override display(): void {
+		this.renderSettings();
+	}
+
+	renderSettings(): void {
 		const { containerEl } = this;
 		containerEl.empty();
 		containerEl.createEl('p', { text: 'Choose one AI backend. AI Scheduler never runs Claudian and Copilot at the same time.' });
@@ -59,7 +63,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 					void (async () => {
 						this.plugin.settings.backendMode = value === 'copilot' ? 'copilot' : 'claudian';
 						await this.plugin.saveState();
-						this.display();
+						this.renderSettings();
 					})();
 				}));
 		this.renderBackendStatus(containerEl);
@@ -75,7 +79,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 						try {
 							await this.plugin.refreshModels();
 							new Notice('Claudian model list refreshed.');
-							this.display();
+							this.renderSettings();
 						} catch (error) {
 							new Notice(`Could not refresh models: ${errorText(error)}`, 8000);
 							button.setDisabled(false);
@@ -146,7 +150,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 						await this.plugin.ensureNightlyReviewJob();
 						await this.plugin.saveState();
 						new Notice(value ? 'Nightly review enabled.' : 'Nightly review disabled.');
-						this.display();
+						this.renderSettings();
 					} catch (error) {
 						this.plugin.settings.nightlyReviewEnabled = previous;
 						toggle.setValue(previous);
@@ -185,7 +189,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 				void (async () => {
 					this.plugin.settings.catchUpOnStart = value;
 					await this.plugin.saveState();
-					this.display();
+					this.renderSettings();
 				})();
 			}));
 
@@ -217,7 +221,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 							new Notice(`Could not write schedule notes: ${errorText(error)}`, 8000);
 						}
 					}
-					this.display();
+					this.renderSettings();
 				})();
 			}));
 

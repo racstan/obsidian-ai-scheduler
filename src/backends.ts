@@ -1,6 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-base-to-string, @typescript-eslint/restrict-template-expressions */
 /*
-
  * Backend integration for Claudian and Obsidian Copilot.
  *
  * Both backends are driven through their published plugin internals with
@@ -8,7 +6,7 @@
  * never calls an AI provider and holds no API keys. Functions take the plugin
  * instance so the orchestration stays in main.ts.
  */
-import { App, Notice } from 'obsidian';
+import { App, Notice, TFile, TFolder } from 'obsidian';
 import { AISettings, BACKEND_INFO, Job } from './types';
 import { contentFromMessage, sleep } from './util';
 
@@ -41,26 +39,140 @@ export interface BackendHost {
 	settings: AISettings;
 }
 
-type AnyRecord = Record<string, any>;
+export interface ClaudianTabBarItem {
+	id: string;
+	isWorking?: boolean;
+	isStreaming?: boolean;
+}
 
-function pluginRegistry(host: BackendHost): Record<string, AnyRecord> | null {
-	const app = host.app as unknown as { plugins?: { plugins?: Record<string, AnyRecord> } };
-	const registry = app.plugins && app.plugins.plugins;
+export interface ClaudianModelOption {
+	value: string;
+	label?: string;
+}
+
+export interface ClaudianTab {
+	id: string;
+	conversationId?: string;
+	isStreaming?: boolean;
+	state?: {
+		isStreaming?: boolean;
+		messages?: unknown[];
+	};
+	controllers?: {
+		inputController?: {
+			sendMessage?: (payload: {
+				content: string;
+				turnRequestOverride?: Record<string, unknown>;
+			}) => Promise<unknown>;
+		};
+	};
+	ui?: {
+		modelSelector?: {
+			getAvailableModels?: () => ClaudianModelOption[];
+		};
+	};
+}
+
+export interface ClaudianTabManager {
+	getAllTabs?: () => ClaudianTab[];
+	getTabBarItems?: () => ClaudianTabBarItem[];
+	getTab?: (id: string) => ClaudianTab | null;
+	getActiveTab?: () => ClaudianTab | null;
+	getActiveTabId?: () => string;
+	activeTabId?: string;
+	isTabWorking?: (id: string) => boolean;
+	openConversation?: (id: string, options: { preferNewTab: boolean; activate: boolean }) => Promise<void>;
+	switchToTab?: (id: string) => Promise<void>;
+}
+
+export interface ClaudianView {
+	getTabManager?: () => ClaudianTabManager | null;
+	tabManager?: ClaudianTabManager | null;
+	getActiveTab?: () => ClaudianTab | null;
+}
+
+export interface ClaudianConversation {
+	id?: string;
+	providerId?: string;
+	selectedModel?: string;
+	messages?: unknown[];
+}
+
+export interface ClaudianSettings {
+	savedProviderModel?: Record<string, string>;
+	lastSelectedChatModel?: {
+		providerId?: string;
+		model?: string;
+	};
+	settingsProvider?: string;
+	model?: string;
+}
+
+export interface ClaudianPlugin {
+	getAllViews?: () => ClaudianView[];
+	activateView?: () => Promise<void>;
+	getConversationSync?: (id: string) => ClaudianConversation | null;
+	createConversation?: (options: { providerId: string; selectedModel?: string }) => Promise<ClaudianConversation>;
+	renameConversation?: (id: string, name: string) => Promise<void>;
+	settings?: ClaudianSettings;
+	providerHost?: {
+		settings?: ClaudianSettings;
+	};
+}
+
+export interface CopilotChatManager {
+	sendMessage?: (
+		prompt: string,
+		context: {
+			notes: unknown[];
+			urls: unknown[];
+			folders: string[];
+			selectedTextContexts: unknown[];
+			webTabs: unknown[];
+		},
+		chainName?: string,
+		flag1?: boolean,
+		flag2?: boolean,
+	) => Promise<string | number>;
+	getLLMMessage?: (messageId: string | number) => unknown;
+}
+
+export interface CopilotChainManager {
+	runChain?: (
+		llmMessage: unknown,
+		abortController: AbortController,
+		callback1: (message: unknown) => void,
+		callback2: (message: unknown) => void,
+		options: { debug: boolean },
+	) => Promise<unknown>;
+}
+
+export interface CopilotPlugin {
+	chatManager?: CopilotChatManager;
+	chainOwner?: {
+		getCurrentChainManager?: () => CopilotChainManager | null;
+	};
+}
+
+function pluginRegistry(host: BackendHost): Record<string, unknown> | null {
+	const app = host.app as unknown as { plugins?: { plugins?: Record<string, unknown> } };
+	const registry = app.plugins?.plugins;
 	return registry || null;
 }
 
-export function getClaudianPlugin(host: BackendHost): AnyRecord | null {
+export function getClaudianPlugin(host: BackendHost): ClaudianPlugin | null {
 	const plugins = pluginRegistry(host);
 	if (!plugins) return null;
 	// Claudian's published Obsidian id is realclaudian. Keep the old id as a
 	// fallback for development builds and older installations.
-	return plugins.realclaudian || plugins.claudian || null;
+	const candidate = plugins.realclaudian ?? plugins.claudian;
+	return (candidate as ClaudianPlugin) ?? null;
 }
 
-export async function getClaudianView(host: BackendHost): Promise<AnyRecord | null> {
+export async function getClaudianView(host: BackendHost): Promise<ClaudianView | null> {
 	const claudian = getClaudianPlugin(host);
 	if (!claudian) return null;
-	let views = typeof claudian.getAllViews === 'function' ? claudian.getAllViews() : [];
+	let views: ClaudianView[] = typeof claudian.getAllViews === 'function' ? claudian.getAllViews() : [];
 	if (!views.length && typeof claudian.activateView === 'function') {
 		try { await claudian.activateView(); } catch { /* Claudian may already be opening */ }
 		await sleep(1200);
@@ -73,18 +185,18 @@ export async function getClaudianView(host: BackendHost): Promise<AnyRecord | nu
 	return views[0] || null;
 }
 
-export function getTabManager(view: AnyRecord | null): AnyRecord | null {
+export function getTabManager(view: ClaudianView | null): ClaudianTabManager | null {
 	if (!view) return null;
 	return typeof view.getTabManager === 'function' ? view.getTabManager() : view.tabManager || null;
 }
 
-export function getActiveTab(view: AnyRecord | null, manager: AnyRecord | null): AnyRecord | null {
+export function getActiveTab(view: ClaudianView | null, manager: ClaudianTabManager | null): ClaudianTab | null {
 	if (view && typeof view.getActiveTab === 'function') return view.getActiveTab();
 	if (manager && typeof manager.getActiveTab === 'function') return manager.getActiveTab();
 	return null;
 }
 
-export function getTab(host: BackendHost, view: AnyRecord | null, number: number): AnyRecord | null {
+export function getTab(host: BackendHost, view: ClaudianView | null, number: number): ClaudianTab | null {
 	const manager = getTabManager(view);
 	if (!manager) return null;
 	const tabs = typeof manager.getAllTabs === 'function' ? manager.getAllTabs() : [];
@@ -94,16 +206,16 @@ export function getTab(host: BackendHost, view: AnyRecord | null, number: number
 	return item && typeof manager.getTab === 'function' ? manager.getTab(item.id) : null;
 }
 
-export function tabIsBusy(view: AnyRecord | null, tab: AnyRecord | null): boolean {
+export function tabIsBusy(view: ClaudianView | null, tab: ClaudianTab | null): boolean {
 	if (!tab) return false;
 	const manager = getTabManager(view);
-	const item = manager && typeof manager.getTabBarItems === 'function'
-		? (manager.getTabBarItems() as AnyRecord[]).find(candidate => candidate.id === tab.id) : null;
+	const items = manager && typeof manager.getTabBarItems === 'function' ? manager.getTabBarItems() : [];
+	const item = items.find(candidate => candidate.id === tab.id);
 	const working = manager && typeof manager.isTabWorking === 'function' ? manager.isTabWorking(tab.id) : false;
-	return Boolean(working || tab.state && tab.state.isStreaming || tab.isStreaming || item && (item.isWorking || item.isStreaming));
+	return Boolean(working || tab.state?.isStreaming || tab.isStreaming || item?.isWorking || item?.isStreaming);
 }
 
-export async function waitForTabIdle(view: AnyRecord | null, tab: AnyRecord | null): Promise<void> {
+export async function waitForTabIdle(view: ClaudianView | null, tab: ClaudianTab | null): Promise<void> {
 	const started = Date.now();
 	while (tabIsBusy(view, tab)) {
 		if (Date.now() - started > AGENT_TIMEOUT_MS) throw new Error('Claudian chat stayed busy for 30 minutes');
@@ -111,20 +223,26 @@ export async function waitForTabIdle(view: AnyRecord | null, tab: AnyRecord | nu
 	}
 }
 
-export function getTabMessages(host: BackendHost, view: AnyRecord | null, tab: AnyRecord | null): AnyRecord[] {
-	const direct = tab && tab.state && Array.isArray(tab.state.messages) ? tab.state.messages : [];
-	if (direct.length) return direct;
-	const conversationId = tab && tab.conversationId;
+export function getTabMessages(host: BackendHost, view: ClaudianView | null, tab: ClaudianTab | null): unknown[] {
+	const direct = tab?.state?.messages;
+	if (Array.isArray(direct) && direct.length) return direct;
+	const conversationId = tab?.conversationId;
 	const claudian = getClaudianPlugin(host);
 	const conversation = conversationId && claudian && typeof claudian.getConversationSync === 'function'
 		? claudian.getConversationSync(conversationId) : null;
-	return conversation && Array.isArray(conversation.messages) ? conversation.messages : [];
+	return Array.isArray(conversation?.messages) ? conversation.messages : [];
 }
 
-export function lastAssistantReply(host: BackendHost, view: AnyRecord | null, tab: AnyRecord | null, beforeCount: number): string {
+export function lastAssistantReply(host: BackendHost, view: ClaudianView | null, tab: ClaudianTab | null, beforeCount: number): string {
 	const messages = getTabMessages(host, view, tab);
-	const candidates = messages.slice(Math.max(0, beforeCount)).filter(message => message.role === 'assistant');
-	const fallback = messages.filter(message => message.role === 'assistant');
+	const isAssistant = (message: unknown): boolean => {
+		if (message && typeof message === 'object' && 'role' in message) {
+			return (message as { role?: unknown }).role === 'assistant';
+		}
+		return false;
+	};
+	const candidates = messages.slice(Math.max(0, beforeCount)).filter(isAssistant);
+	const fallback = messages.filter(isAssistant);
 	const messagesToUse = candidates.length ? candidates : fallback;
 	const message = messagesToUse[messagesToUse.length - 1];
 	return contentFromMessage(message).trim();
@@ -154,10 +272,10 @@ export async function sendToClaudian(
 	}
 	const active = getActiveTab(view, manager) || target;
 	const beforeCount = getTabMessages(host, view, active).length;
-	const controller = active && active.controllers && active.controllers.inputController;
+	const controller = active?.controllers?.inputController;
 	if (!controller || typeof controller.sendMessage !== 'function') throw new Error('Claudian input controller is unavailable.');
 
-	const turnRequest: AnyRecord = { text: prompt };
+	const turnRequest: Record<string, unknown> = { text: prompt };
 	if (context && context.linkedContentPath) turnRequest.linkedContentPath = context.linkedContentPath;
 	if (context && context.externalContextPaths && context.externalContextPaths.length) {
 		turnRequest.externalContextPaths = context.externalContextPaths;
@@ -172,16 +290,17 @@ export async function sendToClaudian(
 	return lastAssistantReply(host, view, active, beforeCount);
 }
 
-export function getCopilotPlugin(host: BackendHost): AnyRecord | null {
+export function getCopilotPlugin(host: BackendHost): CopilotPlugin | null {
 	const plugins = pluginRegistry(host);
 	if (!plugins) return null;
-	return plugins.copilot || plugins['obsidian-copilot'] || null;
+	const candidate = plugins.copilot ?? plugins['obsidian-copilot'];
+	return (candidate as CopilotPlugin) ?? null;
 }
 
 export async function sendToCopilot(host: BackendHost, prompt: string, context: JobContext | null = null): Promise<string> {
 	const copilot = getCopilotPlugin(host);
-	const chatManager = copilot && copilot.chatManager;
-	const chain = copilot && copilot.chainOwner && typeof copilot.chainOwner.getCurrentChainManager === 'function'
+	const chatManager = copilot?.chatManager;
+	const chain = copilot?.chainOwner && typeof copilot.chainOwner.getCurrentChainManager === 'function'
 		? copilot.chainOwner.getCurrentChainManager() : null;
 	if (!copilot) throw new Error('Obsidian Copilot is not installed or enabled. Install or enable Copilot, then try again.');
 	if (!chatManager || typeof chatManager.sendMessage !== 'function' || typeof chatManager.getLLMMessage !== 'function' || !chain || typeof chain.runChain !== 'function') {
@@ -190,11 +309,11 @@ export async function sendToCopilot(host: BackendHost, prompt: string, context: 
 	const paths = context && Array.isArray(context.paths) ? context.paths : [];
 	const notes = paths
 		.map(path => host.app.vault.getAbstractFileByPath(path))
-		.filter(file => file && !Array.isArray((file as AnyRecord).children));
+		.filter((file): file is TFile => file instanceof TFile);
 	const folders = paths
 		.map(path => host.app.vault.getAbstractFileByPath(path))
-		.filter(file => file && Array.isArray((file as AnyRecord).children))
-		.map(file => (file as AnyRecord).path);
+		.filter((file): file is TFolder => file instanceof TFolder)
+		.map(folder => folder.path);
 	const messageId = await chatManager.sendMessage(
 		prompt,
 		{ notes, urls: [], folders, selectedTextContexts: [], webTabs: [] },
@@ -216,7 +335,7 @@ export async function sendToCopilot(host: BackendHost, prompt: string, context: 
 		run,
 		sleep(AGENT_TIMEOUT_MS).then(() => { throw new Error('AI task timed out after 30 minutes'); }),
 	]);
-	return String(reply || '').trim();
+	return (reply || '').trim();
 }
 
 export function sendToAI(
@@ -239,7 +358,10 @@ export function getProviderName(providerId: string | null | undefined): string {
 		pi: 'Pi',
 		acp: 'ACP',
 	};
-	return names[providerId || ''] || providerId || 'Claudian';
+	if (providerId && providerId in names) {
+		return names[providerId];
+	}
+	return providerId || 'Claudian';
 }
 
 export function modelValue(providerId: string, model: string | null | undefined): string {
@@ -248,10 +370,24 @@ export function modelValue(providerId: string, model: string | null | undefined)
 
 export function parseProfileValue(value: string | null | undefined): { providerId: string; model?: string } | null {
 	if (!String(value || '').startsWith('profile:')) return null;
-	try { return JSON.parse(decodeURIComponent(String(value).slice(8))); } catch { return null; }
+	try {
+		const parsed: unknown = JSON.parse(decodeURIComponent(String(value).slice(8)));
+		if (parsed && typeof parsed === 'object' && 'providerId' in parsed) {
+			const record = parsed as { providerId: unknown; model?: unknown };
+			if (typeof record.providerId === 'string') {
+				return {
+					providerId: record.providerId,
+					model: typeof record.model === 'string' ? record.model : undefined,
+				};
+			}
+		}
+		return null;
+	} catch {
+		return null;
+	}
 }
 
-export function getClaudianViewSync(host: BackendHost): AnyRecord | null {
+export function getClaudianViewSync(host: BackendHost): ClaudianView | null {
 	const claudian = getClaudianPlugin(host);
 	return claudian && typeof claudian.getAllViews === 'function' ? claudian.getAllViews()[0] || null : null;
 }
@@ -270,19 +406,20 @@ export function getModelOptions(host: BackendHost): ModelOption[] {
 	const manager = getTabManager(view);
 	const claudian = getClaudianPlugin(host);
 	const tabs = manager && typeof manager.getAllTabs === 'function' ? manager.getAllTabs() : [];
-	tabs.forEach((tab: AnyRecord) => {
+	tabs.forEach(tab => {
 		const conversation = tab.conversationId && claudian && typeof claudian.getConversationSync === 'function'
 			? claudian.getConversationSync(tab.conversationId) : null;
-		const providerId = conversation && conversation.providerId;
-		if (providerId && conversation.selectedModel) add({
+		const providerId = conversation?.providerId;
+		if (providerId && conversation?.selectedModel) add({
 			value: modelValue(providerId, conversation.selectedModel),
 			label: `${getProviderName(providerId)} / ${conversation.selectedModel}`,
 			providerId,
 			model: conversation.selectedModel,
 		});
-		if (providerId && tab.ui && tab.ui.modelSelector && typeof tab.ui.modelSelector.getAvailableModels === 'function') {
+		const modelSelector = tab.ui?.modelSelector;
+		if (providerId && modelSelector && typeof modelSelector.getAvailableModels === 'function') {
 			try {
-				tab.ui.modelSelector.getAvailableModels().forEach((option: AnyRecord) => add({
+				modelSelector.getAvailableModels().forEach(option => add({
 					value: modelValue(providerId, option.value),
 					label: `${getProviderName(providerId)} / ${option.label || option.value}`,
 					providerId,
@@ -291,9 +428,9 @@ export function getModelOptions(host: BackendHost): ModelOption[] {
 			} catch { /* Claudian may be rendering the selector */ }
 		}
 	});
-	const settings = claudian && (claudian.settings || claudian.providerHost && claudian.providerHost.settings) || {};
-	const savedModels = settings.savedProviderModel || {};
-	const last = settings.lastSelectedChatModel;
+	const settings = claudian?.settings || claudian?.providerHost?.settings;
+	const savedModels = settings?.savedProviderModel || {};
+	const last = settings?.lastSelectedChatModel;
 	if (last && last.providerId) add({
 		value: modelValue(last.providerId, last.model),
 		label: `${getProviderName(last.providerId)} / ${last.model || 'default model'}`,
@@ -301,18 +438,18 @@ export function getModelOptions(host: BackendHost): ModelOption[] {
 		model: last.model || '',
 	});
 	Object.entries(savedModels).forEach(([providerId, model]) => add({
-		value: modelValue(providerId, model as string),
+		value: modelValue(providerId, model),
 		label: `${getProviderName(providerId)} / ${model || 'default model'}`,
 		providerId,
-		model: String(model || ''),
+		model: model || '',
 	}));
-	const settingsProvider = settings.settingsProvider;
-	const settingsModel = settingsProvider && (savedModels[settingsProvider] || settings.model);
+	const settingsProvider = settings?.settingsProvider;
+	const settingsModel = settingsProvider ? (savedModels[settingsProvider] || settings?.model) : undefined;
 	if (settingsProvider) add({
 		value: modelValue(settingsProvider, settingsModel),
 		label: `${getProviderName(settingsProvider)} / ${settingsModel || 'current model'}`,
 		providerId: settingsProvider,
-		model: String(settingsModel || ''),
+		model: settingsModel || '',
 	});
 	return profiles;
 }
@@ -329,8 +466,14 @@ export function checkCopilotSetup(host: BackendHost): { ok: boolean; needsInstal
 	const info = BACKEND_INFO.copilot;
 	const copilot = getCopilotPlugin(host);
 	if (!copilot) return { ok: false, needsInstall: true, message: `${info.name} is not installed or enabled.`, githubUrl: info.githubUrl };
-	let chain: AnyRecord | null = null;
-	try { chain = copilot.chainOwner && typeof copilot.chainOwner.getCurrentChainManager === 'function' ? copilot.chainOwner.getCurrentChainManager() : null; } catch { chain = null; }
+	let chain: CopilotChainManager | null = null;
+	try {
+		chain = copilot.chainOwner && typeof copilot.chainOwner.getCurrentChainManager === 'function'
+			? copilot.chainOwner.getCurrentChainManager()
+			: null;
+	} catch {
+		chain = null;
+	}
 	if (!copilot.chatManager || typeof copilot.chatManager.sendMessage !== 'function' || typeof copilot.chatManager.getLLMMessage !== 'function'
 		|| !chain || typeof chain.runChain !== 'function') {
 		return { ok: false, needsInstall: false, message: `${info.name} is installed, but its automation API is unavailable. Update Copilot.`, githubUrl: info.githubUrl };
@@ -381,27 +524,28 @@ export async function resolveModel(host: BackendHost, value: string | null | und
 		const runtime = getTab(host, view, tab);
 		if (!runtime) throw new Error(`The Claudian chat selected for ${action} no longer exists. Refresh the model list and choose another model.`);
 		const claudian = getClaudianPlugin(host);
-		const conversation = runtime && runtime.conversationId && claudian && typeof claudian.getConversationSync === 'function'
+		const conversation = runtime.conversationId && claudian && typeof claudian.getConversationSync === 'function'
 			? claudian.getConversationSync(runtime.conversationId) : null;
 		if (!conversation || !conversation.providerId) throw new Error(`The Claudian chat selected for ${action} has no configured provider.`);
-		return { modelRef: selected, tab, conversationId: runtime && runtime.conversationId || null, providerId: conversation && conversation.providerId || null, model: conversation && conversation.selectedModel || null };
+		return { modelRef: selected, tab, conversationId: runtime.conversationId || null, providerId: conversation.providerId, model: conversation.selectedModel || null };
 	}
 	const profile = parseProfileValue(selected);
 	if (profile && profile.providerId) {
 		const claudian = getClaudianPlugin(host);
 		if (!claudian) throw new Error(`Claudian is not installed or enabled. It is required for ${action}.`);
 		if (typeof claudian.createConversation !== 'function') throw new Error(`Claudian cannot create a conversation for ${action}.`);
-		let conversation: AnyRecord;
+		let conversation: ClaudianConversation;
 		try {
 			conversation = await claudian.createConversation({
 				providerId: profile.providerId,
 				...(profile.model ? { selectedModel: profile.model } : {}),
 			});
 		} catch (error) {
-			throw new Error(`Claudian could not create the selected model for ${action}: ${String((error as Error)?.message || error)}`);
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(`Claudian could not create the selected model for ${action}: ${message}`);
 		}
 		if (!conversation || !conversation.id) throw new Error(`Claudian returned no conversation for ${action}.`);
-		if (conversation && conversation.id && typeof claudian.renameConversation === 'function') {
+		if (conversation.id && typeof claudian.renameConversation === 'function') {
 			await claudian.renameConversation(conversation.id, 'AI Scheduler - Planning');
 		}
 		return { modelRef: selected, tab: host.settings.assistantTab, conversationId: conversation.id, providerId: profile.providerId, model: profile.model || null };
