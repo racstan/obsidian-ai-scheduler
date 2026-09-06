@@ -55,7 +55,7 @@ export class AISchedulerPlugin extends Plugin {
 		this.settings = parsed.settings;
 		this.jobs = parsed.jobs;
 		this.activity = parsed.activity;
-		const recovered = recoverInterruptedRuns(this.jobs);
+		recoverInterruptedRuns(this.jobs);
 
 		this.assignTaskNumbers();
 		this.running = false;

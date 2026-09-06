@@ -83,7 +83,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 				.setDesc(desc)
 				.addDropdown(dropdown => {
 					dropdown.addOption('', models.length ? 'Select a model' : 'No models found - open Claudian');
-					models.forEach(model => dropdown.addOption(model.value, model.label));
+					models.forEach(model => { dropdown.addOption(model.value, model.label); });
 					const selected = this.plugin.settings[key] || '';
 					dropdown.setValue(models.some(model => model.value === selected) ? selected : '');
 					dropdown.onChange(value => {

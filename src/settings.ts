@@ -1,6 +1,6 @@
 /* Settings, job normalization, and stored-data parsing (faithful port of the
  * original onload migration logic), plus the two new opt-in note settings. */
-import { ActivityEntry, AISettings, Job, JobStatus, SCHEDULE_KINDS, TaskSchedule } from './types';
+import { ActivityEntry, AISettings, Job, SCHEDULE_KINDS, TaskSchedule } from './types';
 import { getScheduleNextRun } from './schedule';
 import { id } from './util';
 

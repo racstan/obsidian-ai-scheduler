@@ -1909,7 +1909,9 @@ var AssistantSettingTab = class extends import_obsidian7.PluginSettingTab {
       }));
       const addModelSetting = (name, desc, key) => new import_obsidian7.Setting(containerEl).setName(name).setDesc(desc).addDropdown((dropdown) => {
         dropdown.addOption("", models.length ? "Select a model" : "No models found - open Claudian");
-        models.forEach((model) => dropdown.addOption(model.value, model.label));
+        models.forEach((model) => {
+          dropdown.addOption(model.value, model.label);
+        });
         const selected = this.plugin.settings[key] || "";
         dropdown.setValue(models.some((model) => model.value === selected) ? selected : "");
         dropdown.onChange((value) => {
@@ -2309,7 +2311,7 @@ var AISchedulerPlugin = class extends import_obsidian9.Plugin {
     this.settings = parsed.settings;
     this.jobs = parsed.jobs;
     this.activity = parsed.activity;
-    const recovered = recoverInterruptedRuns(this.jobs);
+    recoverInterruptedRuns(this.jobs);
     this.assignTaskNumbers();
     this.running = false;
     this.reviewRunning = false;

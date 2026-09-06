@@ -8,6 +8,7 @@
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "test": "node scripts/run-tests.mjs",
     "smoke": "node scripts/run-smoke.mjs",
+    "lint": "eslint src",
     "check": "tsc -noEmit -skipLibCheck"
   },
   "keywords": [
@@ -19,10 +20,14 @@
   "author": "Rachit Asthana",
   "license": "MIT",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.10.2",
     "@types/obsidian": "npm:obsidian@^1.8.7",
     "esbuild": "^0.25.0",
+    "eslint": "^10.10.0",
+    "eslint-plugin-obsidianmd": "^0.4.2",
     "obsidian": "^1.8.7",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.69.0"
   }
 }
