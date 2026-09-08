@@ -1,9 +1,9 @@
 {
   "id": "ai-scheduler",
   "name": "AI Scheduler",
-  "version": "2.1.3",
+  "version": "2.1.4",
   "minAppVersion": "1.4.0",
-  "description": "Autonomous background scheduling and proactive AI workflows for Obsidian. Run recurring tasks, cron cadences, nightly reviews, and event triggers via Claudian or Copilot.",
+  "description": "Autonomous background scheduling and proactive AI workflows. Run recurring tasks, cron cadences, nightly reviews, and event triggers via Claudian or Copilot.",
   "author": "Rachit Asthana",
   "isDesktopOnly": true
 }

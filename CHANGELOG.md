@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.4] - 2026-09-08
+
+### Fixed
+- **Manifest Description Compliance**: Removed redundant "Obsidian" reference from plugin description in `manifest.json` in accordance with Obsidian Community Plugin review guidelines.
+
+---
+
 ## [2.1.3] - 2026-09-06
 
 ### Highlights
