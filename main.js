@@ -27,7 +27,8 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/main.ts
 var main_exports = {};
 __export(main_exports, {
-  AISchedulerPlugin: () => AISchedulerPlugin
+  AISchedulerPlugin: () => AISchedulerPlugin,
+  default: () => AISchedulerPlugin
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian9 = require("obsidian");
