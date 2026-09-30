@@ -16,10 +16,12 @@ interface PlannedJobSummary {
 export class PlannerModal extends Modal {
 	plugin: AISchedulerPlugin;
 	private planned: PlannedJobSummary[] | null = null;
+	private onCloseCallback?: () => void;
 
-	constructor(app: AISchedulerPlugin['app'], plugin: AISchedulerPlugin) {
+	constructor(app: AISchedulerPlugin['app'], plugin: AISchedulerPlugin, onCloseCallback?: () => void) {
 		super(app);
 		this.plugin = plugin;
+		this.onCloseCallback = onCloseCallback;
 	}
 
 	async onOpen(): Promise<void> {
@@ -36,21 +38,40 @@ export class PlannerModal extends Modal {
 		const shell = contentEl.createDiv('ai-scheduler-shell ai-scheduler-shell-md');
 		shell.createDiv('ai-scheduler-eyebrow').setText('AI Planner');
 		shell.createEl('h1', { text: 'Plan scheduled work' }).addClass('ai-scheduler-title ai-scheduler-title-sm');
-		shell.createEl('p', { text: 'Describe the outcome. Your selected backend will turn it into safe, persistent jobs.' }).addClass('ai-scheduler-subtitle');
+		shell.createEl('p', { text: 'Describe your goal in plain english. Your active AI backend will design and configure the scheduled jobs.' }).addClass('ai-scheduler-subtitle');
 
-		const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), [], this.app);
-		shell.createDiv('ai-scheduler-form-label').setText('Default result folder for created tasks (optional)');
-		const resultFolder = shell.createEl('input', { type: 'text', placeholder: 'Optional result folder for created tasks, e.g. Projects/News' });
-		resultFolder.addClass('ai-scheduler-input');
-		resultFolder.addClass('ai-scheduler-form-gap');
+		const readiness = this.plugin.getBackendReadiness();
+		if (!readiness.ok) {
+			const banner = shell.createDiv('ai-scheduler-alert-banner');
+			const content = banner.createDiv('ai-scheduler-alert-content');
+			content.createSpan('ai-scheduler-alert-icon').setText('⚠️');
+			const textCol = content.createDiv();
+			textCol.createDiv('ai-scheduler-alert-title').setText('AI backend not configured');
+			textCol.createDiv('ai-scheduler-alert-desc').setText(readiness.message);
+			const btn = banner.createEl('button', { text: 'Open settings', cls: 'mod-cta ai-scheduler-alert-btn' });
+			btn.onclick = () => {
+				this.close();
+				this.plugin.openSettingsTab();
+			};
+		}
+
+		shell.createDiv('ai-scheduler-form-label').setText('What would you like AI Scheduler to do?');
 		const textarea = shell.createEl('textarea');
 		textarea.addClass('ai-scheduler-textarea');
 		textarea.addClass('ai-scheduler-textarea-tall');
-		textarea.placeholder = 'Every evening, review recently changed notes, identify open loops, and create a report. Remind me to review unfinished work every week.';
-		shell.createDiv('ai-scheduler-hint ai-scheduler-hint-gap').setText('Examples: review notes every evening, run every 30 minutes for 8 iterations, run every 2 hours until stopped, or react when a project file changes.');
+		textarea.placeholder = 'E.g. Every weekday at 9:00 am, review notes modified in the last 24 hours, extract action items, and create an executive summary in AI reviews/';
+		shell.createDiv('ai-scheduler-hint ai-scheduler-hint-gap').setText('Examples: "Review notes every evening at 10 pm", "run every 30 minutes for 8 iterations", "check for open tasks in projects/ every sunday at 6 pm"');
+
+		shell.createDiv('ai-scheduler-form-label').setText('Default result folder (optional)');
+		const resultFolder = shell.createEl('input', { type: 'text', placeholder: 'Optional result folder, e.g. AI Reviews or Projects/Notes' });
+		resultFolder.addClass('ai-scheduler-input');
+		resultFolder.addClass('ai-scheduler-form-gap');
+
+		const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), [], this.app);
+
 		const footer = shell.createDiv('ai-scheduler-footer');
 		makeButton(footer, 'Cancel', () => this.close());
-		makeButton(footer, 'Create AI plan', async button => {
+		makeButton(footer, '✨ Create AI plan', async button => {
 			const goal = textarea.value.trim();
 			if (!goal) { new Notice('Describe what you want AI Scheduler to do.'); return; }
 			button.disabled = true;
@@ -107,5 +128,10 @@ export class PlannerModal extends Modal {
 		}, true);
 	}
 
-	onClose(): void { this.contentEl.empty(); }
+	onClose(): void {
+		this.contentEl.empty();
+		if (this.onCloseCallback && !this.planned) {
+			this.onCloseCallback();
+		}
+	}
 }

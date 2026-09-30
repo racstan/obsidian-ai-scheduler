@@ -85,6 +85,20 @@ export class JobModal extends Modal {
 
 		const aiSection = makeCard(shell, 'ai-scheduler-card-ai');
 		aiSection.createDiv('ai-scheduler-lead ai-scheduler-gap-6').setText('Edit with AI (optional)');
+		const readiness = this.plugin.getBackendReadiness();
+		if (!readiness.ok) {
+			const banner = aiSection.createDiv('ai-scheduler-alert-banner');
+			const content = banner.createDiv('ai-scheduler-alert-content');
+			content.createSpan('ai-scheduler-alert-icon').setText('⚠️');
+			const textCol = content.createDiv();
+			textCol.createDiv('ai-scheduler-alert-title').setText('AI backend not configured');
+			textCol.createDiv('ai-scheduler-alert-desc').setText(readiness.message);
+			const btn = banner.createEl('button', { text: 'Open settings', cls: 'mod-cta ai-scheduler-alert-btn' });
+			btn.onclick = () => {
+				this.close();
+				this.plugin.openSettingsTab();
+			};
+		}
 		const request = aiSection.createEl('textarea', { placeholder: 'Example: Change this to run every 30 minutes for 8 iterations, and save each result in Projects/News.' });
 		request.addClass('ai-scheduler-textarea');
 		request.addClass('ai-scheduler-textarea-ai');

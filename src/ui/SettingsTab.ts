@@ -115,6 +115,15 @@ export class AssistantSettingTab extends PluginSettingTab {
 			.setDesc('Send a normal Obsidian notification visible across the app, without using AI.')
 			.addButton(button => button.setButtonText('Send test notification').onClick(() => this.plugin.testNotification()));
 
+		new Setting(containerEl).setName('Daily & nightly reviews').setHeading();
+
+		new Setting(containerEl)
+			.setName('Run daily preview now')
+			.setDesc('Immediately synthesize a preview report from notes modified today.')
+			.addButton(button => button.setButtonText('Run preview now').onClick(() => {
+				void this.plugin.startReviewRun(true, 'daily');
+			}));
+
 		new Setting(containerEl)
 			.setName('Review context')
 			.setDesc('Files the daily and nightly reviews may inspect through the active backend\'s vault tools.')
@@ -170,6 +179,13 @@ export class AssistantSettingTab extends PluginSettingTab {
 						await this.plugin.ensureNightlyReviewJob();
 						await this.plugin.saveState();
 					})();
+				}));
+
+			new Setting(containerEl)
+				.setName('Run nightly review now')
+				.setDesc('Manually trigger the comprehensive nightly review routine immediately.')
+				.addButton(button => button.setButtonText('Run review now').onClick(() => {
+					void this.plugin.startReviewRun(true, 'nightly');
 				}));
 		}
 

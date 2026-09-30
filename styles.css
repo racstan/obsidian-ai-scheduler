@@ -9,25 +9,31 @@
 
 .ai-scheduler-modal {
 	padding: 0;
+	display: flex;
+	flex-direction: column;
+	max-height: min(85vh, 800px);
 }
 
 .ai-scheduler-modal-md {
-	width: min(700px, calc(100vw - 32px));
+	width: min(720px, calc(100vw - 32px));
+	max-height: min(85vh, 800px);
 }
 
 .ai-scheduler-modal-lg {
-	width: min(760px, calc(100vw - 32px));
-	max-height: min(760px, calc(100vh - 32px));
+	width: min(780px, calc(100vw - 32px));
+	max-height: min(85vh, 800px);
 }
 
 .ai-scheduler-modal-sm {
 	width: min(680px, calc(100vw - 32px));
-	max-height: min(760px, calc(100vh - 32px));
+	max-height: min(85vh, 800px);
 }
 
 .ai-scheduler-content {
 	padding: 0;
-	overflow: auto;
+	overflow-y: auto;
+	flex: 1 1 auto;
+	max-height: calc(85vh - 40px);
 }
 
 .ai-scheduler-shell {
@@ -176,13 +182,68 @@
 	font-size: 12px;
 }
 
-.ai-scheduler-activity {
-	padding: 6px 16px;
+/* ---- Alert / Warning Banner -------------------------------------------- */
+
+.ai-scheduler-alert-banner {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 12px 16px;
+	border-radius: 8px;
+	margin-bottom: 18px;
+	background: var(--background-modifier-error);
+	border: 1px solid var(--text-error);
+	color: var(--text-normal);
+}
+
+.ai-scheduler-alert-content {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	font-size: 13px;
+	line-height: 1.4;
+}
+
+.ai-scheduler-alert-icon {
+	font-size: 18px;
+	line-height: 1;
+}
+
+.ai-scheduler-alert-title {
+	font-weight: 600;
+	margin-bottom: 2px;
+	color: var(--text-error);
+}
+
+.ai-scheduler-alert-desc {
+	color: var(--text-muted);
+	font-size: 12px;
+}
+
+.ai-scheduler-alert-btn {
+	white-space: nowrap;
+	padding: 6px 14px;
+}
+
+.ai-scheduler-activity-scroll-window {
+	height: 170px;
+	max-height: 170px;
+	overflow-y: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 10px;
+	background: var(--background-primary-alt);
+	padding: 0 16px;
 }
 
 .ai-scheduler-activity-empty {
-	padding: 10px 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	min-height: 120px;
 	color: var(--text-muted);
+	font-size: 13px;
 }
 
 .ai-scheduler-activity-row {
@@ -191,6 +252,10 @@
 	gap: 12px;
 	padding: 10px 0;
 	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ai-scheduler-activity-row:last-child {
+	border-bottom: none;
 }
 
 .ai-scheduler-activity-time {

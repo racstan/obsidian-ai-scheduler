@@ -8,7 +8,7 @@ export function createContextPicker(parent: HTMLElement, options: ContextOption[
 	card.createDiv('ai-scheduler-picker-desc').setText('Select pages or project folders the active backend should attach when this task runs.');
 	const select = card.createEl('select');
 	select.multiple = true;
-	select.size = 6;
+	select.size = 3;
 	select.addClass('ai-scheduler-picker-select');
 	const known = new Set(options.map(option => option.path));
 	for (const path of initialPaths) {

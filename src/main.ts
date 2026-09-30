@@ -635,8 +635,42 @@ export class AISchedulerPlugin extends Plugin {
 		return backends.refreshModels(this);
 	}
 
-	async resolveModel(value: string | null | undefined, action?: string) {
-		return backends.resolveModel(this, value, action);
+	openSettingsTab(): void {
+		const appWithSetting = this.app as unknown as { setting?: { open: () => void; openTabById: (id: string) => void } };
+		if (appWithSetting.setting && typeof appWithSetting.setting.open === 'function') {
+			appWithSetting.setting.open();
+			if (typeof appWithSetting.setting.openTabById === 'function') {
+				appWithSetting.setting.openTabById(this.manifest.id);
+			}
+		}
+	}
+
+	getBackendReadiness(): { ok: boolean; message: string } {
+		const mode = this.settings.backendMode;
+		if (mode === 'copilot') {
+			const copilot = this.getCopilotPlugin();
+			if (!copilot) {
+				return { ok: false, message: 'Obsidian Copilot plugin is not installed or enabled.' };
+			}
+			const check = this.checkCopilotSetup();
+			if (!check.ok) {
+				return { ok: false, message: check.message };
+			}
+			return { ok: true, message: 'Obsidian Copilot is ready.' };
+		} else {
+			const claudian = this.getClaudianPlugin();
+			if (!claudian) {
+				return { ok: false, message: 'Claudian plugin is not installed or enabled.' };
+			}
+			const models = this.getModelOptions();
+			if (!models.length) {
+				return { ok: false, message: 'No Claudian models found. Open Claudian to configure providers and API keys, then refresh models in Settings.' };
+			}
+			if (!this.settings.planningModel && !this.settings.executionModel) {
+				return { ok: false, message: 'No AI model selected for tasks or planning. Please choose a model in AI Scheduler settings.' };
+			}
+			return { ok: true, message: 'Claudian is ready.' };
+		}
 	}
 
 	testNotification(): void {

@@ -45,15 +45,41 @@ export class AssistantModal extends Modal {
 		shell.createEl('h1', { text: 'AI Scheduler' }).addClass('ai-scheduler-title');
 		shell.createEl('p', { text: 'Plan work, run reviews, and manage scheduled tasks from one place.' }).addClass('ai-scheduler-subtitle');
 
+		const readiness = this.plugin.getBackendReadiness();
+		if (!readiness.ok) {
+			const banner = shell.createDiv('ai-scheduler-alert-banner');
+			const content = banner.createDiv('ai-scheduler-alert-content');
+			content.createSpan('ai-scheduler-alert-icon').setText('⚠️');
+			const textCol = content.createDiv();
+			textCol.createDiv('ai-scheduler-alert-title').setText('AI backend not configured');
+			textCol.createDiv('ai-scheduler-alert-desc').setText(readiness.message);
+			const btn = banner.createEl('button', { text: 'Open settings', cls: 'mod-cta ai-scheduler-alert-btn' });
+			btn.onclick = () => {
+				this.close();
+				this.plugin.openSettingsTab();
+			};
+		}
+
 		const actions = shell.createDiv('ai-scheduler-actions');
-		makeButton(actions, 'Ask AI to plan', () => new PlannerModal(this.app, this.plugin).open(), true);
-		makeButton(actions, 'Run daily preview', () => this.plugin.startReviewRun(true, 'daily'));
+		makeButton(actions, '✨ Ask AI to plan', () => {
+			this.close();
+			new PlannerModal(this.app, this.plugin, () => new AssistantModal(this.app, this.plugin).open()).open();
+		}, true);
+		makeButton(actions, '⚙️ Settings', () => {
+			this.close();
+			this.plugin.openSettingsTab();
+		});
 
 		const userJobs = this.plugin.jobs.filter(job => !isNightlyReviewJob(job));
 		const activeCount = userJobs.filter(job => job.enabled).length;
+		const pausedCount = userJobs.filter(job => !job.enabled).length;
 		const next = userJobs.filter(job => job.enabled && job.nextRunAt).sort((a, b) => new Date(a.nextRunAt as string).getTime() - new Date(b.nextRunAt as string).getTime())[0];
 		const stats = shell.createDiv('ai-scheduler-stats');
-		[[activeCount, 'ACTIVE TASKS'], [next ? formatDate(next.nextRunAt) : 'None', 'NEXT RUN'], [this.plugin.settings.nightlyReviewEnabled ? 'ON' : 'OFF', 'NIGHTLY REVIEW']].forEach(([value, label]) => {
+		[
+			[activeCount, 'ACTIVE TASKS'],
+			[pausedCount, 'PAUSED / PAST'],
+			[next ? formatDate(next.nextRunAt) : 'None', 'NEXT RUN'],
+		].forEach(([value, label]) => {
 			const stat = makeCard(stats, 'ai-scheduler-card-stat');
 			stat.createDiv({ text: String(value) }).addClass('ai-scheduler-stat-value');
 			stat.createDiv({ text: label as string }).addClass('ai-scheduler-stat-label');
@@ -162,19 +188,23 @@ export class AssistantModal extends Modal {
 			}
 		}
 
-		const activity = this.plugin.activity.slice(-8).reverse();
+		const activity = this.plugin.activity.slice(-20).reverse();
 		const activityHeading = this.renderSection(shell, 'Recent activity', activity.length ? 'All times are local' : 'No activity yet');
 		makeButton(activityHeading, 'Clear', async button => {
 			button.disabled = true;
 			await this.plugin.clearActivity();
 			this.render();
 		});
-		const activityCard = makeCard(shell.createDiv(), 'ai-scheduler-activity');
-		if (!activity.length) activityCard.createDiv({ text: 'Reviews, task runs, and notifications will appear here.' }).addClass('ai-scheduler-activity-empty');
-		for (const event of activity) {
-			const row = activityCard.createDiv('ai-scheduler-activity-row');
-			row.createSpan({ text: event.message });
-			row.createSpan({ text: formatDate(event.at) }).addClass('ai-scheduler-activity-time');
+		const activityContainer = shell.createDiv('ai-scheduler-activity-scroll-window');
+		if (!activity.length) {
+			const empty = activityContainer.createDiv('ai-scheduler-activity-empty');
+			empty.setText('Reviews, task runs, and notifications will appear here.');
+		} else {
+			for (const event of activity) {
+				const row = activityContainer.createDiv('ai-scheduler-activity-row');
+				row.createSpan({ text: event.message });
+				row.createSpan({ text: formatDate(event.at) }).addClass('ai-scheduler-activity-time');
+			}
 		}
 	}
 

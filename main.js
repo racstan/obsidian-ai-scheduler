@@ -1367,7 +1367,7 @@ function createContextPicker(parent, options, initialPaths, app) {
   card.createDiv("ai-scheduler-picker-desc").setText("Select pages or project folders the active backend should attach when this task runs.");
   const select = card.createEl("select");
   select.multiple = true;
-  select.size = 6;
+  select.size = 3;
   select.addClass("ai-scheduler-picker-select");
   const known = new Set(options.map((option) => option.path));
   for (const path of initialPaths) {
@@ -1460,6 +1460,20 @@ var JobModal = class extends import_obsidian4.Modal {
     }, true);
     const aiSection = makeCard(shell, "ai-scheduler-card-ai");
     aiSection.createDiv("ai-scheduler-lead ai-scheduler-gap-6").setText("Edit with AI (optional)");
+    const readiness = this.plugin.getBackendReadiness();
+    if (!readiness.ok) {
+      const banner = aiSection.createDiv("ai-scheduler-alert-banner");
+      const content = banner.createDiv("ai-scheduler-alert-content");
+      content.createSpan("ai-scheduler-alert-icon").setText("\u26A0\uFE0F");
+      const textCol = content.createDiv();
+      textCol.createDiv("ai-scheduler-alert-title").setText("AI backend not configured");
+      textCol.createDiv("ai-scheduler-alert-desc").setText(readiness.message);
+      const btn = banner.createEl("button", { text: "Open settings", cls: "mod-cta ai-scheduler-alert-btn" });
+      btn.onclick = () => {
+        this.close();
+        this.plugin.openSettingsTab();
+      };
+    }
     const request = aiSection.createEl("textarea", { placeholder: "Example: Change this to run every 30 minutes for 8 iterations, and save each result in Projects/News." });
     request.addClass("ai-scheduler-textarea");
     request.addClass("ai-scheduler-textarea-ai");
@@ -1716,10 +1730,11 @@ var JobModal = class extends import_obsidian4.Modal {
 // src/ui/PlannerModal.ts
 var import_obsidian5 = require("obsidian");
 var PlannerModal = class extends import_obsidian5.Modal {
-  constructor(app, plugin) {
+  constructor(app, plugin, onCloseCallback) {
     super(app);
     this.planned = null;
     this.plugin = plugin;
+    this.onCloseCallback = onCloseCallback;
   }
   async onOpen() {
     if (this.planned) this.renderResults();
@@ -1734,20 +1749,35 @@ var PlannerModal = class extends import_obsidian5.Modal {
     const shell = contentEl.createDiv("ai-scheduler-shell ai-scheduler-shell-md");
     shell.createDiv("ai-scheduler-eyebrow").setText("AI Planner");
     shell.createEl("h1", { text: "Plan scheduled work" }).addClass("ai-scheduler-title ai-scheduler-title-sm");
-    shell.createEl("p", { text: "Describe the outcome. Your selected backend will turn it into safe, persistent jobs." }).addClass("ai-scheduler-subtitle");
-    const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), [], this.app);
-    shell.createDiv("ai-scheduler-form-label").setText("Default result folder for created tasks (optional)");
-    const resultFolder = shell.createEl("input", { type: "text", placeholder: "Optional result folder for created tasks, e.g. Projects/News" });
-    resultFolder.addClass("ai-scheduler-input");
-    resultFolder.addClass("ai-scheduler-form-gap");
+    shell.createEl("p", { text: "Describe your goal in plain english. Your active AI backend will design and configure the scheduled jobs." }).addClass("ai-scheduler-subtitle");
+    const readiness = this.plugin.getBackendReadiness();
+    if (!readiness.ok) {
+      const banner = shell.createDiv("ai-scheduler-alert-banner");
+      const content = banner.createDiv("ai-scheduler-alert-content");
+      content.createSpan("ai-scheduler-alert-icon").setText("\u26A0\uFE0F");
+      const textCol = content.createDiv();
+      textCol.createDiv("ai-scheduler-alert-title").setText("AI backend not configured");
+      textCol.createDiv("ai-scheduler-alert-desc").setText(readiness.message);
+      const btn = banner.createEl("button", { text: "Open settings", cls: "mod-cta ai-scheduler-alert-btn" });
+      btn.onclick = () => {
+        this.close();
+        this.plugin.openSettingsTab();
+      };
+    }
+    shell.createDiv("ai-scheduler-form-label").setText("What would you like AI Scheduler to do?");
     const textarea = shell.createEl("textarea");
     textarea.addClass("ai-scheduler-textarea");
     textarea.addClass("ai-scheduler-textarea-tall");
-    textarea.placeholder = "Every evening, review recently changed notes, identify open loops, and create a report. Remind me to review unfinished work every week.";
-    shell.createDiv("ai-scheduler-hint ai-scheduler-hint-gap").setText("Examples: review notes every evening, run every 30 minutes for 8 iterations, run every 2 hours until stopped, or react when a project file changes.");
+    textarea.placeholder = "E.g. Every weekday at 9:00 am, review notes modified in the last 24 hours, extract action items, and create an executive summary in AI reviews/";
+    shell.createDiv("ai-scheduler-hint ai-scheduler-hint-gap").setText('Examples: "Review notes every evening at 10 pm", "run every 30 minutes for 8 iterations", "check for open tasks in projects/ every sunday at 6 pm"');
+    shell.createDiv("ai-scheduler-form-label").setText("Default result folder (optional)");
+    const resultFolder = shell.createEl("input", { type: "text", placeholder: "Optional result folder, e.g. AI Reviews or Projects/Notes" });
+    resultFolder.addClass("ai-scheduler-input");
+    resultFolder.addClass("ai-scheduler-form-gap");
+    const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), [], this.app);
     const footer = shell.createDiv("ai-scheduler-footer");
     makeButton(footer, "Cancel", () => this.close());
-    makeButton(footer, "Create AI plan", async (button) => {
+    makeButton(footer, "\u2728 Create AI plan", async (button) => {
       const goal = textarea.value.trim();
       if (!goal) {
         new import_obsidian5.Notice("Describe what you want AI Scheduler to do.");
@@ -1805,6 +1835,9 @@ var PlannerModal = class extends import_obsidian5.Modal {
   }
   onClose() {
     this.contentEl.empty();
+    if (this.onCloseCallback && !this.planned) {
+      this.onCloseCallback();
+    }
   }
 };
 
@@ -1827,7 +1860,7 @@ var ConfirmModal = class extends import_obsidian6.Modal {
     this.contentEl.empty();
   }
 };
-var AssistantModal = class extends import_obsidian6.Modal {
+var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
@@ -1844,14 +1877,39 @@ var AssistantModal = class extends import_obsidian6.Modal {
     const shell = contentEl.createDiv("ai-scheduler-shell ai-scheduler-shell-lg");
     shell.createEl("h1", { text: "AI Scheduler" }).addClass("ai-scheduler-title");
     shell.createEl("p", { text: "Plan work, run reviews, and manage scheduled tasks from one place." }).addClass("ai-scheduler-subtitle");
+    const readiness = this.plugin.getBackendReadiness();
+    if (!readiness.ok) {
+      const banner = shell.createDiv("ai-scheduler-alert-banner");
+      const content = banner.createDiv("ai-scheduler-alert-content");
+      content.createSpan("ai-scheduler-alert-icon").setText("\u26A0\uFE0F");
+      const textCol = content.createDiv();
+      textCol.createDiv("ai-scheduler-alert-title").setText("AI backend not configured");
+      textCol.createDiv("ai-scheduler-alert-desc").setText(readiness.message);
+      const btn = banner.createEl("button", { text: "Open settings", cls: "mod-cta ai-scheduler-alert-btn" });
+      btn.onclick = () => {
+        this.close();
+        this.plugin.openSettingsTab();
+      };
+    }
     const actions = shell.createDiv("ai-scheduler-actions");
-    makeButton(actions, "Ask AI to plan", () => new PlannerModal(this.app, this.plugin).open(), true);
-    makeButton(actions, "Run daily preview", () => this.plugin.startReviewRun(true, "daily"));
+    makeButton(actions, "\u2728 Ask AI to plan", () => {
+      this.close();
+      new PlannerModal(this.app, this.plugin, () => new _AssistantModal(this.app, this.plugin).open()).open();
+    }, true);
+    makeButton(actions, "\u2699\uFE0F Settings", () => {
+      this.close();
+      this.plugin.openSettingsTab();
+    });
     const userJobs = this.plugin.jobs.filter((job) => !isNightlyReviewJob(job));
     const activeCount = userJobs.filter((job) => job.enabled).length;
+    const pausedCount = userJobs.filter((job) => !job.enabled).length;
     const next = userJobs.filter((job) => job.enabled && job.nextRunAt).sort((a, b) => new Date(a.nextRunAt).getTime() - new Date(b.nextRunAt).getTime())[0];
     const stats = shell.createDiv("ai-scheduler-stats");
-    [[activeCount, "ACTIVE TASKS"], [next ? formatDate(next.nextRunAt) : "None", "NEXT RUN"], [this.plugin.settings.nightlyReviewEnabled ? "ON" : "OFF", "NIGHTLY REVIEW"]].forEach(([value, label]) => {
+    [
+      [activeCount, "ACTIVE TASKS"],
+      [pausedCount, "PAUSED / PAST"],
+      [next ? formatDate(next.nextRunAt) : "None", "NEXT RUN"]
+    ].forEach(([value, label]) => {
       const stat = makeCard(stats, "ai-scheduler-card-stat");
       stat.createDiv({ text: String(value) }).addClass("ai-scheduler-stat-value");
       stat.createDiv({ text: label }).addClass("ai-scheduler-stat-label");
@@ -1959,19 +2017,23 @@ var AssistantModal = class extends import_obsidian6.Modal {
         }, false, true);
       }
     }
-    const activity = this.plugin.activity.slice(-8).reverse();
+    const activity = this.plugin.activity.slice(-20).reverse();
     const activityHeading = this.renderSection(shell, "Recent activity", activity.length ? "All times are local" : "No activity yet");
     makeButton(activityHeading, "Clear", async (button) => {
       button.disabled = true;
       await this.plugin.clearActivity();
       this.render();
     });
-    const activityCard = makeCard(shell.createDiv(), "ai-scheduler-activity");
-    if (!activity.length) activityCard.createDiv({ text: "Reviews, task runs, and notifications will appear here." }).addClass("ai-scheduler-activity-empty");
-    for (const event of activity) {
-      const row = activityCard.createDiv("ai-scheduler-activity-row");
-      row.createSpan({ text: event.message });
-      row.createSpan({ text: formatDate(event.at) }).addClass("ai-scheduler-activity-time");
+    const activityContainer = shell.createDiv("ai-scheduler-activity-scroll-window");
+    if (!activity.length) {
+      const empty = activityContainer.createDiv("ai-scheduler-activity-empty");
+      empty.setText("Reviews, task runs, and notifications will appear here.");
+    } else {
+      for (const event of activity) {
+        const row = activityContainer.createDiv("ai-scheduler-activity-row");
+        row.createSpan({ text: event.message });
+        row.createSpan({ text: formatDate(event.at) }).addClass("ai-scheduler-activity-time");
+      }
     }
   }
   renderSection(parent, title, description) {
@@ -2491,6 +2553,10 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
       }
     }
     new import_obsidian8.Setting(containerEl).setName("Test notification").setDesc("Send a normal Obsidian notification visible across the app, without using AI.").addButton((button) => button.setButtonText("Send test notification").onClick(() => this.plugin.testNotification()));
+    new import_obsidian8.Setting(containerEl).setName("Daily & nightly reviews").setHeading();
+    new import_obsidian8.Setting(containerEl).setName("Run daily preview now").setDesc("Immediately synthesize a preview report from notes modified today.").addButton((button) => button.setButtonText("Run preview now").onClick(() => {
+      void this.plugin.startReviewRun(true, "daily");
+    }));
     new import_obsidian8.Setting(containerEl).setName("Review context").setDesc("Files the daily and nightly reviews may inspect through the active backend's vault tools.").addDropdown((dropdown) => dropdown.addOption("modified-today", "Markdown files modified today").addOption("all-markdown", "All Markdown files").addOption("no-files", "No automatic files").setValue(this.plugin.settings.reviewContextMode).onChange((value) => {
       void (async () => {
         this.plugin.settings.reviewContextMode = value;
@@ -2526,6 +2592,9 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
           await this.plugin.ensureNightlyReviewJob();
           await this.plugin.saveState();
         })();
+      }));
+      new import_obsidian8.Setting(containerEl).setName("Run nightly review now").setDesc("Manually trigger the comprehensive nightly review routine immediately.").addButton((button) => button.setButtonText("Run review now").onClick(() => {
+        void this.plugin.startReviewRun(true, "nightly");
       }));
     }
     new import_obsidian8.Setting(containerEl).setName("Completion notifications").setDesc("Show an Obsidian notice when an AI job finishes.").addToggle((toggle) => toggle.setValue(this.plugin.settings.notifyOnCompletion).onChange((value) => {
@@ -3426,8 +3495,41 @@ ${report}`);
   async refreshModels() {
     return refreshModels(this);
   }
-  async resolveModel(value, action) {
-    return resolveModel(this, value, action);
+  openSettingsTab() {
+    const appWithSetting = this.app;
+    if (appWithSetting.setting && typeof appWithSetting.setting.open === "function") {
+      appWithSetting.setting.open();
+      if (typeof appWithSetting.setting.openTabById === "function") {
+        appWithSetting.setting.openTabById(this.manifest.id);
+      }
+    }
+  }
+  getBackendReadiness() {
+    const mode = this.settings.backendMode;
+    if (mode === "copilot") {
+      const copilot = this.getCopilotPlugin();
+      if (!copilot) {
+        return { ok: false, message: "Obsidian Copilot plugin is not installed or enabled." };
+      }
+      const check = this.checkCopilotSetup();
+      if (!check.ok) {
+        return { ok: false, message: check.message };
+      }
+      return { ok: true, message: "Obsidian Copilot is ready." };
+    } else {
+      const claudian = this.getClaudianPlugin();
+      if (!claudian) {
+        return { ok: false, message: "Claudian plugin is not installed or enabled." };
+      }
+      const models = this.getModelOptions();
+      if (!models.length) {
+        return { ok: false, message: "No Claudian models found. Open Claudian to configure providers and API keys, then refresh models in Settings." };
+      }
+      if (!this.settings.planningModel && !this.settings.executionModel) {
+        return { ok: false, message: "No AI model selected for tasks or planning. Please choose a model in AI Scheduler settings." };
+      }
+      return { ok: true, message: "Claudian is ready." };
+    }
   }
   testNotification() {
     new import_obsidian10.Notice("AI Scheduler notifications are working.");
