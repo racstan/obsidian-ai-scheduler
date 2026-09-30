@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.6] - 2026-09-30
+
+### Highlights
+- **In-App Interactive Changelog**: AI Scheduler now highlights new features, improvements, and fixes after every release with a toggleable modal and full release history.
+- **GNU General Public License v3.0 (GPL-3.0)**: Upgraded plugin license with mandatory author attribution, copyleft share-alike terms, and strong open-source guarantees.
+- **Event Queueing Architecture**: Vault change events fired during ongoing task executions are now safely queued and processed instead of dropped.
+- **Obsidian Default Export Compatibility**: Fixed plugin loader failure on Obsidian initialization.
+
+### Added
+- Interactive "What's new" modal dialog displaying current update highlights, full timeline history, and a "Never show again" preference toggle.
+- `AI Scheduler: View changelog / what's new` command palette action and Settings tab button.
+- User preference toggle in settings for automatic post-update changelog dialogs.
+- Community help & issue reporter shortcut directly in Settings (`Facing a problem?`).
+
+### Fixed
+- **Plugin Constructor Loading Failure**: Added default CommonJS export compatibility for Obsidian's plugin loader (Thanks to [@leweii](https://github.com/leweii) in PR [#2](https://github.com/racstan/obsidian-ai-scheduler/pull/2) for reporting and contributing the fix!).
+- Prevented timer memory leaks by clearing background timeout handles upon AI completion.
+- Fixed file collision when writing reports/outputs to a path matching an existing vault folder name.
+- Sanitized review context folder trailing slashes to avoid unintended note exclusions.
+- Hardened follow-up task creation with schema validation and 100-job max bounds.
+- Wrapped plugin state persistence in comprehensive error handling.
+
+### Contributors
+- [@racstan](https://github.com/racstan) (Rachit Asthana)
+- [@leweii](https://github.com/leweii) (Jakob He - PR [#2](https://github.com/racstan/obsidian-ai-scheduler/pull/2))
+
+---
+
+## [2.1.5] - 2026-09-30
+
+### Highlights
+- **Critical Stability & Validation Hardening**: Resolved background timeout memory leaks and enforced strict validation schemas on AI-generated follow-up plans.
+
+### Fixed
+- Cleared active timers in AI communication handlers upon completion.
+- Added total job limit guardrail (max 100) to prevent unbounded recursive self-talk.
+- Hardened vault state writes with comprehensive try-catch wrappers.
+- Validated context paths before sending planning prompts.
+
+---
+
 ## [2.1.4] - 2026-09-08
 
 ### Fixed

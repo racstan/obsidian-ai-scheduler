@@ -91,6 +91,10 @@ export interface AISettings {
 	scheduleNotesEnabled: boolean;
 	/** Vault folder used for the opt-in schedule notes. */
 	scheduleFolder: string;
+	/** Last seen plugin version for showing what's new. */
+	lastSeenVersion: string;
+	/** Whether to automatically show the changelog after an update. */
+	showChangelogOnUpdate: boolean;
 }
 
 export interface ActivityEntry {

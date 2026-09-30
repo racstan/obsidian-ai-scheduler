@@ -3,6 +3,31 @@ import { ActivityEntry, Job } from './types';
 
 export const sleep = (ms: number): Promise<void> => new Promise(resolve => window.setTimeout(resolve, ms));
 
+export async function withTimeout<T>(promise: Promise<T>, ms: number, errorMessage: string): Promise<T> {
+	let timer: number | undefined;
+	const timeoutPromise = new Promise<never>((_, reject) => {
+		timer = window.setTimeout(() => {
+			reject(new Error(errorMessage));
+		}, ms);
+	});
+	try {
+		return await Promise.race([promise, timeoutPromise]);
+	} finally {
+		if (timer !== undefined) {
+			window.clearTimeout(timer);
+		}
+	}
+}
+
+export function validateJobSchema(item: unknown): Record<string, unknown> | null {
+	if (!item || typeof item !== 'object') return null;
+	const record = item as Record<string, unknown>;
+	if (typeof record.title !== 'string' || !record.title.trim()) return null;
+	if (typeof record.prompt !== 'string' || !record.prompt.trim()) return null;
+	if (!record.schedule || typeof record.schedule !== 'object') return null;
+	return record;
+}
+
 export function id(prefix: string): string {
 	return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }

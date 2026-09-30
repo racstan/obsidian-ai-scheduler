@@ -8,7 +8,7 @@
  */
 import { App, Notice, TFile, TFolder } from 'obsidian';
 import { AISettings, BACKEND_INFO, Job } from './types';
-import { contentFromMessage, sleep } from './util';
+import { contentFromMessage, sleep, withTimeout } from './util';
 
 export const AGENT_TIMEOUT_MS = 30 * 60 * 1000;
 
@@ -281,10 +281,7 @@ export async function sendToClaudian(
 		turnRequest.externalContextPaths = context.externalContextPaths;
 	}
 	const send = controller.sendMessage({ content: prompt, turnRequestOverride: turnRequest });
-	await Promise.race([
-		send,
-		sleep(AGENT_TIMEOUT_MS).then(() => { throw new Error('AI task timed out after 30 minutes'); }),
-	]);
+	await withTimeout(send, AGENT_TIMEOUT_MS, 'AI task timed out after 30 minutes');
 	await waitForTabIdle(view, active);
 	await sleep(300);
 	return lastAssistantReply(host, view, active, beforeCount);
@@ -331,10 +328,7 @@ export async function sendToCopilot(host: BackendHost, prompt: string, context: 
 		(message: unknown) => { reply = contentFromMessage(message) || reply; },
 		{ debug: false },
 	);
-	await Promise.race([
-		run,
-		sleep(AGENT_TIMEOUT_MS).then(() => { throw new Error('AI task timed out after 30 minutes'); }),
-	]);
+	await withTimeout(run, AGENT_TIMEOUT_MS, 'AI task timed out after 30 minutes');
 	return (reply || '').trim();
 }
 

@@ -2,6 +2,7 @@ import { PluginSettingTab, App, Setting, Notice } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
 import { BACKEND_INFO } from '../types';
 import { errorText } from '../util';
+import { ChangelogModal } from './ChangelogModal';
 
 export class AssistantSettingTab extends PluginSettingTab {
 	plugin: AISchedulerPlugin;
@@ -251,5 +252,31 @@ export class AssistantSettingTab extends PluginSettingTab {
 					})();
 				}));
 		}
+
+		new Setting(containerEl).setName('Changelog & updates').setHeading();
+		new Setting(containerEl)
+			.setName('Show changelog after updates')
+			.setDesc('Automatically open the what\'s new dialog when AI Scheduler is updated.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.showChangelogOnUpdate).onChange(value => {
+				void (async () => {
+					this.plugin.settings.showChangelogOnUpdate = value;
+					await this.plugin.saveState();
+				})();
+			}));
+
+		new Setting(containerEl)
+			.setName('View changelog')
+			.setDesc('Browse recent changes and complete release history starting from v2.0.0.')
+			.addButton(button => button.setButtonText('View what\'s new').onClick(() => {
+				new ChangelogModal(this.app, this.plugin).open();
+			}));
+
+		new Setting(containerEl).setName('Help & community').setHeading();
+		new Setting(containerEl)
+			.setName('Facing a problem?')
+			.setDesc('Found a bug or have a suggestion? Create an issue on GitHub to get help from the community.')
+			.addButton(button => button.setButtonText('Report an issue').onClick(() => {
+				window.open('https://github.com/racstan/obsidian-ai-scheduler/issues', '_blank');
+			}));
 	}
 }

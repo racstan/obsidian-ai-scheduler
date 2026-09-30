@@ -12,7 +12,7 @@
  * releases its lock in a finally block so a crashed run can never wedge a
  * schedule.
  */
-import { Notice, Plugin, TFile, normalizePath } from 'obsidian';
+import { Notice, Plugin, TFile, TFolder, normalizePath } from 'obsidian';
 import { ActivityEntry, AISettings, BACKEND_INFO, Job, JobOutput, ScheduleKind, TaskSchedule } from './types';
 import { DEFAULT_SETTINGS, normalizeJob, parseStoredData } from './settings';
 import {
@@ -31,10 +31,11 @@ import {
 import { executionPrompt, plannerPrompt, refinePrompt, reviewPrompt } from './prompts';
 import { getPathsContext, getVaultContextOptions, JobContext } from './context';
 import * as backends from './backends';
-import { extractJson, errorText, formatDate, isDisabledTask, isNightlyReviewJob, localDateKey, localTimestampKey, logActivityEntry } from './util';
+import { extractJson, errorText, formatDate, isDisabledTask, isNightlyReviewJob, localDateKey, localTimestampKey, logActivityEntry, sleep, validateJobSchema } from './util';
 import { AssistantModal } from './ui/AssistantModal';
 import { PlannerModal } from './ui/PlannerModal';
 import { AssistantSettingTab } from './ui/SettingsTab';
+import { ChangelogModal } from './ui/ChangelogModal';
 import { ScheduleNotesSync } from './notes';
 
 const TICK_MS = 15000;
@@ -49,6 +50,7 @@ export class AISchedulerPlugin extends Plugin {
 	reviewRunning = false;
 	lastTickError: string | null = null;
 	notesSync: ScheduleNotesSync = new ScheduleNotesSync(this);
+	pendingVaultEvents: string[] = [];
 	private runningJobs = new Set<string>();
 
 	async onload(): Promise<void> {
@@ -95,6 +97,11 @@ export class AISchedulerPlugin extends Plugin {
 				new Notice('Nightly AI review enabled');
 			},
 		});
+		this.addCommand({
+			id: 'view-changelog',
+			name: 'View changelog / what\'s new',
+			callback: () => new ChangelogModal(this.app, this).open(),
+		});
 		this.addSettingTab(new AssistantSettingTab(this.app, this));
 
 		this.registerInterval(window.setInterval(() => { void this.tick(); }, TICK_MS));
@@ -115,12 +122,31 @@ export class AISchedulerPlugin extends Plugin {
 
 		if (this.settings.nightlyReviewEnabled) await this.ensureNightlyReviewJob();
 		await this.saveState();
+
+		// Check for changelog notification on update
+		const currentVersion = this.manifest.version;
+		if (this.settings.showChangelogOnUpdate && this.settings.lastSeenVersion && this.settings.lastSeenVersion !== currentVersion) {
+			window.setTimeout(() => {
+				new ChangelogModal(this.app, this, {
+					fromVersion: this.settings.lastSeenVersion,
+					currentVersion,
+					isAutomatic: true,
+				}).open();
+			}, 1000);
+		}
+		this.settings.lastSeenVersion = currentVersion;
+		await this.saveState();
+
 		await this.catchUpOnStart();
 		if (this.settings.scheduleNotesEnabled) await this.notesSync.syncAll();
 	}
 
 	async saveState(): Promise<void> {
-		await this.saveData({ version: 6, settings: this.settings, jobs: this.jobs, activity: this.activity.slice(-50) });
+		try {
+			await this.saveData({ version: 6, settings: this.settings, jobs: this.jobs, activity: this.activity.slice(-50) });
+		} catch (error) {
+			console.error('[ai-scheduler] Failed to save state:', error);
+		}
 		this.notesSync.requestSync();
 	}
 
@@ -174,13 +200,20 @@ export class AISchedulerPlugin extends Plugin {
 		if (plan.missed.length) {
 			new Notice(`${plan.missed.length} AI task(s) are ready after startup`, 6000);
 		}
+		await sleep(1000);
 		await this.tick();
 	}
 
 	async tick(): Promise<void> {
 		if (this.running) return;
 		const due = dueJobs(this.jobs, Date.now());
-		if (!due.length) return;
+		if (!due.length) {
+			if (this.pendingVaultEvents.length) {
+				const events = this.pendingVaultEvents.splice(0);
+				for (const path of events) await this.handleVaultChange({ path });
+			}
+			return;
+		}
 		this.running = true;
 		try {
 			for (const job of due) {
@@ -189,6 +222,10 @@ export class AISchedulerPlugin extends Plugin {
 			}
 		} finally {
 			this.running = false;
+		}
+		if (this.pendingVaultEvents.length) {
+			const events = this.pendingVaultEvents.splice(0);
+			for (const path of events) await this.handleVaultChange({ path });
 		}
 	}
 
@@ -249,13 +286,17 @@ export class AISchedulerPlugin extends Plugin {
 	}
 
 	async handleVaultChange(file: { path?: string }): Promise<void> {
-		if (!file || !file.path || this.running) return;
+		if (!file || !file.path) return;
+		if (this.running) {
+			this.pendingVaultEvents.push(file.path);
+			return;
+		}
 		const eventJobs = this.jobs.filter(job => job.enabled && job.schedule && job.schedule.kind === 'event'
 			&& (!job.schedule.event || job.schedule.event === 'modify' || job.schedule.event === 'vault-change'));
 		if (!eventJobs.length) return;
 		const now = Date.now();
 		for (const job of eventJobs) {
-			const cooldown = Number(job.cooldownMinutes || 10) * 60000;
+			const cooldown = Math.max(0, Number(job.cooldownMinutes) || 10) * 60000;
 			if (job.lastRunAt && now - new Date(job.lastRunAt).getTime() < cooldown) continue;
 			job.nextRunAt = new Date(now + 2000).toISOString();
 			job.lastEventPath = file.path;
@@ -303,7 +344,7 @@ export class AISchedulerPlugin extends Plugin {
 			job.lastStatus = null;
 			job.tab = this.settings.assistantTab;
 			job.schedule = { kind: 'daily', time: this.settings.reviewTime };
-			if (!job.nextRunAt || new Date(job.nextRunAt) <= new Date()) job.nextRunAt = nextDailyRun(this.settings.reviewTime);
+			job.nextRunAt = nextDailyRun(this.settings.reviewTime);
 		}
 	}
 
@@ -356,7 +397,9 @@ export class AISchedulerPlugin extends Plugin {
 	}
 
 	includeReviewFile(file: { path: string; stat: { mtime: number } }, start: Date): boolean {
-		if (!file || !file.path || file.path.startsWith(`${this.settings.reportFolder}/`)) return false;
+		if (!file || !file.path) return false;
+		const normalizedReportFolder = this.settings.reportFolder.replace(/\/+$/, '');
+		if (file.path.startsWith(`${normalizedReportFolder}/`)) return false;
 		if (this.settings.reviewContextMode === 'all-markdown') return true;
 		if (this.settings.reviewContextMode === 'no-files') return false;
 		return Boolean(file.stat && file.stat.mtime >= start.getTime());
@@ -370,6 +413,13 @@ export class AISchedulerPlugin extends Plugin {
 		return getPathsContext(this.app, paths);
 	}
 
+	validateContextPaths(paths: string[]): string[] {
+		if (!Array.isArray(paths)) return [];
+		const available = this.getVaultContextOptions();
+		const known = new Set(available.map(option => option.path));
+		return paths.filter(path => known.has(path));
+	}
+
 	getJobContext(job: Job): JobContext {
 		const context = getPathsContext(this.app, job && job.contextPaths);
 		if (context.missingPaths.length) throw new Error(`Selected context no longer exists: ${context.missingPaths.join(', ')}`);
@@ -378,10 +428,19 @@ export class AISchedulerPlugin extends Plugin {
 
 	async writeOutput(folder: string, filename: string | undefined, content: string): Promise<string> {
 		const cleanFolder = normalizePath(String(folder || '').replace(/^\/+|\/+$/g, ''));
-		const cleanName = String(filename || `${localDateKey()}.md`).replace(/[\\/]/g, '-');
-		const path = normalizePath(cleanFolder ? `${cleanFolder}/${cleanName}` : cleanName);
+		let cleanName = String(filename || `${localDateKey()}.md`).replace(/[\\/]/g, '-');
+		let path = normalizePath(cleanFolder ? `${cleanFolder}/${cleanName}` : cleanName);
 		await this.ensureFolder(cleanFolder);
-		const existing = this.app.vault.getAbstractFileByPath(path);
+		let existing = this.app.vault.getAbstractFileByPath(path);
+		if (existing instanceof TFolder) {
+			let suffix = 2;
+			while (existing instanceof TFolder) {
+				cleanName = cleanName.replace(/(\.md)?$/, `-${suffix}.md`);
+				path = normalizePath(cleanFolder ? `${cleanFolder}/${cleanName}` : cleanName);
+				existing = this.app.vault.getAbstractFileByPath(path);
+				suffix += 1;
+			}
+		}
 		if (existing instanceof TFile) await this.app.vault.modify(existing, content);
 		else await this.app.vault.create(path, content);
 		return path;
@@ -400,8 +459,15 @@ export class AISchedulerPlugin extends Plugin {
 	}
 
 	async processFollowUps(reply: string, parentJob: Job): Promise<void> {
-		const plans = extractJson(reply).filter(item => item && item.title && item.prompt && item.schedule);
+		const MAX_TOTAL_JOBS = 100;
+		const plans = extractJson(reply)
+			.map(item => validateJobSchema(item))
+			.filter((item): item is Record<string, unknown> => Boolean(item));
 		for (const plan of plans.slice(0, 3)) {
+			if (this.jobs.length >= MAX_TOTAL_JOBS) {
+				console.warn('[ai-scheduler] Follow-up skipped: job limit reached');
+				break;
+			}
 			await this.addJob(Object.assign(
 				this.jobFromPlan(plan, parentJob.tab, 'self-talk'),
 				{
@@ -440,16 +506,21 @@ export class AISchedulerPlugin extends Plugin {
 			cooldownMinutes?: number;
 		};
 		const context = plan.context as { paths?: string[] } | undefined;
+		const titleStr = typeof plan.title === 'string' ? plan.title : 'Assistant task';
+		const nextRunAt = normalized.kind === 'event' ? null : getScheduleNextRun(normalized);
+		if (normalized.kind !== 'event' && !nextRunAt) {
+			throw new Error(`Invalid schedule for "${titleStr}": no valid next run time`);
+		}
 		return {
-			title: String(plan.title).slice(0, 120),
-			prompt: String(plan.prompt),
+			title: titleStr.slice(0, 120),
+			prompt: typeof plan.prompt === 'string' ? plan.prompt : '',
 			tab: Number(planRecord.tab || fallbackTab || this.settings.assistantTab),
 			profile: planRecord.profile || null,
 			conversationId: planRecord.conversationId || null,
 			providerId: planRecord.providerId || null,
 			model: planRecord.model || null,
 			schedule: normalized,
-			nextRunAt: normalized.kind === 'event' ? null : getScheduleNextRun(normalized),
+			nextRunAt,
 			output: planRecord.output || null,
 			notify: planRecord.notify !== false,
 			contextPaths: Array.isArray(planRecord.contextPaths) ? planRecord.contextPaths : Array.isArray(context?.paths) ? context.paths : [],
@@ -460,17 +531,20 @@ export class AISchedulerPlugin extends Plugin {
 
 	async planAndCreate(goal: string, contextPaths: string[] = [], resultFolder = ''): Promise<{ reply: string; jobs: Job[] }> {
 		const execution = await backends.resolveModel(this, this.settings.planningModel, 'AI planning');
-		const prompt = plannerPrompt(goal, contextPaths);
-		const context = getPathsContext(this.app, contextPaths);
+		const validatedPaths = this.validateContextPaths(contextPaths);
+		const prompt = plannerPrompt(goal, validatedPaths);
+		const context = getPathsContext(this.app, validatedPaths);
 		const reply = await backends.sendToAI(this, prompt, execution, context);
-		const plans = extractJson(reply).filter(item => item && item.title && item.prompt && item.schedule);
+		const plans = extractJson(reply)
+			.map(item => validateJobSchema(item))
+			.filter((item): item is Record<string, unknown> => Boolean(item));
 		if (!plans.length) throw new Error('The AI returned no valid schedule. Ask it for a concrete time or cadence.');
 		const jobs: Job[] = [];
 		for (const plan of plans.slice(0, 10)) {
 			const planRecord = plan as { contextPaths?: string[]; context?: { paths?: string[] }; output?: JobOutput | null };
 			jobs.push(await this.addJob(Object.assign(
 				this.jobFromPlan(Object.assign({}, plan, {
-					contextPaths: planRecord.contextPaths || (planRecord.context && planRecord.context.paths) || contextPaths,
+					contextPaths: planRecord.contextPaths || (planRecord.context && planRecord.context.paths) || validatedPaths,
 					output: planRecord.output || (resultFolder ? { folder: resultFolder } : null),
 				}), execution.tab as number, 'planner'),
 				{ profile: execution.modelRef, conversationId: execution.conversationId, providerId: execution.providerId, model: execution.model },

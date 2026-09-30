@@ -130,13 +130,20 @@ flowchart TD
 
 ## Quickstart & Installation
 
-### Option 1: Via BRAT (Recommended for Instant Updates)
-1. Install the **BRAT** (Beta Reviewers Auto-update Tester) plugin from Obsidian Community Plugins.
+### Option 1: Official Obsidian Community Plugins (Recommended for Most Users)
+1. Open Obsidian **Settings** → **Community plugins**.
+2. Turn **Restricted mode** OFF (if enabled).
+3. Click **Browse** and search for **AI Scheduler**.
+4. Click **Install**, then click **Enable**.
+
+### Option 2: Via BRAT (For Beta Testers Only — Normal Users Can Ignore This)
+> *(BRAT is an optional testing plugin used only to test bleeding-edge pre-release builds before they are published to the official store)*
+1. Install the **BRAT** (Beta Reviewer's Auto-update Tester) plugin from Obsidian Community Plugins.
 2. Open BRAT settings and click **Add Beta plugin**.
 3. Paste: `https://github.com/racstan/obsidian-ai-scheduler`
 4. Click **Add Plugin**, then enable **AI Scheduler** under Community Plugins.
 
-### Option 2: Manual Installation
+### Option 3: Manual Installation (For Offline Vaults & Developers)
 1. Go to the [Latest GitHub Release](https://github.com/racstan/obsidian-ai-scheduler/releases).
 2. Download `main.js`, `manifest.json`, and `styles.css`.
 3. Create a folder in your vault at `.obsidian/plugins/ai-scheduler/`.

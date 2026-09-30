@@ -1,0 +1,302 @@
+/*
+ * AI Scheduler Changelog Data
+ * Maintained history of releases from 2.0.0 to current.
+ */
+
+export interface Contributor {
+	name: string;
+	username?: string;
+	url: string;
+	role?: string;
+}
+
+export interface ReleaseChangelog {
+	version: string;
+	date: string;
+	title: string;
+	highlights?: string[];
+	added?: string[];
+	changed?: string[];
+	fixed?: string[];
+	contributors?: Contributor[];
+}
+
+export const CHANGELOG_DATA: ReleaseChangelog[] = [
+	{
+		version: '2.1.6',
+		date: '2026-09-30',
+		title: 'In-App Changelog System, Stability Hardening & GPL-3.0',
+		highlights: [
+			'In-App Changelog System: Automatically shows release notes after plugin updates with full history view and a "never show again" option.',
+			'License Upgrade to GNU GPLv3: Strong copyleft protections, author attribution requirements, and open-source guarantees.',
+			'Resilient Event Queueing: Vault events fired during active executions are now queued rather than dropped.',
+		],
+		added: [
+			'Interactive What\'s new / changelog modal dialog with complete version timeline.',
+			'"AI Scheduler: View changelog / what\'s new" command and Settings button.',
+			'Setting toggle to control whether changelogs appear automatically on update.',
+			'Community help & issue reporter shortcut directly in Settings.',
+		],
+		fixed: [
+			'Fixed plugin default export compatibility for Obsidian loader (thanks @leweii in PR #2).',
+			'Prevented timer memory leaks by clearing timeout handles on AI completions.',
+			'Fixed folder collision when writing reports/outputs to a path matching an existing folder.',
+			'Sanitized review context folder trailing slashes to prevent accidental file inclusion.',
+			'Validated AI-generated task schemas and bounded recursive follow-ups to 100 jobs max.',
+			'Added safe error handling around plugin state persistence.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Maintainer',
+			},
+			{
+				name: 'Jakob He',
+				username: 'leweii',
+				url: 'https://github.com/leweii',
+				role: 'Contributor (PR #2)',
+			},
+		],
+	},
+	{
+		version: '2.1.5',
+		date: '2026-09-30',
+		title: 'Critical Stability, Memory Leaks & Validation Hardening',
+		highlights: [
+			'Resolved background timeout leaks during long-running AI requests.',
+			'Enforced validation schemas on AI-generated follow-up jobs and schedule plans.',
+		],
+		fixed: [
+			'Cleared active timers in AI communication handlers upon completion.',
+			'Added total job limit guardrail (max 100) to prevent unbounded recursive self-talk.',
+			'Hardened vault state writes with comprehensive error handling.',
+			'Validated context paths before sending planning prompts.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author',
+			},
+		],
+	},
+	{
+		version: '2.1.4',
+		date: '2026-09-08',
+		title: 'Community Plugin Manifest Compliance',
+		fixed: [
+			'Removed redundant "Obsidian" prefix in manifest description in compliance with Community Plugin review rules.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author',
+			},
+		],
+	},
+	{
+		version: '2.1.3',
+		date: '2026-09-06',
+		title: 'Strict TypeScript Architecture & Official Linting Readiness',
+		highlights: [
+			'100% strict TypeScript types across all Claudian and Obsidian Copilot integration bridges.',
+			'Zero ESLint warnings under official eslint-plugin-obsidianmd ruleset.',
+		],
+		added: [
+			'Type-safe bridge interfaces for Claudian and Obsidian Copilot internals.',
+			'Safe profile parsers and tab resolution helpers.',
+		],
+		changed: [
+			'Decoupled settings re-render lifecycles to eliminate deprecation warnings.',
+			'Standardized UI copy to Obsidian sentence-case conventions.',
+		],
+		fixed: [
+			'Unhandled type coercion in clock parsers for non-string values.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author',
+			},
+		],
+	},
+	{
+		version: '2.1.2',
+		date: '2026-09-06',
+		title: 'Native Accessible Dialogs',
+		added: [
+			'Native Obsidian ConfirmModal for destructive actions (job deletion, bulk disable, bulk delete).',
+			'Declarative setting definitions for forward compatibility.',
+		],
+		fixed: [
+			'Hardened multi-rule JSON deserialization with safe unknown type assertions.',
+			'Improved clock string regex matching on edge-case inputs.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author',
+			},
+		],
+	},
+	{
+		version: '2.1.1',
+		date: '2026-09-05',
+		title: 'Zero-Dependency Cron Engine & Two-Way Synced Schedule Notes',
+		highlights: [
+			'Pure 5-field cron scheduling engine bundled directly into the plugin source.',
+			'Two-way synced Markdown notes in AI Schedules/ with YAML frontmatter sync.',
+			'DST-safe scheduling arithmetic skipping invalid wall times.',
+		],
+		added: [
+			'Full 5-field cron expression support (minute hour dom month dow) with live validation.',
+			'Startup catch-up engine to evaluate jobs due while Obsidian was closed.',
+			'Run recovery mechanism to gracefully reset interrupted tasks.',
+		],
+		changed: [
+			'Rebuilt entire plugin core from modular TypeScript sources with esbuild bundling.',
+			'Added comprehensive unit test suite covering cron math and execution state machines.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author',
+			},
+		],
+	},
+	{
+		version: '2.1.0',
+		date: '2026-08-22',
+		title: 'Dual Backend Architecture & Task Context Binding',
+		highlights: [
+			'Native support for Obsidian Copilot alongside Claudian.',
+			'Contextual note and folder binding for scheduled tasks.',
+		],
+		added: [
+			'Dual backend switch in settings (Claudian or Obsidian Copilot).',
+			'Interval schedules (every N minutes or hours with bounded iteration limits).',
+			'Vault project folder and active note context binding.',
+			'Custom output routing to dedicated vault folders.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author',
+			},
+		],
+	},
+	{
+		version: '2.0.4',
+		date: '2026-08-22',
+		title: 'Automated CI Pipeline & Smoke Testing',
+		added: [
+			'Automated GitHub Actions release pipeline.',
+			'Smoke testing harness against mock Obsidian runtime.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author',
+			},
+		],
+	},
+	{
+		version: '2.0.3',
+		date: '2026-08-22',
+		title: 'Redesigned Assistant Dashboard',
+		changed: [
+			'Categorized dashboard tabs: Active Tasks, Disabled Tasks, and Past Completed Tasks.',
+			'Task numbering (#1, #2...) and visual context badges (Independent vs Project-based).',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author',
+			},
+		],
+	},
+	{
+		version: '2.0.2',
+		date: '2026-08-22',
+		title: 'Multi-Model Routing Profiles',
+		added: [
+			'Configure separate AI models for Planning, Task Execution, Daily Previews, and Nightly Reviews.',
+			'Live model refresher button in settings.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author',
+			},
+		],
+	},
+	{
+		version: '2.0.1',
+		date: '2026-08-21',
+		title: 'Session Persistence & Namespace Polish',
+		fixed: [
+			'Claudian conversation persistence and session lifecycle management.',
+			'Standardized CSS class namespaces under ai-scheduler.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author',
+			},
+		],
+	},
+	{
+		version: '2.0.0',
+		date: '2026-08-21',
+		title: 'Initial Release of AI Scheduler',
+		highlights: [
+			'First autonomous background scheduling and proactive intelligence engine for Obsidian.',
+			'Automate recurring prompts, vault maintenance, and nightly reviews.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author',
+			},
+		],
+	},
+];
+
+export function getLatestRelease(): ReleaseChangelog {
+	return CHANGELOG_DATA[0];
+}
+
+export function getReleasesSince(previousVersion: string | null | undefined): ReleaseChangelog[] {
+	if (!previousVersion) return [CHANGELOG_DATA[0]];
+	const index = CHANGELOG_DATA.findIndex(r => r.version === previousVersion);
+	if (index === -1) {
+		return [CHANGELOG_DATA[0]];
+	}
+	if (index === 0) {
+		return [CHANGELOG_DATA[0]];
+	}
+	return CHANGELOG_DATA.slice(0, index);
+}

@@ -20,6 +20,8 @@ export const DEFAULT_SETTINGS: AISettings = {
 	reviewContextMode: 'modified-today',
 	scheduleNotesEnabled: false,
 	scheduleFolder: 'AI Schedules',
+	lastSeenVersion: '',
+	showChangelogOnUpdate: true,
 };
 
 export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date()): Job {
@@ -100,6 +102,8 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 	// storage until they explicitly turn notes on in settings.
 	if (typeof settings.scheduleNotesEnabled !== 'boolean') settings.scheduleNotesEnabled = false;
 	if (!settings.scheduleFolder) settings.scheduleFolder = DEFAULT_SETTINGS.scheduleFolder;
+	if (typeof settings.showChangelogOnUpdate !== 'boolean') settings.showChangelogOnUpdate = true;
+	if (typeof settings.lastSeenVersion !== 'string') settings.lastSeenVersion = '';
 
 	const legacyTasks = stored.tasks as Array<Record<string, unknown>> | undefined;
 	const jobs = Array.isArray(stored.jobs)
