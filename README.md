@@ -252,6 +252,9 @@ npm run build
 
 ---
 
-## License
+## License & Attribution
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [GNU General Public License v3.0 (GPL-3.0)](LICENSE) © 2026 **Rachit Asthana**.
+
+- **Attribution Required**: Any distribution, fork, or derivative work must retain the original copyright notice, credit the author, and remain open-source under GPL-3.0.
+- **Support the Project**: If you find AI Scheduler useful or fork the project, please consider giving the repository a ⭐ star on GitHub to support ongoing maintenance!
