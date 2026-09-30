@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.7] - 2026-09-30
+
+### Highlights
+- **Redesigned AI Planner**: Clean, unstacked dialog with direct prompt-first goal input and spacious responsive layout.
+- **Backend Readiness Alerts**: Prominent warning banner when AI backend or models are unconfigured with 1-click navigation to Settings.
+- **Fixed Scrollable Activity Window**: Encapsulated recent activity logs into a fixed-height scrollable window.
+- **Streamlined Dashboard**: Added a direct Settings button and moved on-demand review actions to the Settings tab.
+
+### Added
+- Direct "Open settings" button in the main AI Scheduler dashboard header.
+- Backend configuration check and warning banner on dashboard, planner, and job editor.
+- Dedicated "Daily & nightly reviews" section in Settings with instant preview and review buttons.
+
+### Fixed
+- Fixed modal stacking behavior when opening the AI Planner from the dashboard.
+- Fixed modal sizing and layout clipping across planner and task editor modals.
+- Fixed YAML frontmatter delimiter formatting and note cleanup on task deletion.
+- Fixed cron multi-time conversion and range stepping math.
+
+### Contributors
+- [@racstan](https://github.com/racstan) (Rachit Asthana)
+
+---
+
 ## [2.1.6] - 2026-09-30
 
 ### Highlights

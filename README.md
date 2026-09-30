@@ -2,8 +2,8 @@
 
 <div align="center">
 
-[![Release](https://img.shields.io/badge/release-v2.1.6-blue.svg?style=flat-square)](https://github.com/racstan/obsidian-ai-scheduler/releases)
-[![Obsidian](https://img.shields.io/badge/Obsidian-v1.4.0%2B-purple.svg?style=flat-square)](https://obsidian.md)
+[![Release](https://img.shields.io/badge/release-v2.1.7-blue.svg?style=flat-square)](https://github.com/racstan/obsidian-ai-scheduler/releases)
+[![Obsidian](https://img.shields.io/badge/Obsidian-v1.6.6%2B-purple.svg?style=flat-square)](https://obsidian.md)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-3178C6.svg?style=flat-square)](tsconfig.json)
 [![Local First](https://img.shields.io/badge/Privacy-100%25%20Local--First-success.svg?style=flat-square)](#privacy-and-safety)
