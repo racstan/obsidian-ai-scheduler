@@ -39,6 +39,8 @@ import { ScheduleNotesSync } from './notes';
 
 const TICK_MS = 15000;
 
+export { AISchedulerPlugin as default };
+
 export class AISchedulerPlugin extends Plugin {
 	settings: AISettings = DEFAULT_SETTINGS;
 	jobs: Job[] = [];

@@ -75,8 +75,8 @@ window.setInterval = setInterval;
 window.clearInterval = clearInterval;
 const obsidian = require('obsidian');
 const mod = require('./main.cjs');
-const PluginClass = mod.AISchedulerPlugin || mod.default || mod;
-assert.equal(typeof PluginClass, 'function', 'bundle must export the plugin class');
+const PluginClass = mod.default || mod;
+assert.equal(typeof PluginClass, 'function', 'bundle must expose an Obsidian-compatible plugin constructor');
 
 const GENERIC_REPLY = 'SMOKE REPLY';
 const PLANNER_REPLY = '<assistant-scheduler>[{"title":"Morning review","prompt":"Review the notes","schedule":{"kind":"cron","expression":"0 9 * * 1-5"}},{"title":"One-off thing","prompt":"Do it","schedule":{"kind":"once","at":"2099-01-01T09:00:00.000Z"}}]</assistant-scheduler>';
