@@ -10,7 +10,7 @@
  */
 import { CronExpression, parseCron } from './parse';
 
-const MAX_SEARCH_YEARS = 4;
+const MAX_SEARCH_YEARS = 8;
 // Each loop iteration advances at least one minute or jumps a field level, so
 // a generous guard only ever fires on malformed input that still parses.
 const MAX_ITERATIONS = 1_000_000;

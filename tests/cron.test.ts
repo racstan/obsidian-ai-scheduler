@@ -162,3 +162,22 @@ test('unambiguous times around fall-back resolve to the real instants', () => {
 	const next = cronNext('0 2 * * *', at(2026, 11, 1, 0, 0));
 	assert.equal(next!.getTime(), Date.UTC(2026, 10, 1, 7, 0));
 });
+
+test('wrapping ranges with step expand correctly', () => {
+	const dowParsed = parseCron('0 0 * * FRI-MON/2');
+	assert.deepEqual(dowParsed.dow, [0, 1, 5]);
+
+	const monthParsed = parseCron('0 0 1 NOV-FEB/2 *');
+	assert.deepEqual(monthParsed.month, [1, 11]);
+
+	const dowStep1 = parseCron('0 0 * * FRI-MON');
+	assert.deepEqual(dowStep1.dow, [0, 1, 5, 6]);
+});
+
+test('cronUpcoming finds leap year Feb 29 across 2100 century boundary', () => {
+	const upcoming = cronUpcoming('0 0 29 2 *', 1, new Date(2097, 0, 1));
+	assert.equal(upcoming.length, 1);
+	assert.equal(upcoming[0].getFullYear(), 2104);
+	assert.equal(upcoming[0].getMonth(), 1);
+	assert.equal(upcoming[0].getDate(), 29);
+});

@@ -101,3 +101,24 @@ test('recoverInterruptedRuns resets crashed runs without double-billing recurrin
 	assert.equal(once.status, 'scheduled');
 	assert.equal(healthy.status, 'scheduled');
 });
+
+test('planStartupCatchUp with non-numeric catchUpHours defaults safely to 24 hours', () => {
+	const now = Date.now();
+	const hourAgo = new Date(now - 60 * 60 * 1000).toISOString();
+	const monthAgo = new Date(now - 40 * 24 * 60 * 60 * 1000).toISOString();
+	const jobs = [
+		makeJob({ id: 'recent', nextRunAt: hourAgo }),
+		makeJob({ id: 'overdue40d', nextRunAt: monthAgo }),
+	];
+	const plan = planStartupCatchUp(jobs, { catchUpOnStart: true, catchUpHours: 'invalid' as unknown as number }, now);
+	assert.deepEqual(plan.missed.map(job => job.id), ['recent']);
+	assert.deepEqual(plan.stale.map(job => job.id), ['overdue40d']);
+});
+
+test('reconcileAfterRun with failed status does not prematurely retire maxIterations', () => {
+	const job = makeJob({ schedule: { kind: 'interval', intervalMinutes: 10, maxIterations: 2 } });
+	job.runCount = 1;
+	reconcileAfterRun(job, { failed: true });
+	assert.equal(job.enabled, true);
+	assert.ok(job.nextRunAt);
+});

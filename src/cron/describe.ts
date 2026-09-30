@@ -42,10 +42,10 @@ function joinNatural(items: string[]): string {
 	return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
-function nameList(values: number[], names: string[], long: boolean): string {
+function nameList(values: number[], names: string[]): string {
 	return joinNatural(rangesToList(values).map(([start, end]) => {
 		if (start === end) return names[start];
-		if (end - start >= 2) return `${names[start]}${long ? '' : ''} to ${names[end]}`;
+		if (end - start >= 2) return `${names[start]} to ${names[end]}`;
 		return `${names[start]} and ${names[end]}`;
 	}));
 }
@@ -75,7 +75,7 @@ function dayPhrase(expression: CronExpression): string {
 	const domDays = expression.domRestricted ? expression.dom : null;
 	const dowDays = expression.dowRestricted ? expression.dow : null;
 	if (domDays && dowDays) {
-		return `on ${numberList(domDays, 'day')} or ${nameList(dowDays, DOW_SHORT, false)}`;
+		return `on ${numberList(domDays, 'day')} or ${nameList(dowDays, DOW_SHORT)}`;
 	}
 	if (domDays) {
 		if (domDays.length === 31) return 'every day';
@@ -83,7 +83,7 @@ function dayPhrase(expression: CronExpression): string {
 	}
 	if (dowDays) {
 		if (dowDays.length === 7) return 'every day';
-		return `on ${nameList(dowDays, DOW_LONG, true)}`;
+		return `on ${nameList(dowDays, DOW_LONG)}`;
 	}
 	return 'every day';
 }

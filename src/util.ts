@@ -67,34 +67,46 @@ export function contentFromMessage(message: unknown): string {
 	return '';
 }
 
-/* Extracts JSON plans from an AI reply. Accepts <assistant-scheduler> tags,
- * fenced code blocks, or raw JSON, brute-forcing the parse over shrinking
- * suffixes from the first bracket. */
-export function extractJson(text: string): Record<string, unknown>[] {
-	const source = String(text || '').trim();
-	const candidates: string[] = [];
-	const marked = /<assistant-scheduler>\s*([\s\S]*?)\s*<\/assistant-scheduler>/i.exec(source);
-	if (marked) candidates.push(marked[1]);
-	const fenced = /```(?:json)?\s*([\s\S]*?)\s*```/i.exec(source);
-	if (fenced) candidates.push(fenced[1]);
-	candidates.push(source);
-	const start = Math.min(...candidates.map(value => {
-		const a = value.indexOf('[');
-		const o = value.indexOf('{');
-		return a < 0 ? o : o < 0 ? a : Math.min(a, o);
-	}).filter(value => value >= 0));
-	if (Number.isFinite(start) && start >= 0) {
-		for (const value of candidates) {
-			const trimmed = value.trim();
-			for (let end = trimmed.length; end > start; end--) {
-				try {
-					const parsed = JSON.parse(trimmed.slice(start, end)) as unknown;
-					return (Array.isArray(parsed) ? parsed : [parsed]) as Record<string, unknown>[];
-				} catch { /* keep looking for the end of the JSON value */ }
+function parseJsonCandidate(candidate: string): Record<string, unknown>[] {
+	const trimmed = candidate.trim();
+	const a = trimmed.indexOf('[');
+	const o = trimmed.indexOf('{');
+	const start = a < 0 ? o : o < 0 ? a : Math.min(a, o);
+	if (start < 0) return [];
+	for (let end = trimmed.length; end > start; end--) {
+		try {
+			const parsed = JSON.parse(trimmed.slice(start, end)) as unknown;
+			if (parsed && typeof parsed === 'object') {
+				return (Array.isArray(parsed) ? parsed : [parsed]) as Record<string, unknown>[];
 			}
-		}
+		} catch { /* keep looking for the end of the JSON value */ }
 	}
 	return [];
+}
+
+/* Extracts JSON plans from an AI reply. Accepts <assistant-scheduler> tags,
+ * fenced code blocks, or raw JSON, parsing all tagged blocks if present. */
+export function extractJson(text: string): Record<string, unknown>[] {
+	const source = String(text || '').trim();
+	const results: Record<string, unknown>[] = [];
+	const tagRegex = /<assistant-scheduler>\s*([\s\S]*?)\s*<\/assistant-scheduler>/gi;
+	let tagMatch: RegExpExecArray | null;
+	let foundTag = false;
+	while ((tagMatch = tagRegex.exec(source)) !== null) {
+		foundTag = true;
+		const parsed = parseJsonCandidate(tagMatch[1]);
+		if (parsed.length) results.push(...parsed);
+	}
+	if (foundTag && results.length) return results;
+
+	const fenceRegex = /```(?:json)?\s*([\s\S]*?)\s*```/gi;
+	let fenceMatch: RegExpExecArray | null;
+	while ((fenceMatch = fenceRegex.exec(source)) !== null) {
+		const parsed = parseJsonCandidate(fenceMatch[1]);
+		if (parsed.length) return parsed;
+	}
+
+	return parseJsonCandidate(source);
 }
 
 export function isNightlyReviewJob(job: Job): boolean {

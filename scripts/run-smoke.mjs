@@ -56,8 +56,10 @@ const normalizePath = (p) => String(p || '').replace(/\\\\/g, '/');
 module.exports = {
 	Plugin, Modal, PluginSettingTab, Notice, TFile, TFolder, TAbstractFile,
 	normalizePath,
-	parseYaml: () => { throw new Error('unused in smoke'); },
-	stringifyYaml: (data) => JSON.stringify(data),
+	parseYaml: (text) => {
+		try { return JSON.parse(text); } catch { return {}; }
+	},
+	stringifyYaml: (data) => JSON.stringify(data, null, 1),
 	requestUrl: () => { throw new Error('unused'); },
 	Setting: class {},
 };
@@ -120,23 +122,81 @@ function makeClaudian() {
 
 function fakeApp() {
 	const files = new Map();
+	const eventListeners = { modify: [], create: [], delete: [], rename: [] };
 	const app = {
 		_pluginData: null,
 		_savedCount: 0,
 		workspace: { getActiveFile: () => null, on() { return {}; } },
 		plugins: { plugins: {} },
 		commands: { commands: {}, executeCommand() {} },
-		vault: {
-			on() { return {}; },
-			getMarkdownFiles: () => [...files.values()].filter(f => f.path.endsWith('.md')),
-			getAbstractFileByPath: (p) => files.get(p) || null,
-			createFolder: async (p) => { files.set(p, Object.assign(new obsidian.TFolder(), { path: p })); },
-			create: async (p, content) => { const f = Object.assign(new obsidian.TFile(), { path: p, _content: content }); files.set(p, f); return f; },
-			modify: async (file, content) => { file._content = content; },
-			read: async (file) => file._content || '',
-			adapter: {},
+		fileManager: {
+			trashFile: async (file) => {
+				files.delete(file.path);
+				const folderPath = file.path.split('/').slice(0, -1).join('/');
+				const folder = files.get(folderPath);
+				if (folder && folder.children) {
+					folder.children = folder.children.filter(c => c.path !== file.path);
+				}
+				for (const listener of eventListeners.delete) listener(file);
+			},
+			renameFile: async (file, newPath) => {
+				const oldPath = file.path;
+				files.delete(oldPath);
+				const oldFolderPath = oldPath.split('/').slice(0, -1).join('/');
+				const oldFolder = files.get(oldFolderPath);
+				if (oldFolder && oldFolder.children) {
+					oldFolder.children = oldFolder.children.filter(c => c.path !== oldPath);
+				}
+				file.path = newPath;
+				files.set(newPath, file);
+				const newFolderPath = newPath.split('/').slice(0, -1).join('/');
+				const newFolder = files.get(newFolderPath);
+				if (newFolder && newFolder.children) {
+					newFolder.children.push(file);
+				}
+				for (const listener of eventListeners.rename) listener(file, oldPath);
+			},
 		},
-		metadataCache: { getFileCache: () => null },
+		vault: {
+			on(event, cb) {
+				if (eventListeners[event]) eventListeners[event].push(cb);
+				return {};
+			},
+			getMarkdownFiles: () => [...files.values()].filter(f => f.path && f.path.endsWith('.md')),
+			getAllLoadedFiles: () => [...files.values()],
+			getAbstractFileByPath: (p) => files.get(p) || null,
+			createFolder: async (p) => {
+				const folder = Object.assign(new obsidian.TFolder(), { path: p, children: [] });
+				files.set(p, folder);
+			},
+			create: async (p, content) => {
+				const f = Object.assign(new obsidian.TFile(), { path: p, _content: content, extension: 'md' });
+				files.set(p, f);
+				const folderPath = p.split('/').slice(0, -1).join('/');
+				const folder = files.get(folderPath);
+				if (folder && folder.children) folder.children.push(f);
+				for (const listener of eventListeners.create) listener(f);
+				return f;
+			},
+			modify: async (file, content) => {
+				file._content = content;
+				for (const listener of eventListeners.modify) listener(file);
+			},
+			read: async (file) => file._content || '',
+			adapter: { getBasePath: () => '/fake/vault' },
+		},
+		metadataCache: {
+			getFileCache: (file) => {
+				const content = file._content || '';
+				const match = /^---[\\r\\n]+([\\s\\S]*?)[\\r\\n]+---/m.exec(content);
+				if (!match) return null;
+				try {
+					return { frontmatter: JSON.parse(match[1]) };
+				} catch {
+					return null;
+				}
+			},
+		},
 	};
 	return app;
 }
@@ -206,8 +266,26 @@ async function main() {
 	app._pluginData.jobs.find(job => job.title === 'Smoke task').status = 'running';
 	const second = new PluginClass(app, { id: 'ai-scheduler', version: '2.1.1' });
 	await second.onload();
-	const recovered = app._pluginData.jobs.find(job => job.title === 'Smoke task');
+	const recovered = second.jobs.find(job => job.title === 'Smoke task');
 	assert.equal(recovered.status, 'scheduled', 'interrupted run recovered on load');
+
+	// Test Two-Way Synced Schedule Notes
+	second.settings.scheduleNotesEnabled = true;
+	const writtenCount = await second.notesSync.syncAll();
+	assert.ok(writtenCount > 0, 'schedule notes sync writes notes to folder');
+	assert.ok(recovered.notePath, 'job has notePath populated');
+	const noteFile = app.vault.getAbstractFileByPath(recovered.notePath);
+	assert.ok(noteFile, 'note file exists in vault');
+	const noteLines = noteFile._content.split(/[\\r\\n]+/);
+	assert.equal(noteLines[0], '---', 'first line of note is frontmatter fence');
+	assert.ok(noteLines.slice(1).includes('---'), 'closing frontmatter fence exists on its own line');
+
+	// Test Deletion without resurrection
+	await second.deleteJob(recovered);
+	assert.ok(!second.jobs.some(j => j.title === 'Smoke task'), 'job removed from memory');
+	assert.equal(app.vault.getAbstractFileByPath(recovered.notePath), null, 'note trashed on deletion');
+	await second.notesSync.syncAll();
+	assert.ok(!second.jobs.some(j => j.title === 'Smoke task'), 'syncAll does not resurrect deleted job');
 
 	await second.deleteAllJobs();
 	assert.equal(second.jobs.length, 1, 'nightly review job survives delete-all');

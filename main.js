@@ -81,10 +81,21 @@ function expandRange(min, max, step, lo, hi) {
     for (let value = min; value <= max; value += step) values.push(value);
   } else {
     let value = min;
-    for (; ; ) {
+    let wrapped = false;
+    while (true) {
       values.push(value);
       if (value === max) break;
-      value = value + 1 > hi ? lo : value + 1;
+      let next = value + step;
+      if (!wrapped) {
+        if (next > hi) {
+          wrapped = true;
+          next = lo + (next - hi - 1);
+          if (next > max) break;
+        }
+      } else {
+        if (next > max) break;
+      }
+      value = next;
     }
   }
   return values;
@@ -170,7 +181,7 @@ function validateCron(expression) {
 }
 
 // src/cron/compute.ts
-var MAX_SEARCH_YEARS = 4;
+var MAX_SEARCH_YEARS = 8;
 var MAX_ITERATIONS = 1e6;
 function dayMatches(expression, date) {
   const domOk = expression.dom.includes(date.getDate());
@@ -296,10 +307,10 @@ function joinNatural(items) {
   if (items.length <= 1) return items.join("");
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
-function nameList(values, names, long) {
+function nameList(values, names) {
   return joinNatural(rangesToList(values).map(([start, end]) => {
     if (start === end) return names[start];
-    if (end - start >= 2) return `${names[start]}${long ? "" : ""} to ${names[end]}`;
+    if (end - start >= 2) return `${names[start]} to ${names[end]}`;
     return `${names[start]} and ${names[end]}`;
   }));
 }
@@ -326,7 +337,7 @@ function dayPhrase(expression) {
   const domDays = expression.domRestricted ? expression.dom : null;
   const dowDays = expression.dowRestricted ? expression.dow : null;
   if (domDays && dowDays) {
-    return `on ${numberList(domDays, "day")} or ${nameList(dowDays, DOW_SHORT, false)}`;
+    return `on ${numberList(domDays, "day")} or ${nameList(dowDays, DOW_SHORT)}`;
   }
   if (domDays) {
     if (domDays.length === 31) return "every day";
@@ -334,7 +345,7 @@ function dayPhrase(expression) {
   }
   if (dowDays) {
     if (dowDays.length === 7) return "every day";
-    return `on ${nameList(dowDays, DOW_LONG, true)}`;
+    return `on ${nameList(dowDays, DOW_LONG)}`;
   }
   return "every day";
 }
@@ -417,32 +428,42 @@ function contentFromMessage(message) {
   }
   return "";
 }
-function extractJson(text) {
-  const source = String(text || "").trim();
-  const candidates = [];
-  const marked = /<assistant-scheduler>\s*([\s\S]*?)\s*<\/assistant-scheduler>/i.exec(source);
-  if (marked) candidates.push(marked[1]);
-  const fenced = /```(?:json)?\s*([\s\S]*?)\s*```/i.exec(source);
-  if (fenced) candidates.push(fenced[1]);
-  candidates.push(source);
-  const start = Math.min(...candidates.map((value) => {
-    const a = value.indexOf("[");
-    const o = value.indexOf("{");
-    return a < 0 ? o : o < 0 ? a : Math.min(a, o);
-  }).filter((value) => value >= 0));
-  if (Number.isFinite(start) && start >= 0) {
-    for (const value of candidates) {
-      const trimmed = value.trim();
-      for (let end = trimmed.length; end > start; end--) {
-        try {
-          const parsed = JSON.parse(trimmed.slice(start, end));
-          return Array.isArray(parsed) ? parsed : [parsed];
-        } catch (e) {
-        }
+function parseJsonCandidate(candidate) {
+  const trimmed = candidate.trim();
+  const a = trimmed.indexOf("[");
+  const o = trimmed.indexOf("{");
+  const start = a < 0 ? o : o < 0 ? a : Math.min(a, o);
+  if (start < 0) return [];
+  for (let end = trimmed.length; end > start; end--) {
+    try {
+      const parsed = JSON.parse(trimmed.slice(start, end));
+      if (parsed && typeof parsed === "object") {
+        return Array.isArray(parsed) ? parsed : [parsed];
       }
+    } catch (e) {
     }
   }
   return [];
+}
+function extractJson(text) {
+  const source = String(text || "").trim();
+  const results = [];
+  const tagRegex = /<assistant-scheduler>\s*([\s\S]*?)\s*<\/assistant-scheduler>/gi;
+  let tagMatch;
+  let foundTag = false;
+  while ((tagMatch = tagRegex.exec(source)) !== null) {
+    foundTag = true;
+    const parsed = parseJsonCandidate(tagMatch[1]);
+    if (parsed.length) results.push(...parsed);
+  }
+  if (foundTag && results.length) return results;
+  const fenceRegex = /```(?:json)?\s*([\s\S]*?)\s*```/gi;
+  let fenceMatch;
+  while ((fenceMatch = fenceRegex.exec(source)) !== null) {
+    const parsed = parseJsonCandidate(fenceMatch[1]);
+    if (parsed.length) return parsed;
+  }
+  return parseJsonCandidate(source);
 }
 function isNightlyReviewJob(job) {
   return Boolean(job && job.routine === "daily-review");
@@ -623,14 +644,23 @@ function cronFormFor(schedule) {
     if (!rules.every((rule) => JSON.stringify(rule.times) === firstTimes)) return null;
     const days = [...new Set(rules.flatMap((rule) => rule.days))].sort((a, b) => a - b);
     if (!days.length || !rules[0].times.length) return null;
-    const clock = parseClock(rules[0].times[0]);
-    return `${clock.minute} ${clock.hour} * * ${days.join(",")}`;
+    const clocks = rules[0].times.map(parseClock);
+    const minutes = [...new Set(clocks.map((c) => c.minute))];
+    if (minutes.length === 1) {
+      const hours = [...new Set(clocks.map((c) => c.hour))].sort((a, b) => a - b);
+      return `${minutes[0]} ${hours.join(",")} * * ${days.join(",")}`;
+    }
+    return clocks.map((c) => `${c.minute} ${c.hour} * * ${days.join(",")}`).join("; ");
   }
   return null;
 }
 function previewSchedule(schedule, count = 3, from = /* @__PURE__ */ new Date()) {
   if (!schedule) return [];
   if (schedule.kind === "event") return ["fires on vault activity"];
+  if (schedule.kind === "once") {
+    const date = new Date(schedule.at);
+    return Number.isNaN(date.getTime()) ? [] : [formatLocalRun(date)];
+  }
   if (schedule.kind === "cron") {
     if (!schedule.expression || validateCron(schedule.expression)) return [];
     return cronUpcoming(schedule.expression, count, from).map(formatLocalRun);
@@ -688,45 +718,68 @@ var DEFAULT_SETTINGS = {
   lastSeenVersion: "",
   showChangelogOnUpdate: true
 };
+var VALID_STATUSES = /* @__PURE__ */ new Set(["scheduled", "running", "completed", "failed", "missed", "disabled"]);
+function normalizeOutput(output) {
+  if (!output || typeof output !== "object") return null;
+  const record = output;
+  return {
+    folder: typeof record.folder === "string" ? record.folder : void 0,
+    filename: typeof record.filename === "string" ? record.filename : void 0
+  };
+}
 function normalizeJob(raw, now = /* @__PURE__ */ new Date()) {
   var _a;
   const scheduleRaw = raw.schedule || (raw.sendAt ? { kind: "once", at: raw.sendAt } : { kind: "once", at: new Date(Date.now() + 6e4).toISOString() });
   const normalizedSchedule = {
     kind: SCHEDULE_KINDS.includes(String(scheduleRaw.kind)) ? scheduleRaw.kind : "once",
-    at: scheduleRaw.at,
-    time: scheduleRaw.time,
-    days: scheduleRaw.days,
+    at: typeof scheduleRaw.at === "string" ? scheduleRaw.at : void 0,
+    time: typeof scheduleRaw.time === "string" ? scheduleRaw.time : void 0,
+    days: Array.isArray(scheduleRaw.days) ? scheduleRaw.days.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6) : void 0,
     rules: scheduleRaw.rules,
-    event: scheduleRaw.event,
-    intervalMinutes: scheduleRaw.intervalMinutes || scheduleRaw.everyMinutes || Number(scheduleRaw.everyHours || 0) * 60,
+    event: typeof scheduleRaw.event === "string" ? scheduleRaw.event : void 0,
+    intervalMinutes: Number.isFinite(Number(scheduleRaw.intervalMinutes || scheduleRaw.everyMinutes || Number(scheduleRaw.everyHours || 0) * 60)) ? Number(scheduleRaw.intervalMinutes || scheduleRaw.everyMinutes || Number(scheduleRaw.everyHours || 0) * 60) : null,
     maxIterations: normalizeMaxIterationsField(scheduleRaw.maxIterations || scheduleRaw.maxRuns || scheduleRaw.iterations),
-    expression: scheduleRaw.expression
+    expression: typeof scheduleRaw.expression === "string" ? scheduleRaw.expression : void 0
   };
-  const nextRunAt = raw.nextRunAt !== void 0 ? raw.nextRunAt : getScheduleNextRun(normalizedSchedule, now);
-  return Object.assign({
-    id: id("job"),
-    title: "Assistant task",
-    prompt: "",
-    tab: 1,
-    enabled: true,
-    status: "scheduled",
-    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-    lastRunAt: null,
-    lastStatus: null,
-    lastReply: "",
-    lastError: null,
-    routine: null,
-    notify: true,
-    output: null,
-    contextPaths: Array.isArray(raw.contextPaths) ? raw.contextPaths : ((_a = raw.context) == null ? void 0 : _a.paths) && Array.isArray(raw.context.paths) ? raw.context.paths : [],
-    attempts: 0,
-    runCount: Number(raw.runCount || 0),
-    taskNumber: Number(raw.taskNumber || 0),
-    profile: null,
-    conversationId: null,
-    providerId: null,
-    model: null
-  }, raw, { schedule: normalizedSchedule, nextRunAt });
+  const nextRunAt = raw.nextRunAt !== void 0 && (typeof raw.nextRunAt === "string" || raw.nextRunAt === null) ? raw.nextRunAt : getScheduleNextRun(normalizedSchedule, now);
+  const enabled = typeof raw.enabled === "boolean" ? raw.enabled : raw.enabled === "false" ? false : true;
+  const rawStatus = typeof raw.status === "string" ? raw.status : "";
+  const status = VALID_STATUSES.has(rawStatus) ? rawStatus : enabled ? "scheduled" : "disabled";
+  const attempts = Number(raw.attempts);
+  const runCount = Number(raw.runCount);
+  const taskNumber = Number(raw.taskNumber);
+  const tab = Number(raw.tab);
+  const cooldownMinutes = Number(raw.cooldownMinutes);
+  return {
+    id: typeof raw.id === "string" && raw.id.trim() ? raw.id : id("job"),
+    title: typeof raw.title === "string" && raw.title.trim() ? raw.title : "Assistant task",
+    prompt: typeof raw.prompt === "string" ? raw.prompt : "",
+    tab: Number.isInteger(tab) && tab > 0 ? tab : 1,
+    enabled,
+    status,
+    createdAt: typeof raw.createdAt === "string" ? raw.createdAt : (/* @__PURE__ */ new Date()).toISOString(),
+    lastRunAt: typeof raw.lastRunAt === "string" ? raw.lastRunAt : null,
+    lastStatus: typeof raw.lastStatus === "string" && VALID_STATUSES.has(raw.lastStatus) ? raw.lastStatus : null,
+    lastReply: typeof raw.lastReply === "string" ? raw.lastReply : "",
+    lastError: typeof raw.lastError === "string" ? raw.lastError : null,
+    routine: typeof raw.routine === "string" ? raw.routine : null,
+    notify: raw.notify !== false,
+    output: normalizeOutput(raw.output),
+    contextPaths: Array.isArray(raw.contextPaths) ? raw.contextPaths.map(String) : ((_a = raw.context) == null ? void 0 : _a.paths) && Array.isArray(raw.context.paths) ? raw.context.paths.map(String) : [],
+    attempts: Number.isFinite(attempts) && attempts >= 0 ? attempts : 0,
+    runCount: Number.isFinite(runCount) && runCount >= 0 ? runCount : 0,
+    taskNumber: Number.isFinite(taskNumber) && taskNumber >= 0 ? taskNumber : 0,
+    profile: typeof raw.profile === "string" ? raw.profile : null,
+    conversationId: typeof raw.conversationId === "string" ? raw.conversationId : null,
+    providerId: typeof raw.providerId === "string" ? raw.providerId : null,
+    model: typeof raw.model === "string" ? raw.model : null,
+    notePath: typeof raw.notePath === "string" ? raw.notePath : null,
+    cooldownMinutes: Number.isFinite(cooldownMinutes) && cooldownMinutes >= 0 ? cooldownMinutes : void 0,
+    lastEventPath: typeof raw.lastEventPath === "string" ? raw.lastEventPath : void 0,
+    source: typeof raw.source === "string" ? raw.source : void 0,
+    schedule: normalizedSchedule,
+    nextRunAt
+  };
 }
 function normalizeMaxIterationsField(value) {
   const number = Number(value);
@@ -743,6 +796,12 @@ function parseStoredData(data) {
   settings.dailyReviewModel = settings.dailyReviewModel || oldSettings.nightlyProfile || oldDefault;
   settings.nightlyReviewModel = settings.nightlyReviewModel || oldSettings.nightlyProfile || oldDefault;
   if (!stored.version || stored.version < 3) settings.catchUpOnStart = false;
+  const rawCatchUp = Number(settings.catchUpHours);
+  settings.catchUpHours = Number.isFinite(rawCatchUp) && rawCatchUp >= 0 ? rawCatchUp : 24;
+  const validReviewContextModes = ["modified-today", "all-markdown", "no-files"];
+  if (!validReviewContextModes.includes(settings.reviewContextMode)) {
+    settings.reviewContextMode = "modified-today";
+  }
   if (typeof settings.scheduleNotesEnabled !== "boolean") settings.scheduleNotesEnabled = false;
   if (!settings.scheduleFolder) settings.scheduleFolder = DEFAULT_SETTINGS.scheduleFolder;
   if (typeof settings.showChangelogOnUpdate !== "boolean") settings.showChangelogOnUpdate = true;
@@ -800,7 +859,9 @@ function planStartupCatchUp(jobs, settings, now) {
   if (!settings.catchUpOnStart) {
     return { missed: [], stale: due };
   }
-  const cutoff = now - Number(settings.catchUpHours || 24) * 60 * 60 * 1e3;
+  const raw = Number(settings.catchUpHours);
+  const hours = Number.isFinite(raw) && raw >= 0 ? raw : 24;
+  const cutoff = now - hours * 60 * 60 * 1e3;
   return {
     missed: due.filter((job) => new Date(job.nextRunAt).getTime() >= cutoff),
     stale: due.filter((job) => new Date(job.nextRunAt).getTime() < cutoff)
@@ -1231,7 +1292,7 @@ async function resolveModel(host, value, action = "this action") {
     }
     return { modelRef: "copilot", tab: null, conversationId: null, providerId: "copilot", model: null };
   }
-  const selected = value === void 0 || value === null ? host.settings.executionModel : value;
+  const selected = typeof value === "string" && value.trim() ? value.trim() : (host.settings.executionModel || "").trim();
   if (!selected) {
     throw new Error(`No model selected for ${action}. Choose a model in AI Scheduler settings first.`);
   }
@@ -1243,38 +1304,28 @@ async function resolveModel(host, value, action = "this action") {
   if (!availableModels.some((model) => model.value === selected)) {
     throw new Error(`The selected model for ${action} is no longer available in Claudian. Refresh the model list and choose another model.`);
   }
-  if (String(selected).startsWith("tab:")) {
-    const tab = Math.max(1, Number.parseInt(String(selected).slice(4), 10) || 1);
-    const view = await getClaudianView(host);
-    const runtime = getTab(host, view, tab);
-    if (!runtime) throw new Error(`The Claudian chat selected for ${action} no longer exists. Refresh the model list and choose another model.`);
-    const claudian = getClaudianPlugin(host);
-    const conversation = runtime.conversationId && claudian && typeof claudian.getConversationSync === "function" ? claudian.getConversationSync(runtime.conversationId) : null;
-    if (!conversation || !conversation.providerId) throw new Error(`The Claudian chat selected for ${action} has no configured provider.`);
-    return { modelRef: selected, tab, conversationId: runtime.conversationId || null, providerId: conversation.providerId, model: conversation.selectedModel || null };
-  }
   const profile = parseProfileValue(selected);
-  if (profile && profile.providerId) {
-    const claudian = getClaudianPlugin(host);
-    if (!claudian) throw new Error(`Claudian is not installed or enabled. It is required for ${action}.`);
-    if (typeof claudian.createConversation !== "function") throw new Error(`Claudian cannot create a conversation for ${action}.`);
-    let conversation;
-    try {
-      conversation = await claudian.createConversation({
-        providerId: profile.providerId,
-        ...profile.model ? { selectedModel: profile.model } : {}
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Claudian could not create the selected model for ${action}: ${message}`);
-    }
-    if (!conversation || !conversation.id) throw new Error(`Claudian returned no conversation for ${action}.`);
-    if (conversation.id && typeof claudian.renameConversation === "function") {
-      await claudian.renameConversation(conversation.id, "AI Scheduler - Planning");
-    }
-    return { modelRef: selected, tab: host.settings.assistantTab, conversationId: conversation.id, providerId: profile.providerId, model: profile.model || null };
+  if (!profile || !profile.providerId) {
+    throw new Error(`The selected model configuration for ${action} is invalid.`);
   }
-  return { modelRef: "", tab: host.settings.assistantTab, conversationId: null, providerId: null, model: null };
+  const claudian = getClaudianPlugin(host);
+  if (!claudian) throw new Error(`Claudian is not installed or enabled. It is required for ${action}.`);
+  if (typeof claudian.createConversation !== "function") throw new Error(`Claudian cannot create a conversation for ${action}.`);
+  let conversation;
+  try {
+    conversation = await claudian.createConversation({
+      providerId: profile.providerId,
+      ...profile.model ? { selectedModel: profile.model } : {}
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Claudian could not create the selected model for ${action}: ${message}`);
+  }
+  if (!conversation || !conversation.id) throw new Error(`Claudian returned no conversation for ${action}.`);
+  if (conversation.id && typeof claudian.renameConversation === "function") {
+    await claudian.renameConversation(conversation.id, "AI Scheduler - Planning");
+  }
+  return { modelRef: selected, tab: host.settings.assistantTab, conversationId: conversation.id, providerId: profile.providerId, model: profile.model || null };
 }
 async function resolveJobExecution(host, job) {
   const selectedModel = job.routine === "daily-review" ? host.settings.nightlyReviewModel : host.settings.executionModel;
@@ -1504,7 +1555,7 @@ var JobModal = class extends import_obsidian4.Modal {
     switch (this.kind) {
       case "once": {
         label("Date and time");
-        const current = schedule.at ? new Date(schedule.at) : new Date(Date.now() + 60 * 60 * 1e3);
+        const current = schedule.at && new Date(schedule.at).getTime() > Date.now() ? new Date(schedule.at) : new Date(Date.now() + 60 * 60 * 1e3);
         const pad2 = (value) => String(value).padStart(2, "0");
         input({
           type: "datetime-local",
@@ -2299,7 +2350,7 @@ var ChangelogModal = class extends import_obsidian7.Modal {
     header.createSpan({ cls: "ai-scheduler-release-date", text: release.date });
     if (release.highlights && release.highlights.length) {
       const hlBox = card.createDiv({ cls: "ai-scheduler-release-highlights" });
-      hlBox.createDiv({ cls: "ai-scheduler-section-heading", text: "\u2728 Highlights" });
+      hlBox.createDiv({ cls: "ai-scheduler-changelog-section-heading", text: "\u2728 Highlights" });
       const ul = hlBox.createEl("ul");
       for (const hl of release.highlights) {
         ul.createEl("li", { text: hl });
@@ -2307,7 +2358,7 @@ var ChangelogModal = class extends import_obsidian7.Modal {
     }
     if (release.added && release.added.length) {
       const section = card.createDiv({ cls: "ai-scheduler-release-section" });
-      section.createDiv({ cls: "ai-scheduler-section-heading added", text: "\u{1F7E2} Added" });
+      section.createDiv({ cls: "ai-scheduler-changelog-section-heading added", text: "\u{1F7E2} Added" });
       const ul = section.createEl("ul");
       for (const item of release.added) {
         ul.createEl("li", { text: item });
@@ -2315,7 +2366,7 @@ var ChangelogModal = class extends import_obsidian7.Modal {
     }
     if (release.changed && release.changed.length) {
       const section = card.createDiv({ cls: "ai-scheduler-release-section" });
-      section.createDiv({ cls: "ai-scheduler-section-heading changed", text: "\u{1F7E1} Changed" });
+      section.createDiv({ cls: "ai-scheduler-changelog-section-heading changed", text: "\u{1F7E1} Changed" });
       const ul = section.createEl("ul");
       for (const item of release.changed) {
         ul.createEl("li", { text: item });
@@ -2323,7 +2374,7 @@ var ChangelogModal = class extends import_obsidian7.Modal {
     }
     if (release.fixed && release.fixed.length) {
       const section = card.createDiv({ cls: "ai-scheduler-release-section" });
-      section.createDiv({ cls: "ai-scheduler-section-heading fixed", text: "\u{1F6E0}\uFE0F Fixed" });
+      section.createDiv({ cls: "ai-scheduler-changelog-section-heading fixed", text: "\u{1F6E0}\uFE0F Fixed" });
       const ul = section.createEl("ul");
       for (const item of release.fixed) {
         ul.createEl("li", { text: item });
@@ -2331,7 +2382,7 @@ var ChangelogModal = class extends import_obsidian7.Modal {
     }
     if (release.contributors && release.contributors.length) {
       const section = card.createDiv({ cls: "ai-scheduler-release-section" });
-      section.createDiv({ cls: "ai-scheduler-section-heading contributors", text: "\u{1F465} Contributors" });
+      section.createDiv({ cls: "ai-scheduler-changelog-section-heading contributors", text: "\u{1F465} Contributors" });
       const list = section.createDiv({ cls: "ai-scheduler-contributors-list" });
       for (const contributor of release.contributors) {
         const chip = list.createEl("a", {
@@ -2499,7 +2550,7 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
       }));
     }
     new import_obsidian8.Setting(containerEl).setName("Schedule notes (optional)").setHeading();
-    new import_obsidian8.Setting(containerEl).setName("Keep schedule notes in my vault").setDesc("Off by default. When enabled, every task gets a Markdown note whose frontmatter holds its schedule and prompt \u2014 edit the note or the dashboard, both stay in sync. Task results and history stay in data.json, and turning this off never loses anything.").addToggle((toggle) => toggle.setValue(this.plugin.settings.scheduleNotesEnabled).onChange((value) => {
+    new import_obsidian8.Setting(containerEl).setName("Keep schedule notes in my vault").setDesc("Off by default. When enabled, every task gets a Markdown note whose frontmatter holds its schedule and prompt \u2014 edit the note or the dashboard, both stay in sync. Note: deleting a task note in Obsidian permanently removes that task.").addToggle((toggle) => toggle.setValue(this.plugin.settings.scheduleNotesEnabled).onChange((value) => {
       void (async () => {
         this.plugin.settings.scheduleNotesEnabled = value;
         await this.plugin.saveState();
@@ -2584,7 +2635,19 @@ var ScheduleNotesSync = class _ScheduleNotesSync {
       candidate = (0, import_obsidian9.normalizePath)(`${this.folder}/${base}-${suffix}.md`);
       suffix += 1;
     }
+    if (job.notePath && !_ScheduleNotesSync.isInside(this.folder, job.notePath)) {
+      const oldFile = this.plugin.app.vault.getAbstractFileByPath(job.notePath);
+      if (oldFile instanceof import_obsidian9.TFile) {
+        try {
+          void this.plugin.app.fileManager.renameFile(oldFile, candidate);
+        } catch (e) {
+        }
+      }
+    }
     return candidate;
+  }
+  forgetPath(path) {
+    this.lastWritten.delete(path);
   }
   definitionFor(job) {
     const schedule = { kind: job.schedule.kind };
@@ -2644,10 +2707,12 @@ var ScheduleNotesSync = class _ScheduleNotesSync {
       ""
     ];
     return `---
-${frontmatter}---
+${frontmatter.replace(/\n+$/, "")}
+---
 ${body.join("\n")}`;
   }
   async writeFile(path, content) {
+    this.plugin.markSelfWrite(path);
     const existing = this.plugin.app.vault.getAbstractFileByPath(path);
     if (existing instanceof import_obsidian9.TFile) {
       const current = await this.plugin.app.vault.read(existing);
@@ -2731,6 +2796,7 @@ ${body.join("\n")}`;
       if (folder && "children" in folder) {
         for (const child of folder.children) {
           if (!(child instanceof import_obsidian9.TFile) || child.extension !== "md") continue;
+          if (!this.plugin.app.vault.getAbstractFileByPath(child.path)) continue;
           const tracked = this.plugin.jobs.some((job) => job.notePath === child.path);
           if (tracked) continue;
           if (await this.importNote(child)) written += 1;
@@ -2830,6 +2896,14 @@ var AISchedulerPlugin = class extends import_obsidian10.Plugin {
     this.notesSync = new ScheduleNotesSync(this);
     this.pendingVaultEvents = [];
     this.runningJobs = /* @__PURE__ */ new Set();
+    this.selfWrites = /* @__PURE__ */ new Set();
+  }
+  markSelfWrite(path) {
+    const norm = (0, import_obsidian10.normalizePath)(path);
+    this.selfWrites.add(norm);
+    window.setTimeout(() => {
+      this.selfWrites.delete(norm);
+    }, 3e3);
   }
   async onload() {
     const data = await this.loadData();
@@ -3008,7 +3082,6 @@ var AISchedulerPlugin = class extends import_obsidian10.Plugin {
     job.status = "running";
     job.lastRunAt = (/* @__PURE__ */ new Date()).toISOString();
     job.attempts = Number(job.attempts || 0) + 1;
-    job.runCount = Number(job.runCount || 0) + 1;
     await this.saveState();
     try {
       const execution = await resolveJobExecution(this, job);
@@ -3023,10 +3096,15 @@ var AISchedulerPlugin = class extends import_obsidian10.Plugin {
       const context = this.getJobContext(job);
       const prompt = job.routine === "daily-review" ? "" : executionPrompt(job.prompt, context.paths);
       const reply = job.routine === "daily-review" ? await this.runDailyReview(false, execution, "nightly") : await sendToAI(this, prompt, execution, context);
+      const trimmedReply = (reply || "").trim();
+      if (!trimmedReply) {
+        throw new Error("The AI returned an empty response.");
+      }
       job.lastReply = reply || "";
       job.lastStatus = "completed";
       job.lastError = null;
       job.status = "completed";
+      job.runCount = Number(job.runCount || 0) + 1;
       await this.processFollowUps(reply, job);
       if (job.output && job.output.folder && reply) {
         await this.writeOutput(job.output.folder, job.output.filename, reply);
@@ -3048,6 +3126,13 @@ ${job.lastError}`, 8e3);
   }
   async handleVaultChange(file) {
     if (!file || !file.path) return;
+    const normPath = (0, import_obsidian10.normalizePath)(file.path);
+    if (this.selfWrites.has(normPath)) return;
+    const normReport = (0, import_obsidian10.normalizePath)(this.settings.reportFolder || "AI Reviews");
+    const normSchedule = (0, import_obsidian10.normalizePath)(this.settings.scheduleFolder || "AI Schedules");
+    if (ScheduleNotesSync.isInside(normReport, normPath) || ScheduleNotesSync.isInside(normSchedule, normPath)) {
+      return;
+    }
     if (this.running) {
       this.pendingVaultEvents.push(file.path);
       return;
@@ -3085,6 +3170,10 @@ ${job.lastError}`, 8e3);
       }
       return;
     }
+    if (!validClock(this.settings.reviewTime)) {
+      new import_obsidian10.Notice("AI Scheduler: review time is invalid, nightly review not scheduled.");
+      return;
+    }
     if (!job) {
       job = normalizeJob({
         id: "nightly-daily-review",
@@ -3110,55 +3199,64 @@ ${job.lastError}`, 8e3);
       new import_obsidian10.Notice("A review is already running. You can keep using Obsidian while it finishes.", 5e3);
       return;
     }
-    this.reviewRunning = true;
     new import_obsidian10.Notice(`${kind === "nightly" ? "Nightly" : "Daily"} review started. It will create ${this.settings.reportFolder}/${localTimestampKey()}.md. You can keep using Obsidian.`, 7e3);
     void this.runDailyReview(manual, null, kind).catch((error) => {
       this.logActivity("failed", `Review failed: ${errorText(error)}`);
       new import_obsidian10.Notice(`Review failed: ${errorText(error)}`, 8e3);
       void this.saveState();
-    }).finally(() => {
-      this.reviewRunning = false;
     });
   }
   async runDailyReview(manual, execution = null, kind = "daily") {
-    const now = /* @__PURE__ */ new Date();
-    const today = localDateKey(now);
-    const start = /* @__PURE__ */ new Date();
-    start.setHours(0, 0, 0, 0);
-    const files = this.app.vault.getMarkdownFiles().filter((file) => this.includeReviewFile(file, start)).sort((a, b) => b.stat.mtime - a.stat.mtime);
-    const fileList = files.length ? files.map((file) => `- ${file.path}`).join("\n") : "- No Markdown files were created or modified today.";
-    const prompt = reviewPrompt(kind, today, fileList);
-    const nightlyJob = this.jobs.find((candidate) => candidate.routine === "daily-review");
-    const model = kind === "nightly" ? this.settings.nightlyReviewModel : this.settings.dailyReviewModel;
-    const resolved = execution || (nightlyJob && kind === "nightly" ? await resolveJobExecution(this, nightlyJob) : await resolveModel(this, model, kind === "nightly" ? "nightly review" : "daily preview"));
-    const context = getPathsContext(this.app, files.map((file) => file.path));
-    const reply = await sendToAI(this, prompt, resolved, context);
-    const reportTitle = kind === "nightly" ? "Nightly Review" : "Daily Preview";
-    const report = reply || `# ${reportTitle} - ${today}
+    if (this.reviewRunning) {
+      throw new Error("A review is already in progress.");
+    }
+    this.reviewRunning = true;
+    try {
+      const now = /* @__PURE__ */ new Date();
+      const today = localDateKey(now);
+      const start = /* @__PURE__ */ new Date();
+      start.setHours(0, 0, 0, 0);
+      const files = this.app.vault.getMarkdownFiles().filter((file) => this.includeReviewFile(file, start)).sort((a, b) => b.stat.mtime - a.stat.mtime);
+      const fileList = files.length ? files.map((file) => `- ${file.path}`).join("\n") : "- No Markdown files were created or modified today.";
+      const prompt = reviewPrompt(kind, today, fileList);
+      const nightlyJob = this.jobs.find((candidate) => candidate.routine === "daily-review");
+      const model = kind === "nightly" ? this.settings.nightlyReviewModel : this.settings.dailyReviewModel;
+      const resolved = execution || (nightlyJob && kind === "nightly" ? await resolveJobExecution(this, nightlyJob) : await resolveModel(this, model, kind === "nightly" ? "nightly review" : "daily preview"));
+      const context = getPathsContext(this.app, files.map((file) => file.path));
+      const reply = await sendToAI(this, prompt, resolved, context);
+      const reportTitle = kind === "nightly" ? "Nightly Review" : "Daily Preview";
+      const report = reply || `# ${reportTitle} - ${today}
 
 The active AI backend did not return a report.`;
-    const timestamp = localTimestampKey(now);
-    let filename = `${timestamp}.md`;
-    let suffix = 2;
-    while (this.app.vault.getAbstractFileByPath((0, import_obsidian10.normalizePath)(`${this.settings.reportFolder}/${filename}`))) {
-      filename = `${timestamp}-${suffix}.md`;
-      suffix += 1;
-    }
-    const path = `${this.settings.reportFolder}/${filename}`;
-    await this.writeOutput(this.settings.reportFolder, filename, `# ${reportTitle} - ${today}
+      const timestamp = localTimestampKey(now);
+      let filename = `${timestamp}.md`;
+      let suffix = 2;
+      while (this.app.vault.getAbstractFileByPath((0, import_obsidian10.normalizePath)(`${this.settings.reportFolder}/${filename}`))) {
+        filename = `${timestamp}-${suffix}.md`;
+        suffix += 1;
+      }
+      const path = `${this.settings.reportFolder}/${filename}`;
+      await this.writeOutput(this.settings.reportFolder, filename, `# ${reportTitle} - ${today}
 
 Generated: ${formatDate(now.toISOString())}
 
 ${report}`);
-    this.logActivity("review", `Daily review written to ${path}`);
-    if (manual || this.settings.notifyOnCompletion) new import_obsidian10.Notice(`Review written to ${path}`, 6e3);
-    await this.saveState();
-    return report;
+      this.logActivity("review", `Daily review written to ${path}`);
+      if (manual || this.settings.notifyOnCompletion) new import_obsidian10.Notice(`Review written to ${path}`, 6e3);
+      await this.saveState();
+      return report;
+    } finally {
+      this.reviewRunning = false;
+    }
   }
   includeReviewFile(file, start) {
     if (!file || !file.path) return false;
-    const normalizedReportFolder = this.settings.reportFolder.replace(/\/+$/, "");
-    if (file.path.startsWith(`${normalizedReportFolder}/`)) return false;
+    const normPath = (0, import_obsidian10.normalizePath)(file.path);
+    const normReport = (0, import_obsidian10.normalizePath)(this.settings.reportFolder || "AI Reviews");
+    const normSchedule = (0, import_obsidian10.normalizePath)(this.settings.scheduleFolder || "AI Schedules");
+    if (ScheduleNotesSync.isInside(normReport, normPath) || ScheduleNotesSync.isInside(normSchedule, normPath)) {
+      return false;
+    }
     if (this.settings.reviewContextMode === "all-markdown") return true;
     if (this.settings.reviewContextMode === "no-files") return false;
     return Boolean(file.stat && file.stat.mtime >= start.getTime());
@@ -3184,6 +3282,7 @@ ${report}`);
     const cleanFolder = (0, import_obsidian10.normalizePath)(String(folder || "").replace(/^\/+|\/+$/g, ""));
     let cleanName = String(filename || `${localDateKey()}.md`).replace(/[\\/]/g, "-");
     let path = (0, import_obsidian10.normalizePath)(cleanFolder ? `${cleanFolder}/${cleanName}` : cleanName);
+    this.markSelfWrite(path);
     await this.ensureFolder(cleanFolder);
     let existing = this.app.vault.getAbstractFileByPath(path);
     if (existing instanceof import_obsidian10.TFolder) {
@@ -3337,6 +3436,17 @@ ${report}`);
   }
   async deleteJob(job) {
     this.jobs = this.jobs.filter((candidate) => candidate.id !== job.id);
+    if (job.notePath) {
+      const file = this.app.vault.getAbstractFileByPath(job.notePath);
+      if (file instanceof import_obsidian10.TFile) {
+        try {
+          await this.app.fileManager.trashFile(file);
+        } catch (error) {
+          console.error("[ai-scheduler] Failed to trash schedule note on deletion:", error);
+        }
+      }
+      this.notesSync.forgetPath(job.notePath);
+    }
     this.logActivity("deleted", `Deleted ${job.title}`, job.id);
     await this.saveState();
   }
@@ -3368,6 +3478,20 @@ ${report}`);
     await this.saveState();
   }
   async deleteAllJobs() {
+    const toDelete = this.jobs.filter((job) => !isNightlyReviewJob(job));
+    for (const job of toDelete) {
+      if (job.notePath) {
+        const file = this.app.vault.getAbstractFileByPath(job.notePath);
+        if (file instanceof import_obsidian10.TFile) {
+          try {
+            await this.app.fileManager.trashFile(file);
+          } catch (error) {
+            console.error("[ai-scheduler] Failed to trash schedule note on deletion:", error);
+          }
+        }
+        this.notesSync.forgetPath(job.notePath);
+      }
+    }
     this.jobs = this.jobs.filter((job) => isNightlyReviewJob(job));
     this.logActivity("deleted", "Deleted all scheduled tasks");
     await this.saveState();

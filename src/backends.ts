@@ -500,7 +500,7 @@ export async function resolveModel(host: BackendHost, value: string | null | und
 		}
 		return { modelRef: 'copilot', tab: null, conversationId: null, providerId: 'copilot', model: null };
 	}
-	const selected = value === undefined || value === null ? host.settings.executionModel : value;
+	const selected = (typeof value === 'string' && value.trim()) ? value.trim() : (host.settings.executionModel || '').trim();
 	if (!selected) {
 		throw new Error(`No model selected for ${action}. Choose a model in AI Scheduler settings first.`);
 	}
@@ -512,39 +512,28 @@ export async function resolveModel(host: BackendHost, value: string | null | und
 	if (!availableModels.some(model => model.value === selected)) {
 		throw new Error(`The selected model for ${action} is no longer available in Claudian. Refresh the model list and choose another model.`);
 	}
-	if (String(selected).startsWith('tab:')) {
-		const tab = Math.max(1, Number.parseInt(String(selected).slice(4), 10) || 1);
-		const view = await getClaudianView(host);
-		const runtime = getTab(host, view, tab);
-		if (!runtime) throw new Error(`The Claudian chat selected for ${action} no longer exists. Refresh the model list and choose another model.`);
-		const claudian = getClaudianPlugin(host);
-		const conversation = runtime.conversationId && claudian && typeof claudian.getConversationSync === 'function'
-			? claudian.getConversationSync(runtime.conversationId) : null;
-		if (!conversation || !conversation.providerId) throw new Error(`The Claudian chat selected for ${action} has no configured provider.`);
-		return { modelRef: selected, tab, conversationId: runtime.conversationId || null, providerId: conversation.providerId, model: conversation.selectedModel || null };
-	}
 	const profile = parseProfileValue(selected);
-	if (profile && profile.providerId) {
-		const claudian = getClaudianPlugin(host);
-		if (!claudian) throw new Error(`Claudian is not installed or enabled. It is required for ${action}.`);
-		if (typeof claudian.createConversation !== 'function') throw new Error(`Claudian cannot create a conversation for ${action}.`);
-		let conversation: ClaudianConversation;
-		try {
-			conversation = await claudian.createConversation({
-				providerId: profile.providerId,
-				...(profile.model ? { selectedModel: profile.model } : {}),
-			});
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			throw new Error(`Claudian could not create the selected model for ${action}: ${message}`);
-		}
-		if (!conversation || !conversation.id) throw new Error(`Claudian returned no conversation for ${action}.`);
-		if (conversation.id && typeof claudian.renameConversation === 'function') {
-			await claudian.renameConversation(conversation.id, 'AI Scheduler - Planning');
-		}
-		return { modelRef: selected, tab: host.settings.assistantTab, conversationId: conversation.id, providerId: profile.providerId, model: profile.model || null };
+	if (!profile || !profile.providerId) {
+		throw new Error(`The selected model configuration for ${action} is invalid.`);
 	}
-	return { modelRef: '', tab: host.settings.assistantTab, conversationId: null, providerId: null, model: null };
+	const claudian = getClaudianPlugin(host);
+	if (!claudian) throw new Error(`Claudian is not installed or enabled. It is required for ${action}.`);
+	if (typeof claudian.createConversation !== 'function') throw new Error(`Claudian cannot create a conversation for ${action}.`);
+	let conversation: ClaudianConversation;
+	try {
+		conversation = await claudian.createConversation({
+			providerId: profile.providerId,
+			...(profile.model ? { selectedModel: profile.model } : {}),
+		});
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		throw new Error(`Claudian could not create the selected model for ${action}: ${message}`);
+	}
+	if (!conversation || !conversation.id) throw new Error(`Claudian returned no conversation for ${action}.`);
+	if (conversation.id && typeof claudian.renameConversation === 'function') {
+		await claudian.renameConversation(conversation.id, 'AI Scheduler - Planning');
+	}
+	return { modelRef: selected, tab: host.settings.assistantTab, conversationId: conversation.id, providerId: profile.providerId, model: profile.model || null };
 }
 
 export async function resolveJobExecution(host: BackendHost, job: Job): Promise<ResolvedExecution> {

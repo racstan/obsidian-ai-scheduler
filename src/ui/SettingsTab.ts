@@ -209,7 +209,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Schedule notes (optional)').setHeading();
 		new Setting(containerEl)
 			.setName('Keep schedule notes in my vault')
-			.setDesc('Off by default. When enabled, every task gets a Markdown note whose frontmatter holds its schedule and prompt — edit the note or the dashboard, both stay in sync. Task results and history stay in data.json, and turning this off never loses anything.')
+			.setDesc('Off by default. When enabled, every task gets a Markdown note whose frontmatter holds its schedule and prompt — edit the note or the dashboard, both stay in sync. Note: deleting a task note in Obsidian permanently removes that task.')
 			.addToggle(toggle => toggle.setValue(this.plugin.settings.scheduleNotesEnabled).onChange(value => {
 				void (async () => {
 					this.plugin.settings.scheduleNotesEnabled = value;

@@ -127,3 +127,33 @@ test('parseStoredData migrates the ancient tasks format', () => {
 	assert.equal(parsed.jobs[0].prompt, 'do things');
 	assert.equal(parsed.jobs[0].enabled, true);
 });
+
+test('cronFormFor multi rule emits all times', () => {
+	const form = cronFormFor({
+		kind: 'multi',
+		rules: [
+			{ days: [1, 2, 3, 4, 5], times: ['09:00', '17:00'] },
+		],
+	});
+	assert.equal(form, '0 9,17 * * 1,2,3,4,5');
+});
+
+test('previewSchedule for once rule returns a single entry without duplicates', () => {
+	const runs = previewSchedule({ kind: 'once', at: '2026-10-01T09:15:00.000Z' }, 3);
+	assert.equal(runs.length, 1);
+});
+
+test('normalizeJob sanitizes corrupted or stringified persisted fields', () => {
+	const job = normalizeJob({
+		enabled: 'false',
+		status: 'banana',
+		taskNumber: 'abc',
+		attempts: 'x',
+		contextPaths: 'not-an-array',
+	});
+	assert.equal(job.enabled, false);
+	assert.equal(job.status, 'disabled');
+	assert.equal(job.taskNumber, 0);
+	assert.equal(job.attempts, 0);
+	assert.deepEqual(job.contextPaths, []);
+});

@@ -19,6 +19,7 @@ import {
 	getScheduleNextRun,
 	nextDailyRun,
 	normalizeMaxIterations,
+	validClock,
 } from './schedule';
 import {
 	planStartupCatchUp,
@@ -52,6 +53,15 @@ export class AISchedulerPlugin extends Plugin {
 	notesSync: ScheduleNotesSync = new ScheduleNotesSync(this);
 	pendingVaultEvents: string[] = [];
 	private runningJobs = new Set<string>();
+	private selfWrites = new Set<string>();
+
+	markSelfWrite(path: string): void {
+		const norm = normalizePath(path);
+		this.selfWrites.add(norm);
+		window.setTimeout(() => {
+			this.selfWrites.delete(norm);
+		}, 3000);
+	}
 
 	async onload(): Promise<void> {
 		const data = await this.loadData() as Record<string, unknown> | null;
@@ -243,7 +253,6 @@ export class AISchedulerPlugin extends Plugin {
 		job.status = 'running';
 		job.lastRunAt = new Date().toISOString();
 		job.attempts = Number(job.attempts || 0) + 1;
-		job.runCount = Number(job.runCount || 0) + 1;
 		await this.saveState();
 		try {
 			const execution = await backends.resolveJobExecution(this, job);
@@ -262,10 +271,15 @@ export class AISchedulerPlugin extends Plugin {
 			const reply = job.routine === 'daily-review'
 				? await this.runDailyReview(false, execution, 'nightly')
 				: await backends.sendToAI(this, prompt, execution, context);
+			const trimmedReply = (reply || '').trim();
+			if (!trimmedReply) {
+				throw new Error('The AI returned an empty response.');
+			}
 			job.lastReply = reply || '';
 			job.lastStatus = 'completed';
 			job.lastError = null;
 			job.status = 'completed';
+			job.runCount = Number(job.runCount || 0) + 1;
 			await this.processFollowUps(reply, job);
 			if (job.output && job.output.folder && reply) {
 				await this.writeOutput(job.output.folder, job.output.filename, reply);
@@ -287,6 +301,13 @@ export class AISchedulerPlugin extends Plugin {
 
 	async handleVaultChange(file: { path?: string }): Promise<void> {
 		if (!file || !file.path) return;
+		const normPath = normalizePath(file.path);
+		if (this.selfWrites.has(normPath)) return;
+		const normReport = normalizePath(this.settings.reportFolder || 'AI Reviews');
+		const normSchedule = normalizePath(this.settings.scheduleFolder || 'AI Schedules');
+		if (ScheduleNotesSync.isInside(normReport, normPath) || ScheduleNotesSync.isInside(normSchedule, normPath)) {
+			return;
+		}
 		if (this.running) {
 			this.pendingVaultEvents.push(file.path);
 			return;
@@ -327,6 +348,10 @@ export class AISchedulerPlugin extends Plugin {
 			}
 			return;
 		}
+		if (!validClock(this.settings.reviewTime)) {
+			new Notice('AI Scheduler: review time is invalid, nightly review not scheduled.');
+			return;
+		}
 		if (!job) {
 			job = normalizeJob({
 				id: 'nightly-daily-review',
@@ -353,53 +378,64 @@ export class AISchedulerPlugin extends Plugin {
 			new Notice('A review is already running. You can keep using Obsidian while it finishes.', 5000);
 			return;
 		}
-		this.reviewRunning = true;
 		new Notice(`${kind === 'nightly' ? 'Nightly' : 'Daily'} review started. It will create ${this.settings.reportFolder}/${localTimestampKey()}.md. You can keep using Obsidian.`, 7000);
 		void this.runDailyReview(manual, null, kind).catch(error => {
 			this.logActivity('failed', `Review failed: ${errorText(error)}`);
 			new Notice(`Review failed: ${errorText(error)}`, 8000);
 			void this.saveState();
-		}).finally(() => { this.reviewRunning = false; });
+		});
 	}
 
 	async runDailyReview(manual: boolean, execution: backends.ResolvedExecution | null = null, kind: 'daily' | 'nightly' = 'daily'): Promise<string> {
-		const now = new Date();
-		const today = localDateKey(now);
-		const start = new Date();
-		start.setHours(0, 0, 0, 0);
-		const files = this.app.vault.getMarkdownFiles()
-			.filter(file => this.includeReviewFile(file, start))
-			.sort((a, b) => b.stat.mtime - a.stat.mtime);
-		const fileList = files.length ? files.map(file => `- ${file.path}`).join('\n') : '- No Markdown files were created or modified today.';
-		const prompt = reviewPrompt(kind, today, fileList);
-		const nightlyJob = this.jobs.find(candidate => candidate.routine === 'daily-review');
-		const model = kind === 'nightly' ? this.settings.nightlyReviewModel : this.settings.dailyReviewModel;
-		const resolved = execution || (nightlyJob && kind === 'nightly'
-			? await backends.resolveJobExecution(this, nightlyJob)
-			: await backends.resolveModel(this, model, kind === 'nightly' ? 'nightly review' : 'daily preview'));
-		const context = getPathsContext(this.app, files.map(file => file.path));
-		const reply = await backends.sendToAI(this, prompt, resolved, context);
-		const reportTitle = kind === 'nightly' ? 'Nightly Review' : 'Daily Preview';
-		const report = reply || `# ${reportTitle} - ${today}\n\nThe active AI backend did not return a report.`;
-		const timestamp = localTimestampKey(now);
-		let filename = `${timestamp}.md`;
-		let suffix = 2;
-		while (this.app.vault.getAbstractFileByPath(normalizePath(`${this.settings.reportFolder}/${filename}`))) {
-			filename = `${timestamp}-${suffix}.md`;
-			suffix += 1;
+		if (this.reviewRunning) {
+			throw new Error('A review is already in progress.');
 		}
-		const path = `${this.settings.reportFolder}/${filename}`;
-		await this.writeOutput(this.settings.reportFolder, filename, `# ${reportTitle} - ${today}\n\nGenerated: ${formatDate(now.toISOString())}\n\n${report}`);
-		this.logActivity('review', `Daily review written to ${path}`);
-		if (manual || this.settings.notifyOnCompletion) new Notice(`Review written to ${path}`, 6000);
-		await this.saveState();
-		return report;
+		this.reviewRunning = true;
+		try {
+			const now = new Date();
+			const today = localDateKey(now);
+			const start = new Date();
+			start.setHours(0, 0, 0, 0);
+			const files = this.app.vault.getMarkdownFiles()
+				.filter(file => this.includeReviewFile(file, start))
+				.sort((a, b) => b.stat.mtime - a.stat.mtime);
+			const fileList = files.length ? files.map(file => `- ${file.path}`).join('\n') : '- No Markdown files were created or modified today.';
+			const prompt = reviewPrompt(kind, today, fileList);
+			const nightlyJob = this.jobs.find(candidate => candidate.routine === 'daily-review');
+			const model = kind === 'nightly' ? this.settings.nightlyReviewModel : this.settings.dailyReviewModel;
+			const resolved = execution || (nightlyJob && kind === 'nightly'
+				? await backends.resolveJobExecution(this, nightlyJob)
+				: await backends.resolveModel(this, model, kind === 'nightly' ? 'nightly review' : 'daily preview'));
+			const context = getPathsContext(this.app, files.map(file => file.path));
+			const reply = await backends.sendToAI(this, prompt, resolved, context);
+			const reportTitle = kind === 'nightly' ? 'Nightly Review' : 'Daily Preview';
+			const report = reply || `# ${reportTitle} - ${today}\n\nThe active AI backend did not return a report.`;
+			const timestamp = localTimestampKey(now);
+			let filename = `${timestamp}.md`;
+			let suffix = 2;
+			while (this.app.vault.getAbstractFileByPath(normalizePath(`${this.settings.reportFolder}/${filename}`))) {
+				filename = `${timestamp}-${suffix}.md`;
+				suffix += 1;
+			}
+			const path = `${this.settings.reportFolder}/${filename}`;
+			await this.writeOutput(this.settings.reportFolder, filename, `# ${reportTitle} - ${today}\n\nGenerated: ${formatDate(now.toISOString())}\n\n${report}`);
+			this.logActivity('review', `Daily review written to ${path}`);
+			if (manual || this.settings.notifyOnCompletion) new Notice(`Review written to ${path}`, 6000);
+			await this.saveState();
+			return report;
+		} finally {
+			this.reviewRunning = false;
+		}
 	}
 
 	includeReviewFile(file: { path: string; stat: { mtime: number } }, start: Date): boolean {
 		if (!file || !file.path) return false;
-		const normalizedReportFolder = this.settings.reportFolder.replace(/\/+$/, '');
-		if (file.path.startsWith(`${normalizedReportFolder}/`)) return false;
+		const normPath = normalizePath(file.path);
+		const normReport = normalizePath(this.settings.reportFolder || 'AI Reviews');
+		const normSchedule = normalizePath(this.settings.scheduleFolder || 'AI Schedules');
+		if (ScheduleNotesSync.isInside(normReport, normPath) || ScheduleNotesSync.isInside(normSchedule, normPath)) {
+			return false;
+		}
 		if (this.settings.reviewContextMode === 'all-markdown') return true;
 		if (this.settings.reviewContextMode === 'no-files') return false;
 		return Boolean(file.stat && file.stat.mtime >= start.getTime());
@@ -430,6 +466,7 @@ export class AISchedulerPlugin extends Plugin {
 		const cleanFolder = normalizePath(String(folder || '').replace(/^\/+|\/+$/g, ''));
 		let cleanName = String(filename || `${localDateKey()}.md`).replace(/[\\/]/g, '-');
 		let path = normalizePath(cleanFolder ? `${cleanFolder}/${cleanName}` : cleanName);
+		this.markSelfWrite(path);
 		await this.ensureFolder(cleanFolder);
 		let existing = this.app.vault.getAbstractFileByPath(path);
 		if (existing instanceof TFolder) {
@@ -610,6 +647,17 @@ export class AISchedulerPlugin extends Plugin {
 
 	async deleteJob(job: Job): Promise<void> {
 		this.jobs = this.jobs.filter(candidate => candidate.id !== job.id);
+		if (job.notePath) {
+			const file = this.app.vault.getAbstractFileByPath(job.notePath);
+			if (file instanceof TFile) {
+				try {
+					await this.app.fileManager.trashFile(file);
+				} catch (error) {
+					console.error('[ai-scheduler] Failed to trash schedule note on deletion:', error);
+				}
+			}
+			this.notesSync.forgetPath(job.notePath);
+		}
 		this.logActivity('deleted', `Deleted ${job.title}`, job.id);
 		await this.saveState();
 	}
@@ -645,6 +693,20 @@ export class AISchedulerPlugin extends Plugin {
 	}
 
 	async deleteAllJobs(): Promise<void> {
+		const toDelete = this.jobs.filter(job => !isNightlyReviewJob(job));
+		for (const job of toDelete) {
+			if (job.notePath) {
+				const file = this.app.vault.getAbstractFileByPath(job.notePath);
+				if (file instanceof TFile) {
+					try {
+						await this.app.fileManager.trashFile(file);
+					} catch (error) {
+						console.error('[ai-scheduler] Failed to trash schedule note on deletion:', error);
+					}
+				}
+				this.notesSync.forgetPath(job.notePath);
+			}
+		}
 		this.jobs = this.jobs.filter(job => isNightlyReviewJob(job));
 		this.logActivity('deleted', 'Deleted all scheduled tasks');
 		await this.saveState();

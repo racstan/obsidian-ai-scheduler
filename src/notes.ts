@@ -69,7 +69,20 @@ export class ScheduleNotesSync {
 			candidate = normalizePath(`${this.folder}/${base}-${suffix}.md`);
 			suffix += 1;
 		}
+		// If the job already had a note in an older folder, migrate it
+		if (job.notePath && !ScheduleNotesSync.isInside(this.folder, job.notePath)) {
+			const oldFile = this.plugin.app.vault.getAbstractFileByPath(job.notePath);
+			if (oldFile instanceof TFile) {
+				try {
+					void this.plugin.app.fileManager.renameFile(oldFile, candidate);
+				} catch { /* if rename fails, sync will recreate */ }
+			}
+		}
 		return candidate;
+	}
+
+	forgetPath(path: string): void {
+		this.lastWritten.delete(path);
 	}
 
 	definitionFor(job: Job): NoteDefinition {
@@ -131,10 +144,11 @@ export class ScheduleNotesSync {
 			'Edit the frontmatter above (or use the AI Scheduler dashboard) to change this task; the schedule table updates automatically.',
 			'',
 		];
-		return `---\n${frontmatter}---\n${body.join('\n')}`;
+		return `---\n${frontmatter.replace(/\n+$/, '')}\n---\n${body.join('\n')}`;
 	}
 
 	private async writeFile(path: string, content: string): Promise<void> {
+		this.plugin.markSelfWrite(path);
 		const existing = this.plugin.app.vault.getAbstractFileByPath(path);
 		if (existing instanceof TFile) {
 			const current = await this.plugin.app.vault.read(existing);
@@ -221,6 +235,7 @@ export class ScheduleNotesSync {
 			if (folder && 'children' in folder) {
 				for (const child of (folder as { children: TAbstractFile[] }).children) {
 					if (!(child instanceof TFile) || child.extension !== 'md') continue;
+					if (!this.plugin.app.vault.getAbstractFileByPath(child.path)) continue;
 					const tracked = this.plugin.jobs.some(job => job.notePath === child.path);
 					if (tracked) continue;
 					if (await this.importNote(child)) written += 1;

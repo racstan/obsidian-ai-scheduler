@@ -62,7 +62,9 @@ export function planStartupCatchUp(jobs: Job[], settings: Pick<AISettings, 'catc
 	if (!settings.catchUpOnStart) {
 		return { missed: [], stale: due };
 	}
-	const cutoff = now - Number(settings.catchUpHours || 24) * 60 * 60 * 1000;
+	const raw = Number(settings.catchUpHours);
+	const hours = Number.isFinite(raw) && raw >= 0 ? raw : 24;
+	const cutoff = now - hours * 60 * 60 * 1000;
 	return {
 		missed: due.filter(job => new Date(job.nextRunAt as string).getTime() >= cutoff),
 		stale: due.filter(job => new Date(job.nextRunAt as string).getTime() < cutoff),

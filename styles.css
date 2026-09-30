@@ -557,7 +557,7 @@
 	margin-bottom: 12px;
 }
 
-.ai-scheduler-section-heading {
+.ai-scheduler-changelog-section-heading {
 	font-size: 12px;
 	font-weight: 600;
 	text-transform: uppercase;
@@ -566,19 +566,19 @@
 	margin-bottom: 6px;
 }
 
-.ai-scheduler-section-heading.added {
+.ai-scheduler-changelog-section-heading.added {
 	color: var(--text-success);
 }
 
-.ai-scheduler-section-heading.changed {
+.ai-scheduler-changelog-section-heading.changed {
 	color: var(--text-warning, #d97706);
 }
 
-.ai-scheduler-section-heading.fixed {
+.ai-scheduler-changelog-section-heading.fixed {
 	color: var(--text-accent);
 }
 
-.ai-scheduler-section-heading.contributors {
+.ai-scheduler-changelog-section-heading.contributors {
 	color: var(--text-accent);
 }
 

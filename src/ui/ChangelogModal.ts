@@ -130,7 +130,7 @@ export class ChangelogModal extends Modal {
 		// Highlights
 		if (release.highlights && release.highlights.length) {
 			const hlBox = card.createDiv({ cls: 'ai-scheduler-release-highlights' });
-			hlBox.createDiv({ cls: 'ai-scheduler-section-heading', text: '✨ Highlights' });
+			hlBox.createDiv({ cls: 'ai-scheduler-changelog-section-heading', text: '✨ Highlights' });
 			const ul = hlBox.createEl('ul');
 			for (const hl of release.highlights) {
 				ul.createEl('li', { text: hl });
@@ -140,7 +140,7 @@ export class ChangelogModal extends Modal {
 		// Added
 		if (release.added && release.added.length) {
 			const section = card.createDiv({ cls: 'ai-scheduler-release-section' });
-			section.createDiv({ cls: 'ai-scheduler-section-heading added', text: '🟢 Added' });
+			section.createDiv({ cls: 'ai-scheduler-changelog-section-heading added', text: '🟢 Added' });
 			const ul = section.createEl('ul');
 			for (const item of release.added) {
 				ul.createEl('li', { text: item });
@@ -150,7 +150,7 @@ export class ChangelogModal extends Modal {
 		// Changed
 		if (release.changed && release.changed.length) {
 			const section = card.createDiv({ cls: 'ai-scheduler-release-section' });
-			section.createDiv({ cls: 'ai-scheduler-section-heading changed', text: '🟡 Changed' });
+			section.createDiv({ cls: 'ai-scheduler-changelog-section-heading changed', text: '🟡 Changed' });
 			const ul = section.createEl('ul');
 			for (const item of release.changed) {
 				ul.createEl('li', { text: item });
@@ -160,7 +160,7 @@ export class ChangelogModal extends Modal {
 		// Fixed
 		if (release.fixed && release.fixed.length) {
 			const section = card.createDiv({ cls: 'ai-scheduler-release-section' });
-			section.createDiv({ cls: 'ai-scheduler-section-heading fixed', text: '🛠️ Fixed' });
+			section.createDiv({ cls: 'ai-scheduler-changelog-section-heading fixed', text: '🛠️ Fixed' });
 			const ul = section.createEl('ul');
 			for (const item of release.fixed) {
 				ul.createEl('li', { text: item });
@@ -170,7 +170,7 @@ export class ChangelogModal extends Modal {
 		// Contributors
 		if (release.contributors && release.contributors.length) {
 			const section = card.createDiv({ cls: 'ai-scheduler-release-section' });
-			section.createDiv({ cls: 'ai-scheduler-section-heading contributors', text: '👥 Contributors' });
+			section.createDiv({ cls: 'ai-scheduler-changelog-section-heading contributors', text: '👥 Contributors' });
 			const list = section.createDiv({ cls: 'ai-scheduler-contributors-list' });
 			for (const contributor of release.contributors) {
 				const chip = list.createEl('a', {

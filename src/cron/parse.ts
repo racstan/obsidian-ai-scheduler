@@ -62,10 +62,21 @@ function expandRange(min: number, max: number, step: number, lo: number, hi: num
 	} else {
 		// Wrapping range, e.g. FRI-MON or NOV-FEB: walk the calendar wrap.
 		let value = min;
-		for (;;) {
+		let wrapped = false;
+		while (true) {
 			values.push(value);
 			if (value === max) break;
-			value = value + 1 > hi ? lo : value + 1;
+			let next = value + step;
+			if (!wrapped) {
+				if (next > hi) {
+					wrapped = true;
+					next = lo + (next - hi - 1);
+					if (next > max) break;
+				}
+			} else {
+				if (next > max) break;
+			}
+			value = next;
 		}
 	}
 	return values;

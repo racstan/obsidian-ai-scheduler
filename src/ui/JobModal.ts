@@ -180,7 +180,9 @@ export class JobModal extends Modal {
 		switch (this.kind) {
 			case 'once': {
 				label('Date and time');
-				const current = schedule.at ? new Date(schedule.at) : new Date(Date.now() + 60 * 60 * 1000);
+				const current = schedule.at && new Date(schedule.at).getTime() > Date.now()
+					? new Date(schedule.at)
+					: new Date(Date.now() + 60 * 60 * 1000);
 				const pad = (value: number) => String(value).padStart(2, '0');
 				input({
 					type: 'datetime-local',

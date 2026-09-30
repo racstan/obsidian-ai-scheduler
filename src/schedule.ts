@@ -174,8 +174,13 @@ export function cronFormFor(schedule: TaskSchedule): string | null {
 		if (!rules.every(rule => JSON.stringify(rule.times) === firstTimes)) return null;
 		const days = [...new Set(rules.flatMap(rule => rule.days))].sort((a, b) => a - b);
 		if (!days.length || !rules[0].times.length) return null;
-		const clock = parseClock(rules[0].times[0]);
-		return `${clock.minute} ${clock.hour} * * ${days.join(',')}`;
+		const clocks = rules[0].times.map(parseClock);
+		const minutes = [...new Set(clocks.map(c => c.minute))];
+		if (minutes.length === 1) {
+			const hours = [...new Set(clocks.map(c => c.hour))].sort((a, b) => a - b);
+			return `${minutes[0]} ${hours.join(',')} * * ${days.join(',')}`;
+		}
+		return clocks.map(c => `${c.minute} ${c.hour} * * ${days.join(',')}`).join('; ');
 	}
 	return null;
 }
@@ -184,6 +189,10 @@ export function cronFormFor(schedule: TaskSchedule): string | null {
 export function previewSchedule(schedule: TaskSchedule | null | undefined, count = 3, from: Date = new Date()): string[] {
 	if (!schedule) return [];
 	if (schedule.kind === 'event') return ['fires on vault activity'];
+	if (schedule.kind === 'once') {
+		const date = new Date(schedule.at as string);
+		return Number.isNaN(date.getTime()) ? [] : [formatLocalRun(date)];
+	}
 	if (schedule.kind === 'cron') {
 		if (!schedule.expression || validateCron(schedule.expression)) return [];
 		return cronUpcoming(schedule.expression, count, from).map(formatLocalRun);

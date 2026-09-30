@@ -1,6 +1,6 @@
 /* Settings, job normalization, and stored-data parsing (faithful port of the
  * original onload migration logic), plus the two new opt-in note settings. */
-import { ActivityEntry, AISettings, Job, SCHEDULE_KINDS, TaskSchedule } from './types';
+import { ActivityEntry, AISettings, Job, JobOutput, SCHEDULE_KINDS, TaskSchedule } from './types';
 import { getScheduleNextRun } from './schedule';
 import { id } from './util';
 
@@ -24,52 +24,87 @@ export const DEFAULT_SETTINGS: AISettings = {
 	showChangelogOnUpdate: true,
 };
 
+const VALID_STATUSES = new Set(['scheduled', 'running', 'completed', 'failed', 'missed', 'disabled']);
+
+function normalizeOutput(output: unknown): JobOutput | null {
+	if (!output || typeof output !== 'object') return null;
+	const record = output as Record<string, unknown>;
+	return {
+		folder: typeof record.folder === 'string' ? record.folder : undefined,
+		filename: typeof record.filename === 'string' ? record.filename : undefined,
+	};
+}
+
 export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date()): Job {
 	const scheduleRaw = (raw.schedule || (raw.sendAt
 		? { kind: 'once', at: raw.sendAt }
 		: { kind: 'once', at: new Date(Date.now() + 60000).toISOString() })) as Record<string, unknown>;
 	const normalizedSchedule: TaskSchedule = {
 		kind: (SCHEDULE_KINDS as string[]).includes(String(scheduleRaw.kind)) ? scheduleRaw.kind as TaskSchedule['kind'] : 'once',
-		at: scheduleRaw.at as string | undefined,
-		time: scheduleRaw.time as string | undefined,
-		days: scheduleRaw.days as number[] | undefined,
+		at: typeof scheduleRaw.at === 'string' ? scheduleRaw.at : undefined,
+		time: typeof scheduleRaw.time === 'string' ? scheduleRaw.time : undefined,
+		days: Array.isArray(scheduleRaw.days) ? scheduleRaw.days.map(Number).filter(d => Number.isInteger(d) && d >= 0 && d <= 6) : undefined,
 		rules: scheduleRaw.rules as TaskSchedule['rules'],
-		event: scheduleRaw.event as string | undefined,
-		intervalMinutes: (scheduleRaw.intervalMinutes || scheduleRaw.everyMinutes || (Number(scheduleRaw.everyHours || 0) * 60)) as number | null,
+		event: typeof scheduleRaw.event === 'string' ? scheduleRaw.event : undefined,
+		intervalMinutes: Number.isFinite(Number(scheduleRaw.intervalMinutes || scheduleRaw.everyMinutes || (Number(scheduleRaw.everyHours || 0) * 60)))
+			? Number(scheduleRaw.intervalMinutes || scheduleRaw.everyMinutes || (Number(scheduleRaw.everyHours || 0) * 60))
+			: null,
 		maxIterations: normalizeMaxIterationsField(scheduleRaw.maxIterations || scheduleRaw.maxRuns || scheduleRaw.iterations),
-		expression: scheduleRaw.expression as string | undefined,
+		expression: typeof scheduleRaw.expression === 'string' ? scheduleRaw.expression : undefined,
 	};
-	const nextRunAt = raw.nextRunAt !== undefined
-		? raw.nextRunAt as string | null
+	const nextRunAt = raw.nextRunAt !== undefined && (typeof raw.nextRunAt === 'string' || raw.nextRunAt === null)
+		? raw.nextRunAt
 		: getScheduleNextRun(normalizedSchedule, now);
-	return Object.assign({
-		id: id('job'),
-		title: 'Assistant task',
-		prompt: '',
-		tab: 1,
-		enabled: true,
-		status: 'scheduled',
-		createdAt: new Date().toISOString(),
-		lastRunAt: null,
-		lastStatus: null,
-		lastReply: '',
-		lastError: null,
-		routine: null,
-		notify: true,
-		output: null,
+
+	const enabled = typeof raw.enabled === 'boolean'
+		? raw.enabled
+		: raw.enabled === 'false' ? false : true;
+
+	const rawStatus = typeof raw.status === 'string' ? raw.status : '';
+	const status = VALID_STATUSES.has(rawStatus)
+		? rawStatus as Job['status']
+		: (enabled ? 'scheduled' : 'disabled');
+
+	const attempts = Number(raw.attempts);
+	const runCount = Number(raw.runCount);
+	const taskNumber = Number(raw.taskNumber);
+	const tab = Number(raw.tab);
+	const cooldownMinutes = Number(raw.cooldownMinutes);
+
+	return {
+		id: typeof raw.id === 'string' && raw.id.trim() ? raw.id : id('job'),
+		title: typeof raw.title === 'string' && raw.title.trim() ? raw.title : 'Assistant task',
+		prompt: typeof raw.prompt === 'string' ? raw.prompt : '',
+		tab: Number.isInteger(tab) && tab > 0 ? tab : 1,
+		enabled,
+		status,
+		createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString(),
+		lastRunAt: typeof raw.lastRunAt === 'string' ? raw.lastRunAt : null,
+		lastStatus: typeof raw.lastStatus === 'string' && VALID_STATUSES.has(raw.lastStatus) ? raw.lastStatus : null,
+		lastReply: typeof raw.lastReply === 'string' ? raw.lastReply : '',
+		lastError: typeof raw.lastError === 'string' ? raw.lastError : null,
+		routine: typeof raw.routine === 'string' ? raw.routine : null,
+		notify: raw.notify !== false,
+		output: normalizeOutput(raw.output),
 		contextPaths: Array.isArray(raw.contextPaths)
-			? raw.contextPaths as string[]
+			? raw.contextPaths.map(String)
 			: (raw.context as { paths?: string[] } | undefined)?.paths && Array.isArray((raw.context as { paths?: string[] }).paths)
-				? (raw.context as { paths: string[] }).paths
+				? (raw.context as { paths: string[] }).paths.map(String)
 				: [],
-		attempts: 0,
-		runCount: Number(raw.runCount || 0),
-		taskNumber: Number(raw.taskNumber || 0),
-		profile: null,
-		conversationId: null,
-		providerId: null,
-		model: null,
-	}, raw, { schedule: normalizedSchedule, nextRunAt }) as Job;
+		attempts: Number.isFinite(attempts) && attempts >= 0 ? attempts : 0,
+		runCount: Number.isFinite(runCount) && runCount >= 0 ? runCount : 0,
+		taskNumber: Number.isFinite(taskNumber) && taskNumber >= 0 ? taskNumber : 0,
+		profile: typeof raw.profile === 'string' ? raw.profile : null,
+		conversationId: typeof raw.conversationId === 'string' ? raw.conversationId : null,
+		providerId: typeof raw.providerId === 'string' ? raw.providerId : null,
+		model: typeof raw.model === 'string' ? raw.model : null,
+		notePath: typeof raw.notePath === 'string' ? raw.notePath : null,
+		cooldownMinutes: Number.isFinite(cooldownMinutes) && cooldownMinutes >= 0 ? cooldownMinutes : undefined,
+		lastEventPath: typeof raw.lastEventPath === 'string' ? raw.lastEventPath : undefined,
+		source: typeof raw.source === 'string' ? raw.source : undefined,
+		schedule: normalizedSchedule,
+		nextRunAt,
+	};
 }
 
 function normalizeMaxIterationsField(value: unknown): number | null {
@@ -98,6 +133,12 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 	// v2 shipped startup catch-up enabled. Apply the safer opt-in behavior to
 	// existing installations as well as new ones.
 	if (!stored.version || (stored.version as number) < 3) settings.catchUpOnStart = false;
+	const rawCatchUp = Number(settings.catchUpHours);
+	settings.catchUpHours = Number.isFinite(rawCatchUp) && rawCatchUp >= 0 ? rawCatchUp : 24;
+	const validReviewContextModes = ['modified-today', 'all-markdown', 'no-files'];
+	if (!validReviewContextModes.includes(settings.reviewContextMode)) {
+		settings.reviewContextMode = 'modified-today';
+	}
 	// New in 2.1.1: opt-in schedule notes. Existing installs keep data.json
 	// storage until they explicitly turn notes on in settings.
 	if (typeof settings.scheduleNotesEnabled !== 'boolean') settings.scheduleNotesEnabled = false;
