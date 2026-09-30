@@ -362,6 +362,13 @@ function formatLocalRun(date) {
 
 // src/util.ts
 var sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+function withTimeout(promise, ms, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = window.setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));
+}
 function id(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -662,6 +669,19 @@ var DEFAULT_SETTINGS = {
   scheduleNotesEnabled: false,
   scheduleFolder: "AI Schedules"
 };
+function validateJobSchema(item) {
+  if (!item || typeof item !== "object") return null;
+  const title = String(item.title || "").trim();
+  const prompt = String(item.prompt || "").trim();
+  if (!title || !prompt) return null;
+  if (title.length > 200 || prompt.length > 10000) return null;
+  const schedule = item.schedule;
+  if (!schedule || typeof schedule !== "object") return null;
+  const validKinds = ["once", "daily", "weekly", "multi", "hourly", "interval", "event", "cron"];
+  if (!validKinds.includes(schedule.kind)) return null;
+  return { title, prompt, schedule };
+}
+
 function normalizeJob(raw, now = /* @__PURE__ */ new Date()) {
   var _a;
   const scheduleRaw = raw.schedule || (raw.sendAt ? { kind: "once", at: raw.sendAt } : { kind: "once", at: new Date(Date.now() + 6e4).toISOString() });
@@ -875,12 +895,13 @@ function getPathsContext(app, paths) {
   const available = getVaultContextOptions(app);
   const known = new Set(available.map((option) => option.path));
   const folders = new Set(available.filter((option) => option.type === "project").map((option) => option.path));
-  const filePaths = selected.filter((path) => !folders.has(path));
-  const folderPaths = selected.filter((path) => folders.has(path));
+  const validPaths = selected.filter((path) => known.has(path));
+  const filePaths = validPaths.filter((path) => !folders.has(path));
+  const folderPaths = validPaths.filter((path) => folders.has(path));
   const adapter = app.vault.adapter;
   const basePath = adapter && typeof adapter.getBasePath === "function" ? adapter.getBasePath() : "";
   return {
-    paths: selected,
+    paths: validPaths,
     missingPaths: selected.filter((path) => !known.has(path)),
     linkedContentPath: filePaths[0] || null,
     externalContextPaths: folderPaths.map((path) => basePath ? `${basePath.replace(/[\\/]+$/, "")}/${path}` : path)
@@ -1005,12 +1026,7 @@ async function sendToClaudian(host, prompt, tabNumber = host.settings.assistantT
     turnRequest.externalContextPaths = context.externalContextPaths;
   }
   const send = controller.sendMessage({ content: prompt, turnRequestOverride: turnRequest });
-  await Promise.race([
-    send,
-    sleep(AGENT_TIMEOUT_MS).then(() => {
-      throw new Error("AI task timed out after 30 minutes");
-    })
-  ]);
+  await withTimeout(send, AGENT_TIMEOUT_MS, "AI task timed out after 30 minutes");
   await waitForTabIdle(view, active);
   await sleep(300);
   return lastAssistantReply(host, view, active, beforeCount);
@@ -1054,12 +1070,7 @@ async function sendToCopilot(host, prompt, context = null) {
     },
     { debug: false }
   );
-  await Promise.race([
-    run,
-    sleep(AGENT_TIMEOUT_MS).then(() => {
-      throw new Error("AI task timed out after 30 minutes");
-    })
-  ]);
+  await withTimeout(run, AGENT_TIMEOUT_MS, "AI task timed out after 30 minutes");
   return (reply || "").trim();
 }
 function sendToAI(host, prompt, execution = {}, context = null) {
@@ -2377,6 +2388,7 @@ var AISchedulerPlugin = class extends import_obsidian9.Plugin {
     this.lastTickError = null;
     this.notesSync = new ScheduleNotesSync(this);
     this.runningJobs = /* @__PURE__ */ new Set();
+    this.pendingVaultEvents = [];
   }
   async onload() {
     const data = await this.loadData();
@@ -2444,7 +2456,11 @@ var AISchedulerPlugin = class extends import_obsidian9.Plugin {
     if (this.settings.scheduleNotesEnabled) await this.notesSync.syncAll();
   }
   async saveState() {
-    await this.saveData({ version: 6, settings: this.settings, jobs: this.jobs, activity: this.activity.slice(-50) });
+    try {
+      await this.saveData({ version: 6, settings: this.settings, jobs: this.jobs, activity: this.activity.slice(-50) });
+    } catch (error) {
+      console.error("[ai-scheduler] Failed to save state:", error);
+    }
     this.notesSync.requestSync();
   }
   assignTaskNumbers() {
@@ -2494,12 +2510,19 @@ var AISchedulerPlugin = class extends import_obsidian9.Plugin {
     if (plan.missed.length) {
       new import_obsidian9.Notice(`${plan.missed.length} AI task(s) are ready after startup`, 6e3);
     }
+    await sleep(1e3);
     await this.tick();
   }
   async tick() {
     if (this.running) return;
     const due = dueJobs(this.jobs, Date.now());
-    if (!due.length) return;
+    if (!due.length) {
+      if (this.pendingVaultEvents.length) {
+        const events = this.pendingVaultEvents.splice(0);
+        for (const path of events) await this.handleVaultChange({ path });
+      }
+      return;
+    }
     this.running = true;
     try {
       for (const job of due) {
@@ -2508,6 +2531,10 @@ var AISchedulerPlugin = class extends import_obsidian9.Plugin {
       }
     } finally {
       this.running = false;
+    }
+    if (this.pendingVaultEvents.length) {
+      const events = this.pendingVaultEvents.splice(0);
+      for (const path of events) await this.handleVaultChange({ path });
     }
   }
   async executeJob(job) {
@@ -2562,12 +2589,16 @@ ${job.lastError}`, 8e3);
     await this.saveState();
   }
   async handleVaultChange(file) {
-    if (!file || !file.path || this.running) return;
+    if (!file || !file.path) return;
+    if (this.running) {
+      this.pendingVaultEvents.push(file.path);
+      return;
+    }
     const eventJobs = this.jobs.filter((job) => job.enabled && job.schedule && job.schedule.kind === "event" && (!job.schedule.event || job.schedule.event === "modify" || job.schedule.event === "vault-change"));
     if (!eventJobs.length) return;
     const now = Date.now();
     for (const job of eventJobs) {
-      const cooldown = Number(job.cooldownMinutes || 10) * 6e4;
+      const cooldown = Math.max(0, Number(job.cooldownMinutes) || 10) * 6e4;
       if (job.lastRunAt && now - new Date(job.lastRunAt).getTime() < cooldown) continue;
       job.nextRunAt = new Date(now + 2e3).toISOString();
       job.lastEventPath = file.path;
@@ -2613,7 +2644,7 @@ ${job.lastError}`, 8e3);
       job.lastStatus = null;
       job.tab = this.settings.assistantTab;
       job.schedule = { kind: "daily", time: this.settings.reviewTime };
-      if (!job.nextRunAt || new Date(job.nextRunAt) <= /* @__PURE__ */ new Date()) job.nextRunAt = nextDailyRun(this.settings.reviewTime);
+      job.nextRunAt = nextDailyRun(this.settings.reviewTime);
     }
   }
   async startReviewRun(manual = true, kind = "daily") {
@@ -2667,7 +2698,9 @@ ${report}`);
     return report;
   }
   includeReviewFile(file, start) {
-    if (!file || !file.path || file.path.startsWith(`${this.settings.reportFolder}/`)) return false;
+    if (!file || !file.path) return false;
+    const normalizedReportFolder = this.settings.reportFolder.replace(/\/+$/, "");
+    if (file.path.startsWith(`${normalizedReportFolder}/`)) return false;
     if (this.settings.reviewContextMode === "all-markdown") return true;
     if (this.settings.reviewContextMode === "no-files") return false;
     return Boolean(file.stat && file.stat.mtime >= start.getTime());
@@ -2678,6 +2711,13 @@ ${report}`);
   getPathsContext(paths) {
     return getPathsContext(this.app, paths);
   }
+  validateContextPaths(paths) {
+    if (!Array.isArray(paths)) return [];
+    const available = this.getVaultContextOptions();
+    const known = new Set(available.map((option) => option.path));
+    return paths.filter((path) => known.has(path));
+  }
+
   getJobContext(job) {
     const context = getPathsContext(this.app, job && job.contextPaths);
     if (context.missingPaths.length) throw new Error(`Selected context no longer exists: ${context.missingPaths.join(", ")}`);
@@ -2685,10 +2725,19 @@ ${report}`);
   }
   async writeOutput(folder, filename, content) {
     const cleanFolder = (0, import_obsidian9.normalizePath)(String(folder || "").replace(/^\/+|\/+$/g, ""));
-    const cleanName = String(filename || `${localDateKey()}.md`).replace(/[\\/]/g, "-");
-    const path = (0, import_obsidian9.normalizePath)(cleanFolder ? `${cleanFolder}/${cleanName}` : cleanName);
+    let cleanName = String(filename || `${localDateKey()}.md`).replace(/[\\/]/g, "-");
+    let path = (0, import_obsidian9.normalizePath)(cleanFolder ? `${cleanFolder}/${cleanName}` : cleanName);
     await this.ensureFolder(cleanFolder);
-    const existing = this.app.vault.getAbstractFileByPath(path);
+    let existing = this.app.vault.getAbstractFileByPath(path);
+    if (existing instanceof import_obsidian9.TFolder) {
+      let suffix = 2;
+      while (existing instanceof import_obsidian9.TFolder) {
+        cleanName = cleanName.replace(/(\.md)?$/, `-${suffix}.md`);
+        path = (0, import_obsidian9.normalizePath)(cleanFolder ? `${cleanFolder}/${cleanName}` : cleanName);
+        existing = this.app.vault.getAbstractFileByPath(path);
+        suffix += 1;
+      }
+    }
     if (existing instanceof import_obsidian9.TFile) await this.app.vault.modify(existing, content);
     else await this.app.vault.create(path, content);
     return path;
@@ -2708,8 +2757,15 @@ ${report}`);
     }
   }
   async processFollowUps(reply, parentJob) {
-    const plans = extractJson(reply).filter((item) => item && item.title && item.prompt && item.schedule);
+    const MAX_TOTAL_JOBS = 100;
+    const plans = extractJson(reply)
+      .map((item) => validateJobSchema(item))
+      .filter(Boolean);
     for (const plan of plans.slice(0, 3)) {
+      if (this.jobs.length >= MAX_TOTAL_JOBS) {
+        console.warn("[ai-scheduler] Follow-up skipped: job limit reached");
+        break;
+      }
       await this.addJob(Object.assign(
         this.jobFromPlan(plan, parentJob.tab, "self-talk"),
         {
@@ -2737,6 +2793,10 @@ ${report}`);
     };
     const planRecord = plan;
     const context = plan.context;
+    const nextRunAt = normalized.kind === "event" ? null : getScheduleNextRun(normalized);
+    if (normalized.kind !== "event" && !nextRunAt) {
+      throw new Error(`Invalid schedule for "${plan.title}": no valid next run time`);
+    }
     return {
       title: String(plan.title).slice(0, 120),
       prompt: String(plan.prompt),
@@ -2746,7 +2806,7 @@ ${report}`);
       providerId: planRecord.providerId || null,
       model: planRecord.model || null,
       schedule: normalized,
-      nextRunAt: normalized.kind === "event" ? null : getScheduleNextRun(normalized),
+      nextRunAt,
       output: planRecord.output || null,
       notify: planRecord.notify !== false,
       contextPaths: Array.isArray(planRecord.contextPaths) ? planRecord.contextPaths : Array.isArray(context == null ? void 0 : context.paths) ? context.paths : [],
@@ -2756,10 +2816,13 @@ ${report}`);
   }
   async planAndCreate(goal, contextPaths = [], resultFolder = "") {
     const execution = await resolveModel(this, this.settings.planningModel, "AI planning");
-    const prompt = plannerPrompt(goal, contextPaths);
-    const context = getPathsContext(this.app, contextPaths);
+    const validatedPaths = this.validateContextPaths(contextPaths);
+    const prompt = plannerPrompt(goal, validatedPaths);
+    const context = getPathsContext(this.app, validatedPaths);
     const reply = await sendToAI(this, prompt, execution, context);
-    const plans = extractJson(reply).filter((item) => item && item.title && item.prompt && item.schedule);
+    const plans = extractJson(reply)
+      .map((item) => validateJobSchema(item))
+      .filter(Boolean);
     if (!plans.length) throw new Error("The AI returned no valid schedule. Ask it for a concrete time or cadence.");
     const jobs = [];
     for (const plan of plans.slice(0, 10)) {
