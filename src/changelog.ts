@@ -23,6 +23,33 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.7.3',
+		date: '2026-10-02',
+		title: 'Changelog Lifecycle Polish, Zero-Task Edge Cases & Conditional Review Settings',
+		highlights: [
+			'Reliable Changelog Lifecycle: Release notes display strictly once per update on normal workspace startup, never interrupting settings navigation or reloads.',
+			'Zero-Task Edge Case Handling: Clean feedback notification ("No tasks available") when bulk enabling, disabling, or deleting with an empty list.',
+			'Conditional Reviews Section: Daily & Nightly Review settings dynamically hide when no AI backend is active.',
+			'Comprehensive Nightly Review Documentation: Enhanced explanations of autonomous end-of-day synthesis and timestamped vault report storage.',
+		],
+		added: [
+			'Zero-task guard and toast notices across dashboard bulk actions and command palette.',
+			'Layout-ready event scheduling for update changelog modals.',
+		],
+		changed: [
+			'Daily & Nightly Reviews settings section only renders when Claudian or Copilot backend is active.',
+			'Enriched descriptions for Nightly AI Review explaining nightly synthesis and timestamped note archives.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Maintainer',
+			},
+		],
+	},
+	{
 		version: '2.1.7.2',
 		date: '2026-10-02',
 		title: 'Native Desktop Notifications, Bulk Actions Feedback & Confirmations',

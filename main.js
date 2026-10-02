@@ -1953,6 +1953,10 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
     this.renderSection(shell, "Scheduled tasks", `${activeCount} ${activeCount === 1 ? "task" : "tasks"} enabled`);
     const bulkActions = shell.createDiv({ cls: "ai-scheduler-row-actions" });
     makeButton(bulkActions, "Enable all", () => {
+      if (!userJobs.length) {
+        new import_obsidian6.Notice("No tasks available.");
+        return;
+      }
       new ConfirmModal(this.app, "Enable all scheduled tasks?", () => {
         void (async () => {
           const count = await this.plugin.enableAllJobs();
@@ -1962,6 +1966,10 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
       }).open();
     });
     makeButton(bulkActions, "Disable all", () => {
+      if (!userJobs.length) {
+        new import_obsidian6.Notice("No tasks available.");
+        return;
+      }
       new ConfirmModal(this.app, "Disable all scheduled tasks?", () => {
         void (async () => {
           const count = await this.plugin.disableAllJobs();
@@ -1971,10 +1979,14 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
       }).open();
     }, false, false);
     makeButton(bulkActions, "Delete all", () => {
+      if (!userJobs.length) {
+        new import_obsidian6.Notice("No tasks available.");
+        return;
+      }
       new ConfirmModal(this.app, "Delete all scheduled tasks? This cannot be undone.", () => {
         void (async () => {
           const count = await this.plugin.deleteAllJobs();
-          new import_obsidian6.Notice(count > 0 ? `${count} scheduled task(s) deleted.` : "No scheduled tasks to delete.");
+          new import_obsidian6.Notice(count > 0 ? `${count} scheduled task(s) deleted.` : "No tasks available.");
           this.render();
         })();
       }).open();
@@ -2104,6 +2116,33 @@ var import_obsidian7 = require("obsidian");
 
 // src/changelog.ts
 var CHANGELOG_DATA = [
+  {
+    version: "2.1.7.3",
+    date: "2026-10-02",
+    title: "Changelog Lifecycle Polish, Zero-Task Edge Cases & Conditional Review Settings",
+    highlights: [
+      "Reliable Changelog Lifecycle: Release notes display strictly once per update on normal workspace startup, never interrupting settings navigation or reloads.",
+      'Zero-Task Edge Case Handling: Clean feedback notification ("No tasks available") when bulk enabling, disabling, or deleting with an empty list.',
+      "Conditional Reviews Section: Daily & Nightly Review settings dynamically hide when no AI backend is active.",
+      "Comprehensive Nightly Review Documentation: Enhanced explanations of autonomous end-of-day synthesis and timestamped vault report storage."
+    ],
+    added: [
+      "Zero-task guard and toast notices across dashboard bulk actions and command palette.",
+      "Layout-ready event scheduling for update changelog modals."
+    ],
+    changed: [
+      "Daily & Nightly Reviews settings section only renders when Claudian or Copilot backend is active.",
+      "Enriched descriptions for Nightly AI Review explaining nightly synthesis and timestamped note archives."
+    ],
+    contributors: [
+      {
+        name: "Rachit Asthana",
+        username: "racstan",
+        url: "https://github.com/racstan",
+        role: "Maintainer"
+      }
+    ]
+  },
   {
     version: "2.1.7.2",
     date: "2026-10-02",
@@ -2710,49 +2749,55 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
         addModelSetting("Nightly review model", "Used by the recurring nightly review and the Run AI nightly review now command.", "nightlyReviewModel");
       }
     }
-    new import_obsidian8.Setting(containerEl).setName("Daily & nightly reviews").setHeading();
-    new import_obsidian8.Setting(containerEl).setName("Run daily preview now").setDesc("Immediately synthesize a preview report from notes modified today.").addButton((button) => button.setButtonText("Run preview now").onClick(() => {
-      void this.plugin.startReviewRun(true, "daily");
-    }));
-    new import_obsidian8.Setting(containerEl).setName("Review context").setDesc("Files the daily and nightly reviews may inspect through the active backend's vault tools.").addDropdown((dropdown) => dropdown.addOption("modified-today", "Markdown files modified today").addOption("all-markdown", "All Markdown files").addOption("no-files", "No automatic files").setValue(this.plugin.settings.reviewContextMode).onChange((value) => {
-      void (async () => {
-        this.plugin.settings.reviewContextMode = value;
-        await this.plugin.saveState();
-      })();
-    }));
-    new import_obsidian8.Setting(containerEl).setName("Review report folder").setDesc("Reports are saved as YYYY-MM-DD-HHmmss.md so every run is preserved.").addText((text) => text.setValue(this.plugin.settings.reportFolder).onChange((value) => {
-      void (async () => {
-        this.plugin.settings.reportFolder = value.trim() || "AI Reviews";
-        await this.plugin.saveState();
-      })();
-    }));
-    new import_obsidian8.Setting(containerEl).setName("Nightly review").setDesc("Opt-in: create a timestamped review report on a recurring schedule.").addToggle((toggle) => toggle.setValue(this.plugin.settings.nightlyReviewEnabled).onChange((value) => {
-      void (async () => {
-        const previous = this.plugin.settings.nightlyReviewEnabled;
-        try {
-          this.plugin.settings.nightlyReviewEnabled = value;
-          await this.plugin.ensureNightlyReviewJob();
-          await this.plugin.saveState();
-          new import_obsidian8.Notice(value ? "Nightly review enabled." : "Nightly review disabled.");
-          this.renderSettings();
-        } catch (error) {
-          this.plugin.settings.nightlyReviewEnabled = previous;
-          toggle.setValue(previous);
-          new import_obsidian8.Notice(`Could not change nightly review: ${errorText(error)}`, 8e3);
-        }
-      })();
-    }));
-    if (this.plugin.settings.nightlyReviewEnabled) {
-      new import_obsidian8.Setting(containerEl).setName("Nightly review time").setDesc("Local 24-hour time, for example 22:00.").addText((text) => text.setValue(this.plugin.settings.reviewTime).onChange((value) => {
+    if (mode && mode !== "none") {
+      new import_obsidian8.Setting(containerEl).setName("Daily & nightly reviews").setHeading();
+      containerEl.createEl("p", {
+        text: "Autonomous vault intelligence: Synthesizes notes created or modified during the day and saves timestamped markdown reports in your review folder.",
+        cls: "ai-scheduler-subtitle"
+      });
+      new import_obsidian8.Setting(containerEl).setName("Review context").setDesc("Files the daily and nightly reviews may inspect through the active backend's vault tools.").addDropdown((dropdown) => dropdown.addOption("modified-today", "Markdown files modified today").addOption("all-markdown", "All Markdown files").addOption("no-files", "No automatic files").setValue(this.plugin.settings.reviewContextMode).onChange((value) => {
         void (async () => {
-          if (/^([01]?\d|2[0-3]):[0-5]\d$/.test(value)) this.plugin.settings.reviewTime = value;
-          await this.plugin.ensureNightlyReviewJob();
+          this.plugin.settings.reviewContextMode = value;
           await this.plugin.saveState();
         })();
       }));
-      new import_obsidian8.Setting(containerEl).setName("Run nightly review now").setDesc("Manually trigger the comprehensive nightly review routine immediately.").addButton((button) => button.setButtonText("Run review now").onClick(() => {
-        void this.plugin.startReviewRun(true, "nightly");
+      new import_obsidian8.Setting(containerEl).setName("Review report folder").setDesc("Vault folder where daily and nightly review summaries are saved (default: AI Reviews). Each review creates a timestamped markdown file (e.g. YYYY-MM-DD-HHmmss.md) so past summaries are permanently preserved.").addText((text) => text.setValue(this.plugin.settings.reportFolder).onChange((value) => {
+        void (async () => {
+          this.plugin.settings.reportFolder = value.trim() || "AI Reviews";
+          await this.plugin.saveState();
+        })();
       }));
+      new import_obsidian8.Setting(containerEl).setName("Run daily preview now").setDesc("Immediately synthesize notes modified today and generate a preview review summary in your review folder.").addButton((button) => button.setButtonText("Run preview now").onClick(() => {
+        void this.plugin.startReviewRun(true, "daily");
+      }));
+      new import_obsidian8.Setting(containerEl).setName("Nightly AI review").setDesc("Automated end-of-day synthesis: Runs in the background (e.g., at night while you sleep) to review everything you created or modified during the day, saving timestamped summaries to your review folder.").addToggle((toggle) => toggle.setValue(this.plugin.settings.nightlyReviewEnabled).onChange((value) => {
+        void (async () => {
+          const previous = this.plugin.settings.nightlyReviewEnabled;
+          try {
+            this.plugin.settings.nightlyReviewEnabled = value;
+            await this.plugin.ensureNightlyReviewJob();
+            await this.plugin.saveState();
+            new import_obsidian8.Notice(value ? "Nightly review enabled." : "Nightly review disabled.");
+            this.renderSettings();
+          } catch (error) {
+            this.plugin.settings.nightlyReviewEnabled = previous;
+            toggle.setValue(previous);
+            new import_obsidian8.Notice(`Could not change nightly review: ${errorText(error)}`, 8e3);
+          }
+        })();
+      }));
+      if (this.plugin.settings.nightlyReviewEnabled) {
+        new import_obsidian8.Setting(containerEl).setName("Nightly review schedule time").setDesc("Local 24-hour time when the nightly review runs automatically (for example, 22:00 or 23:30).").addText((text) => text.setValue(this.plugin.settings.reviewTime).onChange((value) => {
+          void (async () => {
+            if (/^([01]?\d|2[0-3]):[0-5]\d$/.test(value)) this.plugin.settings.reviewTime = value;
+            await this.plugin.ensureNightlyReviewJob();
+            await this.plugin.saveState();
+          })();
+        }));
+        new import_obsidian8.Setting(containerEl).setName("Run nightly review now").setDesc("Manually trigger the full end-of-day nightly review routine immediately without waiting for the scheduled hour.").addButton((button) => button.setButtonText("Run review now").onClick(() => {
+          void this.plugin.startReviewRun(true, "nightly");
+        }));
+      }
     }
     new import_obsidian8.Setting(containerEl).setName("Background execution & notifications").setHeading();
     new import_obsidian8.Setting(containerEl).setName("In-app completion notices").setDesc("Show an Obsidian notice when an AI job or review finishes.").addToggle((toggle) => toggle.setValue(this.plugin.settings.notifyOnCompletion).onChange((value) => {
@@ -3205,6 +3250,11 @@ var AISchedulerPlugin = class extends import_obsidian10.Plugin {
       id: "enable-all-jobs",
       name: "Enable all scheduled tasks",
       callback: async () => {
+        const userTasks = this.jobs.filter((j) => !isNightlyReviewJob(j));
+        if (userTasks.length === 0) {
+          new import_obsidian10.Notice("No tasks available.");
+          return;
+        }
         const count = await this.enableAllJobs();
         new import_obsidian10.Notice(count > 0 ? `${count} scheduled task(s) enabled.` : "All scheduled tasks are already enabled.");
       }
@@ -3213,6 +3263,11 @@ var AISchedulerPlugin = class extends import_obsidian10.Plugin {
       id: "disable-all-jobs",
       name: "Disable all scheduled tasks",
       callback: async () => {
+        const userTasks = this.jobs.filter((j) => !isNightlyReviewJob(j));
+        if (userTasks.length === 0) {
+          new import_obsidian10.Notice("No tasks available.");
+          return;
+        }
         const count = await this.disableAllJobs();
         new import_obsidian10.Notice(count > 0 ? `${count} scheduled task(s) disabled.` : "All scheduled tasks are already disabled.");
       }
@@ -3259,17 +3314,20 @@ var AISchedulerPlugin = class extends import_obsidian10.Plugin {
     if (this.settings.nightlyReviewEnabled) await this.ensureNightlyReviewJob();
     await this.saveState();
     const currentVersion = this.manifest.version;
-    if (this.settings.showChangelogOnUpdate && this.settings.lastSeenVersion && this.settings.lastSeenVersion !== currentVersion) {
-      window.setTimeout(() => {
-        new ChangelogModal(this.app, this, {
-          fromVersion: this.settings.lastSeenVersion,
-          currentVersion,
-          isAutomatic: true
-        }).open();
-      }, 1e3);
-    }
+    const previousVersion = this.settings.lastSeenVersion;
     this.settings.lastSeenVersion = currentVersion;
     await this.saveState();
+    if (this.settings.showChangelogOnUpdate && previousVersion && previousVersion !== currentVersion) {
+      this.app.workspace.onLayoutReady(() => {
+        window.setTimeout(() => {
+          new ChangelogModal(this.app, this, {
+            fromVersion: previousVersion,
+            currentVersion,
+            isAutomatic: true
+          }).open();
+        }, 600);
+      });
+    }
     await this.catchUpOnStart();
     if (this.settings.scheduleNotesEnabled) await this.notesSync.syncAll();
   }

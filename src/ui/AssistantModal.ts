@@ -94,6 +94,10 @@ export class AssistantModal extends Modal {
 		this.renderSection(shell, 'Scheduled tasks', `${activeCount} ${activeCount === 1 ? 'task' : 'tasks'} enabled`);
 		const bulkActions = shell.createDiv({ cls: 'ai-scheduler-row-actions' });
 		makeButton(bulkActions, 'Enable all', () => {
+			if (!userJobs.length) {
+				new Notice('No tasks available.');
+				return;
+			}
 			new ConfirmModal(this.app, 'Enable all scheduled tasks?', () => {
 				void (async () => {
 					const count = await this.plugin.enableAllJobs();
@@ -103,6 +107,10 @@ export class AssistantModal extends Modal {
 			}).open();
 		});
 		makeButton(bulkActions, 'Disable all', () => {
+			if (!userJobs.length) {
+				new Notice('No tasks available.');
+				return;
+			}
 			new ConfirmModal(this.app, 'Disable all scheduled tasks?', () => {
 				void (async () => {
 					const count = await this.plugin.disableAllJobs();
@@ -112,10 +120,14 @@ export class AssistantModal extends Modal {
 			}).open();
 		}, false, false);
 		makeButton(bulkActions, 'Delete all', () => {
+			if (!userJobs.length) {
+				new Notice('No tasks available.');
+				return;
+			}
 			new ConfirmModal(this.app, 'Delete all scheduled tasks? This cannot be undone.', () => {
 				void (async () => {
 					const count = await this.plugin.deleteAllJobs();
-					new Notice(count > 0 ? `${count} scheduled task(s) deleted.` : 'No scheduled tasks to delete.');
+					new Notice(count > 0 ? `${count} scheduled task(s) deleted.` : 'No tasks available.');
 					this.render();
 				})();
 			}).open();

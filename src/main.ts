@@ -131,6 +131,11 @@ export class AISchedulerPlugin extends Plugin {
 			id: 'enable-all-jobs',
 			name: 'Enable all scheduled tasks',
 			callback: async () => {
+				const userTasks = this.jobs.filter(j => !isNightlyReviewJob(j));
+				if (userTasks.length === 0) {
+					new Notice('No tasks available.');
+					return;
+				}
 				const count = await this.enableAllJobs();
 				new Notice(count > 0 ? `${count} scheduled task(s) enabled.` : 'All scheduled tasks are already enabled.');
 			},
@@ -139,6 +144,11 @@ export class AISchedulerPlugin extends Plugin {
 			id: 'disable-all-jobs',
 			name: 'Disable all scheduled tasks',
 			callback: async () => {
+				const userTasks = this.jobs.filter(j => !isNightlyReviewJob(j));
+				if (userTasks.length === 0) {
+					new Notice('No tasks available.');
+					return;
+				}
 				const count = await this.disableAllJobs();
 				new Notice(count > 0 ? `${count} scheduled task(s) disabled.` : 'All scheduled tasks are already disabled.');
 			},
@@ -185,19 +195,23 @@ export class AISchedulerPlugin extends Plugin {
 		if (this.settings.nightlyReviewEnabled) await this.ensureNightlyReviewJob();
 		await this.saveState();
 
-		// Check for changelog notification on update
+		// Check for changelog notification on update (only fires once per update when layout is ready)
 		const currentVersion = this.manifest.version;
-		if (this.settings.showChangelogOnUpdate && this.settings.lastSeenVersion && this.settings.lastSeenVersion !== currentVersion) {
-			window.setTimeout(() => {
-				new ChangelogModal(this.app, this, {
-					fromVersion: this.settings.lastSeenVersion,
-					currentVersion,
-					isAutomatic: true,
-				}).open();
-			}, 1000);
-		}
+		const previousVersion = this.settings.lastSeenVersion;
 		this.settings.lastSeenVersion = currentVersion;
 		await this.saveState();
+
+		if (this.settings.showChangelogOnUpdate && previousVersion && previousVersion !== currentVersion) {
+			this.app.workspace.onLayoutReady(() => {
+				window.setTimeout(() => {
+					new ChangelogModal(this.app, this, {
+						fromVersion: previousVersion,
+						currentVersion,
+						isAutomatic: true,
+					}).open();
+				}, 600);
+			});
+		}
 
 		await this.catchUpOnStart();
 		if (this.settings.scheduleNotesEnabled) await this.notesSync.syncAll();
