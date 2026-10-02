@@ -67,10 +67,31 @@ export class JobModal extends Modal {
 		shell.createEl('h2', { text: 'Edit scheduled task' });
 		shell.createEl('p', { text: 'Adjust the schedule directly, or describe a change in plain language and let AI rewrite it.', cls: 'ai-scheduler-subtitle' });
 
-		const current = makeCard(shell, 'ai-scheduler-card-tight', 'ai-scheduler-card-flush');
-		current.createDiv({ text: this.job.title, cls: 'ai-scheduler-task-title' });
-		current.createDiv({ text: describeSchedule(this.job), cls: 'ai-scheduler-task-meta' });
-		current.createDiv({ text: this.job.prompt, cls: 'ai-scheduler-task-prompt' });
+		const detailsCard = makeCard(shell, 'ai-scheduler-card-tight', 'ai-scheduler-card-flush');
+		detailsCard.createDiv({ cls: 'ai-scheduler-lead ai-scheduler-gap-8', text: 'Task Details' });
+
+		detailsCard.createDiv({ cls: 'ai-scheduler-form-label', text: 'Task title' });
+		const titleInput = detailsCard.createEl('input', {
+			type: 'text',
+			value: this.job.title,
+			placeholder: 'Task title...',
+			cls: 'ai-scheduler-input ai-scheduler-form-gap',
+		});
+
+		detailsCard.createDiv({ cls: 'ai-scheduler-form-label', text: 'Prompt & instructions' });
+		const promptInput = detailsCard.createEl('textarea', {
+			value: this.job.prompt,
+			placeholder: 'Instructions for the AI when executing this task (type @ to attach files)...',
+			cls: 'ai-scheduler-textarea ai-scheduler-form-gap',
+		});
+		attachMentionSuggest({
+			textarea: promptInput,
+			app: this.app,
+			onSelect: file => {
+				contextPicker.addPath(file.path);
+				new Notice(`Attached to context: ${file.path}`);
+			},
+		});
 
 		this.renderScheduleEditor(shell);
 
@@ -87,7 +108,16 @@ export class JobModal extends Modal {
 				if (validation) { new Notice(validation, 8000); return; }
 				const folder = resultFolder.value.trim();
 				const output = folder ? Object.assign({}, this.job.output || {}, { folder }) : null;
-				await this.plugin.updateJob(this.job, { schedule: state.schedule, contextPaths: contextPicker.getPaths(), output, cooldownMinutes: state.cooldownMinutes });
+				const newTitle = titleInput.value.trim() || this.job.title;
+				const newPrompt = promptInput.value.trim() || this.job.prompt;
+				await this.plugin.updateJob(this.job, {
+					title: newTitle,
+					prompt: newPrompt,
+					schedule: state.schedule,
+					contextPaths: contextPicker.getPaths(),
+					output,
+					cooldownMinutes: state.cooldownMinutes,
+				});
 				new Notice('Schedule updated and saved.', 6000);
 				this.onSaved();
 				this.close();

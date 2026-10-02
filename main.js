@@ -717,6 +717,10 @@ function describeSchedule(job) {
     const description = describeCron(expression);
     return description === "Invalid cron expression" ? `cron ${expression || "(empty)"}` : `${description} \xB7 ${expression}`;
   }
+  if (schedule.kind === "once") {
+    const at = schedule.at || job.nextRunAt;
+    return at ? `once at ${formatDate(at)}` : "once (time pending)";
+  }
   return job.nextRunAt ? formatDate(job.nextRunAt) : "not scheduled";
 }
 
@@ -1692,10 +1696,29 @@ var JobModal = class extends import_obsidian4.Modal {
     };
     shell.createEl("h2", { text: "Edit scheduled task" });
     shell.createEl("p", { text: "Adjust the schedule directly, or describe a change in plain language and let AI rewrite it.", cls: "ai-scheduler-subtitle" });
-    const current = makeCard(shell, "ai-scheduler-card-tight", "ai-scheduler-card-flush");
-    current.createDiv({ text: this.job.title, cls: "ai-scheduler-task-title" });
-    current.createDiv({ text: describeSchedule(this.job), cls: "ai-scheduler-task-meta" });
-    current.createDiv({ text: this.job.prompt, cls: "ai-scheduler-task-prompt" });
+    const detailsCard = makeCard(shell, "ai-scheduler-card-tight", "ai-scheduler-card-flush");
+    detailsCard.createDiv({ cls: "ai-scheduler-lead ai-scheduler-gap-8", text: "Task Details" });
+    detailsCard.createDiv({ cls: "ai-scheduler-form-label", text: "Task title" });
+    const titleInput = detailsCard.createEl("input", {
+      type: "text",
+      value: this.job.title,
+      placeholder: "Task title...",
+      cls: "ai-scheduler-input ai-scheduler-form-gap"
+    });
+    detailsCard.createDiv({ cls: "ai-scheduler-form-label", text: "Prompt & instructions" });
+    const promptInput = detailsCard.createEl("textarea", {
+      value: this.job.prompt,
+      placeholder: "Instructions for the AI when executing this task (type @ to attach files)...",
+      cls: "ai-scheduler-textarea ai-scheduler-form-gap"
+    });
+    attachMentionSuggest({
+      textarea: promptInput,
+      app: this.app,
+      onSelect: (file) => {
+        contextPicker.addPath(file.path);
+        new import_obsidian4.Notice(`Attached to context: ${file.path}`);
+      }
+    });
     this.renderScheduleEditor(shell);
     const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), this.job.contextPaths || [], this.app);
     shell.createDiv({ cls: "ai-scheduler-form-label", text: "Result folder for this task (optional)" });
@@ -1712,7 +1735,16 @@ var JobModal = class extends import_obsidian4.Modal {
         }
         const folder = resultFolder.value.trim();
         const output = folder ? Object.assign({}, this.job.output || {}, { folder }) : null;
-        await this.plugin.updateJob(this.job, { schedule: state.schedule, contextPaths: contextPicker.getPaths(), output, cooldownMinutes: state.cooldownMinutes });
+        const newTitle = titleInput.value.trim() || this.job.title;
+        const newPrompt = promptInput.value.trim() || this.job.prompt;
+        await this.plugin.updateJob(this.job, {
+          title: newTitle,
+          prompt: newPrompt,
+          schedule: state.schedule,
+          contextPaths: contextPicker.getPaths(),
+          output,
+          cooldownMinutes: state.cooldownMinutes
+        });
         new import_obsidian4.Notice("Schedule updated and saved.", 6e3);
         this.onSaved();
         this.close();
@@ -2002,12 +2034,12 @@ var import_obsidian5 = require("obsidian");
 var PlannerModal = class extends import_obsidian5.Modal {
   constructor(app, plugin, onCloseCallback) {
     super(app);
-    this.planned = null;
+    this.plannedJobs = null;
     this.plugin = plugin;
     this.onCloseCallback = onCloseCallback;
   }
   async onOpen() {
-    if (this.planned) this.renderResults();
+    if (this.plannedJobs) this.renderResults();
     else await this.renderForm();
   }
   async renderForm() {
@@ -2071,19 +2103,31 @@ var PlannerModal = class extends import_obsidian5.Modal {
         return;
       }
       button.disabled = true;
+      button.setText("\u23F3 AI is planning...");
+      textarea.disabled = true;
+      resultFolder.disabled = true;
+      const loader = shell.createDiv({ cls: "ai-scheduler-planning-card" });
+      loader.createDiv({ cls: "ai-scheduler-spinner" });
+      loader.createDiv({ cls: "ai-scheduler-planning-title", text: "\u{1F916} AI is designing your schedule..." });
+      loader.createDiv({ cls: "ai-scheduler-planning-subtitle", text: "Analyzing your goal, determining timing cadences, and generating scheduled task definitions." });
+      loader.scrollIntoView({ behavior: "smooth" });
       try {
         const result = await this.plugin.planAndCreate(goal, contextPicker.getPaths(), resultFolder.value.trim());
-        new import_obsidian5.Notice(`AI created ${result.jobs.length} job(s)`, 6e3);
-        this.planned = result.jobs.map((job) => ({ taskNumber: job.taskNumber, title: job.title, schedule: job.schedule }));
-        await this.onOpen();
+        new import_obsidian5.Notice(`AI created ${result.jobs.length} task(s)`, 6e3);
+        this.plannedJobs = result.jobs;
+        this.renderResults();
       } catch (error) {
-        new import_obsidian5.Notice(`Planning failed: ${errorText(error)}`, 8e3);
+        loader.remove();
+        textarea.disabled = false;
+        resultFolder.disabled = false;
         button.disabled = false;
+        button.setText("\u2728 Create AI plan");
+        new import_obsidian5.Notice(`Planning failed: ${errorText(error)}`, 8e3);
       }
     }, true);
   }
-  /* After planning, show the created schedules in a table (cron form, plain
-   * English, and the next concrete run times) before moving on. */
+  /* After planning, show the created schedules in editable cards where the user
+   * can edit, delete, or discard tasks before proceeding. */
   renderResults() {
     const { contentEl } = this;
     this.modalEl.addClass("ai-scheduler-modal");
@@ -2091,30 +2135,78 @@ var PlannerModal = class extends import_obsidian5.Modal {
     contentEl.addClass("ai-scheduler-content");
     contentEl.empty();
     const shell = contentEl.createDiv({ cls: "ai-scheduler-shell ai-scheduler-shell-lg" });
-    shell.createEl("h1", { text: "Schedule created", cls: "ai-scheduler-title ai-scheduler-title-sm" });
-    shell.createEl("p", { text: "Your tasks are scheduled. The cron form is shown for reference \u2014 the scheduler uses it behind the scenes.", cls: "ai-scheduler-subtitle" });
-    const table = shell.createEl("table", { cls: "ai-scheduler-result-table" });
-    const head = table.createEl("tr");
-    ["Task", "Cron form", "Schedule", "Next runs"].forEach((label) => {
-      head.createEl("th", { text: label });
+    const navBar = shell.createDiv({ cls: "ai-scheduler-modal-nav" });
+    const backBtn = navBar.createEl("button", {
+      cls: "ai-scheduler-back-btn",
+      text: "\u2190 Back to dashboard"
     });
-    for (const planned of this.planned || []) {
-      const row = table.createEl("tr");
-      const runs = previewSchedule(planned.schedule, 3);
-      const cronForm = cronFormFor(planned.schedule);
-      const titleCell = row.createEl("td");
-      titleCell.setText(`#${planned.taskNumber} \xB7 ${planned.title}`);
-      const cronCell = row.createEl("td");
-      if (cronForm) cronCell.createEl("code", { text: cronForm });
-      else cronCell.setText("\u2014");
-      row.createEl("td").setText(describeSchedule({ schedule: planned.schedule }));
-      row.createEl("td").setText(runs.length ? runs.join(" \xB7 ") : "on trigger");
+    backBtn.onclick = () => {
+      this.close();
+      window.setTimeout(() => {
+        new AssistantModal(this.app, this.plugin).open();
+      }, 50);
+    };
+    shell.createEl("h1", { text: "Planned schedule review", cls: "ai-scheduler-title ai-scheduler-title-sm" });
+    shell.createEl("p", {
+      text: "AI created the following task(s). You can edit any schedule manually, adjust prompts, or discard tasks before proceeding.",
+      cls: "ai-scheduler-subtitle"
+    });
+    const currentJobs = (this.plannedJobs || []).map((j) => this.plugin.jobs.find((existing) => existing.id === j.id) || j);
+    if (!currentJobs.length) {
+      const empty = makeCard(shell, "ai-scheduler-card-muted");
+      empty.createDiv({ text: "All planned tasks were discarded." });
+      const footer2 = shell.createDiv({ cls: "ai-scheduler-footer" });
+      makeButton(footer2, "Plan new schedule", () => {
+        this.plannedJobs = null;
+        void this.renderForm();
+      }, true);
+      return;
+    }
+    for (const job of currentJobs) {
+      const card = shell.createDiv({ cls: "ai-scheduler-planned-card" });
+      const top = card.createDiv({ cls: "ai-scheduler-planned-header" });
+      top.createDiv({ cls: "ai-scheduler-task-title", text: `#${job.taskNumber} \xB7 ${job.title}` });
+      const actions = top.createDiv({ cls: "ai-scheduler-planned-actions" });
+      makeButton(actions, "\u270F\uFE0F Edit", () => {
+        new JobModal(this.app, this.plugin, job, () => {
+          this.renderResults();
+        }).open();
+      });
+      makeButton(actions, "\u{1F5D1}\uFE0F Discard", async () => {
+        await this.plugin.deleteJob(job);
+        this.plannedJobs = (this.plannedJobs || []).filter((j) => j.id !== job.id);
+        new import_obsidian5.Notice(`Discarded: ${job.title}`);
+        this.renderResults();
+      }, false, true);
+      const cronForm = cronFormFor(job.schedule);
+      const runs = previewSchedule(job.schedule, 3);
+      const meta = card.createDiv({ cls: "ai-scheduler-task-meta" });
+      meta.setText(`\u23F0 Schedule: ${describeSchedule(job)}${cronForm ? ` (${cronForm})` : ""} \xB7 Next: ${runs.length ? runs[0] : job.nextRunAt ? formatDate(job.nextRunAt) : "on trigger"}`);
+      if (job.prompt) {
+        const promptBox = card.createDiv({ cls: "ai-scheduler-task-prompt" });
+        promptBox.setText(job.prompt);
+      }
+      if (job.contextPaths && job.contextPaths.length) {
+        const ctxRow = card.createDiv({ cls: "ai-scheduler-context-chips" });
+        job.contextPaths.forEach((p) => {
+          const chip = ctxRow.createDiv({ cls: "ai-scheduler-context-chip" });
+          chip.createSpan({ cls: "ai-scheduler-chip-icon", text: p.endsWith("/") ? "\u{1F4C1}" : "\u{1F4C4}" });
+          chip.createSpan({ cls: "ai-scheduler-chip-text", text: p });
+        });
+      }
     }
     const summary = makeCard(shell, "ai-scheduler-card-tight", "ai-scheduler-card-gap");
-    summary.createDiv({ cls: "ai-scheduler-hint", text: "You can edit any task from the dashboard or its schedule note; the AI can also rewrite schedules in plain language." });
+    summary.createDiv({ cls: "ai-scheduler-hint", text: 'Tip: You can edit or refine any task with "\u270F\uFE0F Edit", or edit later from the dashboard.' });
     const footer = shell.createDiv({ cls: "ai-scheduler-footer" });
-    makeButton(footer, "Close", () => this.close());
-    makeButton(footer, "Open AI Scheduler", () => {
+    makeButton(footer, "\u{1F5D1}\uFE0F Discard all", async () => {
+      for (const job of currentJobs) {
+        await this.plugin.deleteJob(job);
+      }
+      this.plannedJobs = null;
+      new import_obsidian5.Notice("All planned tasks discarded.");
+      await this.renderForm();
+    }, false, true);
+    makeButton(footer, "\u2713 Done & Open AI Scheduler", () => {
       this.close();
       window.setTimeout(() => {
         new AssistantModal(this.app, this.plugin).open();
@@ -2123,7 +2215,7 @@ var PlannerModal = class extends import_obsidian5.Modal {
   }
   onClose() {
     this.contentEl.empty();
-    if (this.onCloseCallback && !this.planned) {
+    if (this.onCloseCallback && !this.plannedJobs) {
       window.setTimeout(() => {
         if (this.onCloseCallback) this.onCloseCallback();
       }, 50);
@@ -2376,6 +2468,32 @@ var import_obsidian7 = require("obsidian");
 
 // src/changelog.ts
 var CHANGELOG_DATA = [
+  {
+    version: "2.1.7.5",
+    date: "2026-10-02",
+    title: "AI Planning Loading Animation, Interactive Plan Review & Direct Task Editing",
+    highlights: [
+      "AI Planning Loading Animation: Beautiful glowing pulse card and spinner showing real-time feedback while AI generates schedules.",
+      'Interactive Planned Tasks Review: Direct "\u270F\uFE0F Edit" and "\u{1F5D1}\uFE0F Discard" buttons on each generated task card before finalizing.',
+      'Once Schedule Description Fix: Fixed "not scheduled" label bug on one-time scheduled tasks.'
+    ],
+    added: [
+      "Pulsing glow and spinner animation during AI plan generation.",
+      "Per-task edit and discard controls directly on the AI Planner review screen.",
+      "Discard all button on the planning review screen."
+    ],
+    fixed: [
+      'Fixed describeSchedule rendering "not scheduled" for one-time (once) tasks.'
+    ],
+    contributors: [
+      {
+        name: "Rachit Asthana",
+        username: "racstan",
+        url: "https://github.com/racstan",
+        role: "Maintainer"
+      }
+    ]
+  },
   {
     version: "2.1.7.4",
     date: "2026-10-02",

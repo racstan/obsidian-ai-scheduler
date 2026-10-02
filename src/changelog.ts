@@ -23,6 +23,32 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.7.5',
+		date: '2026-10-02',
+		title: 'AI Planning Loading Animation, Interactive Plan Review & Direct Task Editing',
+		highlights: [
+			'AI Planning Loading Animation: Beautiful glowing pulse card and spinner showing real-time feedback while AI generates schedules.',
+			'Interactive Planned Tasks Review: Direct "✏️ Edit" and "🗑️ Discard" buttons on each generated task card before finalizing.',
+			'Once Schedule Description Fix: Fixed "not scheduled" label bug on one-time scheduled tasks.',
+		],
+		added: [
+			'Pulsing glow and spinner animation during AI plan generation.',
+			'Per-task edit and discard controls directly on the AI Planner review screen.',
+			'Discard all button on the planning review screen.',
+		],
+		fixed: [
+			'Fixed describeSchedule rendering "not scheduled" for one-time (once) tasks.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Maintainer',
+			},
+		],
+	},
+	{
 		version: '2.1.7.4',
 		date: '2026-10-02',
 		title: 'Prompt @ Mentions, Modern Context Chips, Back Navigation & Task Directory Structure',

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.7.5] - 2026-10-02
+
+### Highlights
+- **Animated AI Planning Indicator**: Added a pulsing glowing card with animated spinner and live progress messaging while the AI generates scheduled tasks.
+- **Interactive Multi-Job Review & Editing**: Directly edit, re-configure with AI, or discard individual planned tasks right from the AI Planner review view.
+- **Discard & Discard All Controls**: One-click discarding of unwanted or duplicate planned tasks before leaving the planner.
+- **One-Time Schedule Description Fix**: Fixed display of one-time (`once`) schedules showing "not scheduled" instead of their scheduled execution time.
+- **Editable Task Details in Editor**: Direct manual editing of task title and prompt alongside AI-driven refinements.
+
+### Added
+- Animated loading card and spinner during AI plan generation.
+- Per-task `✏️ Edit` and `🗑️ Discard` buttons in the Planner results view.
+- Global `🗑️ Discard all` action to clean up all planned tasks in one click.
+- Direct Title and Prompt editing fields in the Task Editor modal with `@` mention support.
+
+### Fixed
+- Fixed `describeSchedule()` displaying "not scheduled" for one-time execution jobs.
+
+### Contributors
+- [@racstan](https://github.com/racstan) (Rachit Asthana)
+
+---
+
 ## [2.1.7.4] - 2026-10-02
 
 ### Highlights

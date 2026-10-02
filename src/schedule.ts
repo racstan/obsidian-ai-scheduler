@@ -228,5 +228,9 @@ export function describeSchedule(job: { schedule?: TaskSchedule; nextRunAt?: str
 		const description = describeCron(expression);
 		return description === 'Invalid cron expression' ? `cron ${expression || '(empty)'}` : `${description} · ${expression}`;
 	}
+	if (schedule.kind === 'once') {
+		const at = schedule.at || job.nextRunAt;
+		return at ? `once at ${formatDate(at)}` : 'once (time pending)';
+	}
 	return job.nextRunAt ? formatDate(job.nextRunAt) : 'not scheduled';
 }

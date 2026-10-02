@@ -1,22 +1,22 @@
+/*
+ * AI Planner Dialog
+ * Enables plain-language schedule generation with @ mention autocomplete,
+ * loading animations, and interactive review/edit/discard capabilities for planned jobs.
+ */
 import { Modal, Notice } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
-import { errorText } from '../util';
+import { errorText, formatDate } from '../util';
 import { cronFormFor, describeSchedule, previewSchedule } from '../schedule';
 import { createContextPicker } from './contextPicker';
 import { makeButton, makeCard } from './dom';
 import { AssistantModal } from './AssistantModal';
-import { TaskSchedule } from '../types';
+import { Job } from '../types';
 import { attachMentionSuggest } from './mentionSuggest';
-
-interface PlannedJobSummary {
-	taskNumber: number;
-	title: string;
-	schedule: TaskSchedule;
-}
+import { JobModal } from './JobModal';
 
 export class PlannerModal extends Modal {
 	plugin: AISchedulerPlugin;
-	private planned: PlannedJobSummary[] | null = null;
+	private plannedJobs: Job[] | null = null;
 	private onCloseCallback?: () => void;
 
 	constructor(app: AISchedulerPlugin['app'], plugin: AISchedulerPlugin, onCloseCallback?: () => void) {
@@ -26,7 +26,7 @@ export class PlannerModal extends Modal {
 	}
 
 	async onOpen(): Promise<void> {
-		if (this.planned) this.renderResults();
+		if (this.plannedJobs) this.renderResults();
 		else await this.renderForm();
 	}
 
@@ -95,21 +95,36 @@ export class PlannerModal extends Modal {
 		makeButton(footer, '✨ Create AI plan', async button => {
 			const goal = textarea.value.trim();
 			if (!goal) { new Notice('Describe what you want AI Scheduler to do.'); return; }
+
 			button.disabled = true;
+			button.setText('⏳ AI is planning...');
+			textarea.disabled = true;
+			resultFolder.disabled = true;
+
+			const loader = shell.createDiv({ cls: 'ai-scheduler-planning-card' });
+			loader.createDiv({ cls: 'ai-scheduler-spinner' });
+			loader.createDiv({ cls: 'ai-scheduler-planning-title', text: '🤖 AI is designing your schedule...' });
+			loader.createDiv({ cls: 'ai-scheduler-planning-subtitle', text: 'Analyzing your goal, determining timing cadences, and generating scheduled task definitions.' });
+			loader.scrollIntoView({ behavior: 'smooth' });
+
 			try {
 				const result = await this.plugin.planAndCreate(goal, contextPicker.getPaths(), resultFolder.value.trim());
-				new Notice(`AI created ${result.jobs.length} job(s)`, 6000);
-				this.planned = result.jobs.map(job => ({ taskNumber: job.taskNumber, title: job.title, schedule: job.schedule }));
-				await this.onOpen();
+				new Notice(`AI created ${result.jobs.length} task(s)`, 6000);
+				this.plannedJobs = result.jobs;
+				this.renderResults();
 			} catch (error) {
-				new Notice(`Planning failed: ${errorText(error)}`, 8000);
+				loader.remove();
+				textarea.disabled = false;
+				resultFolder.disabled = false;
 				button.disabled = false;
+				button.setText('✨ Create AI plan');
+				new Notice(`Planning failed: ${errorText(error)}`, 8000);
 			}
 		}, true);
 	}
 
-	/* After planning, show the created schedules in a table (cron form, plain
-	 * English, and the next concrete run times) before moving on. */
+	/* After planning, show the created schedules in editable cards where the user
+	 * can edit, delete, or discard tasks before proceeding. */
 	private renderResults(): void {
 		const { contentEl } = this;
 		this.modalEl.addClass('ai-scheduler-modal');
@@ -117,32 +132,90 @@ export class PlannerModal extends Modal {
 		contentEl.addClass('ai-scheduler-content');
 		contentEl.empty();
 		const shell = contentEl.createDiv({ cls: 'ai-scheduler-shell ai-scheduler-shell-lg' });
-		shell.createEl('h1', { text: 'Schedule created', cls: 'ai-scheduler-title ai-scheduler-title-sm' });
-		shell.createEl('p', { text: 'Your tasks are scheduled. The cron form is shown for reference — the scheduler uses it behind the scenes.', cls: 'ai-scheduler-subtitle' });
 
-		const table = shell.createEl('table', { cls: 'ai-scheduler-result-table' });
-		const head = table.createEl('tr');
-		['Task', 'Cron form', 'Schedule', 'Next runs'].forEach(label => {
-			head.createEl('th', { text: label });
+		const navBar = shell.createDiv({ cls: 'ai-scheduler-modal-nav' });
+		const backBtn = navBar.createEl('button', {
+			cls: 'ai-scheduler-back-btn',
+			text: '← Back to dashboard',
 		});
-		for (const planned of this.planned || []) {
-			const row = table.createEl('tr');
-			const runs = previewSchedule(planned.schedule, 3);
-			const cronForm = cronFormFor(planned.schedule);
-			const titleCell = row.createEl('td');
-			titleCell.setText(`#${planned.taskNumber} · ${planned.title}`);
-			const cronCell = row.createEl('td');
-			if (cronForm) cronCell.createEl('code', { text: cronForm });
-			else cronCell.setText('—');
-			row.createEl('td').setText(describeSchedule({ schedule: planned.schedule }));
-			row.createEl('td').setText(runs.length ? runs.join(' · ') : 'on trigger');
+		backBtn.onclick = () => {
+			this.close();
+			window.setTimeout(() => {
+				new AssistantModal(this.app, this.plugin).open();
+			}, 50);
+		};
+
+		shell.createEl('h1', { text: 'Planned schedule review', cls: 'ai-scheduler-title ai-scheduler-title-sm' });
+		shell.createEl('p', {
+			text: 'AI created the following task(s). You can edit any schedule manually, adjust prompts, or discard tasks before proceeding.',
+			cls: 'ai-scheduler-subtitle',
+		});
+
+		const currentJobs = (this.plannedJobs || []).map(j => this.plugin.jobs.find(existing => existing.id === j.id) || j);
+
+		if (!currentJobs.length) {
+			const empty = makeCard(shell, 'ai-scheduler-card-muted');
+			empty.createDiv({ text: 'All planned tasks were discarded.' });
+			const footer = shell.createDiv({ cls: 'ai-scheduler-footer' });
+			makeButton(footer, 'Plan new schedule', () => {
+				this.plannedJobs = null;
+				void this.renderForm();
+			}, true);
+			return;
+		}
+
+		for (const job of currentJobs) {
+			const card = shell.createDiv({ cls: 'ai-scheduler-planned-card' });
+			const top = card.createDiv({ cls: 'ai-scheduler-planned-header' });
+			top.createDiv({ cls: 'ai-scheduler-task-title', text: `#${job.taskNumber} · ${job.title}` });
+
+			const actions = top.createDiv({ cls: 'ai-scheduler-planned-actions' });
+			makeButton(actions, '✏️ Edit', () => {
+				new JobModal(this.app, this.plugin, job, () => {
+					this.renderResults();
+				}).open();
+			});
+			makeButton(actions, '🗑️ Discard', async () => {
+				await this.plugin.deleteJob(job);
+				this.plannedJobs = (this.plannedJobs || []).filter(j => j.id !== job.id);
+				new Notice(`Discarded: ${job.title}`);
+				this.renderResults();
+			}, false, true);
+
+			const cronForm = cronFormFor(job.schedule);
+			const runs = previewSchedule(job.schedule, 3);
+			const meta = card.createDiv({ cls: 'ai-scheduler-task-meta' });
+			meta.setText(`⏰ Schedule: ${describeSchedule(job)}${cronForm ? ` (${cronForm})` : ''} · Next: ${runs.length ? runs[0] : (job.nextRunAt ? formatDate(job.nextRunAt) : 'on trigger')}`);
+
+			if (job.prompt) {
+				const promptBox = card.createDiv({ cls: 'ai-scheduler-task-prompt' });
+				promptBox.setText(job.prompt);
+			}
+
+			if (job.contextPaths && job.contextPaths.length) {
+				const ctxRow = card.createDiv({ cls: 'ai-scheduler-context-chips' });
+				job.contextPaths.forEach(p => {
+					const chip = ctxRow.createDiv({ cls: 'ai-scheduler-context-chip' });
+					chip.createSpan({ cls: 'ai-scheduler-chip-icon', text: p.endsWith('/') ? '📁' : '📄' });
+					chip.createSpan({ cls: 'ai-scheduler-chip-text', text: p });
+				});
+			}
 		}
 
 		const summary = makeCard(shell, 'ai-scheduler-card-tight', 'ai-scheduler-card-gap');
-		summary.createDiv({ cls: 'ai-scheduler-hint', text: 'You can edit any task from the dashboard or its schedule note; the AI can also rewrite schedules in plain language.' });
+		summary.createDiv({ cls: 'ai-scheduler-hint', text: 'Tip: You can edit or refine any task with "✏️ Edit", or edit later from the dashboard.' });
+
 		const footer = shell.createDiv({ cls: 'ai-scheduler-footer' });
-		makeButton(footer, 'Close', () => this.close());
-		makeButton(footer, 'Open AI Scheduler', () => {
+		makeButton(footer, '🗑️ Discard all', async () => {
+			for (const job of currentJobs) {
+				await this.plugin.deleteJob(job);
+			}
+			this.plannedJobs = null;
+			new Notice('All planned tasks discarded.');
+			await this.renderForm();
+		}, false, true);
+
+		makeButton(footer, '✓ Done & Open AI Scheduler', () => {
 			this.close();
 			window.setTimeout(() => {
 				new AssistantModal(this.app, this.plugin).open();
@@ -152,7 +225,7 @@ export class PlannerModal extends Modal {
 
 	onClose(): void {
 		this.contentEl.empty();
-		if (this.onCloseCallback && !this.planned) {
+		if (this.onCloseCallback && !this.plannedJobs) {
 			window.setTimeout(() => {
 				if (this.onCloseCallback) this.onCloseCallback();
 			}, 50);
