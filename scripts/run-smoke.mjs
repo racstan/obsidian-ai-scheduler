@@ -34,7 +34,7 @@ class Plugin extends Component {
 	async loadData() { return this.data; }
 	async saveData(data) { this.app._pluginData = data; this.app._savedCount = (this.app._savedCount || 0) + 1; }
 	addRibbonIcon() {}
-	addCommand() {}
+	addCommand(cmd) { this.app.commands.commands[cmd.id] = cmd; }
 	addSettingTab() {}
 }
 class Modal {
@@ -250,6 +250,34 @@ async function main() {
 	assert.equal(plan.jobs[0].schedule.kind, 'cron');
 	assert.equal(plan.jobs[0].schedule.expression, '0 9 * * 1-5');
 	assert.ok(plan.jobs[1].nextRunAt, 'once plan resolves a next run');
+
+	// Test command palette commands: disable, enable, toggle nightly review, and bulk tasks
+	assert.ok(app.commands.commands['disable-nightly-review'], 'disable-nightly-review command registered');
+	await app.commands.commands['disable-nightly-review'].callback();
+	assert.equal(first.settings.nightlyReviewEnabled, false);
+	assert.equal(first.jobs.find(j => j.routine === 'daily-review').enabled, false);
+
+	assert.ok(app.commands.commands['enable-nightly-review'], 'enable-nightly-review command registered');
+	await app.commands.commands['enable-nightly-review'].callback();
+	assert.equal(first.settings.nightlyReviewEnabled, true);
+	assert.equal(first.jobs.find(j => j.routine === 'daily-review').enabled, true);
+
+	assert.ok(app.commands.commands['toggle-nightly-review'], 'toggle-nightly-review command registered');
+	await app.commands.commands['toggle-nightly-review'].callback();
+	assert.equal(first.settings.nightlyReviewEnabled, false);
+	await app.commands.commands['toggle-nightly-review'].callback();
+	assert.equal(first.settings.nightlyReviewEnabled, true);
+
+	assert.ok(app.commands.commands['disable-all-jobs'], 'disable-all-jobs command registered');
+	await app.commands.commands['disable-all-jobs'].callback();
+	assert.equal(created.enabled, false);
+
+	assert.ok(app.commands.commands['enable-all-jobs'], 'enable-all-jobs command registered');
+	await app.commands.commands['enable-all-jobs'].callback();
+	assert.equal(created.enabled, true);
+
+	assert.ok(app.commands.commands['sync-schedule-notes'], 'sync-schedule-notes command registered');
+	await app.commands.commands['sync-schedule-notes'].callback();
 
 	await first.disableAllJobs();
 	assert.equal(created.enabled, false);

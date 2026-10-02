@@ -199,11 +199,17 @@ One of the most transformative features of AI Scheduler is the **Nightly Review*
 
 Open the Obsidian Command Palette (`Ctrl/Cmd + P`) and search for **AI Scheduler**:
 
-- `AI Scheduler: Open AI Scheduler`: Open the interactive management dashboard.
+- `AI Scheduler: Open assistant dashboard`: Open the interactive management dashboard.
 - `AI Scheduler: Ask AI to plan a schedule`: Open the natural language goal planner.
 - `AI Scheduler: Run AI daily preview`: Instantly generate a preview report for today's modified notes.
 - `AI Scheduler: Run AI nightly review now`: Manually trigger the comprehensive nightly review on demand.
-- `AI Scheduler: Enable nightly AI review`: Quickly toggle recurring nightly self-talk without opening settings.
+- `AI Scheduler: Enable nightly AI review`: Enable recurring nightly self-talk.
+- `AI Scheduler: Disable nightly AI review`: Disable recurring nightly self-talk.
+- `AI Scheduler: Toggle nightly AI review`: Quickly toggle recurring nightly self-talk on/off.
+- `AI Scheduler: Enable all scheduled tasks`: Resume and schedule all paused/disabled tasks.
+- `AI Scheduler: Disable all scheduled tasks`: Pause and disable all scheduled tasks.
+- `AI Scheduler: Sync schedule notes now`: Reconcile Markdown task notes in your vault with active schedules.
+- `AI Scheduler: View changelog / what's new`: View the release history and updates.
 
 ---
 

@@ -3047,6 +3047,58 @@ var AISchedulerPlugin = class extends import_obsidian10.Plugin {
       }
     });
     this.addCommand({
+      id: "disable-nightly-review",
+      name: "Disable nightly AI review",
+      callback: async () => {
+        this.settings.nightlyReviewEnabled = false;
+        await this.ensureNightlyReviewJob();
+        await this.saveState();
+        new import_obsidian10.Notice("Nightly AI review disabled");
+      }
+    });
+    this.addCommand({
+      id: "toggle-nightly-review",
+      name: "Toggle nightly AI review",
+      callback: async () => {
+        this.settings.nightlyReviewEnabled = !this.settings.nightlyReviewEnabled;
+        await this.ensureNightlyReviewJob();
+        await this.saveState();
+        new import_obsidian10.Notice(this.settings.nightlyReviewEnabled ? "Nightly AI review enabled" : "Nightly AI review disabled");
+      }
+    });
+    this.addCommand({
+      id: "enable-all-jobs",
+      name: "Enable all scheduled tasks",
+      callback: async () => {
+        await this.enableAllJobs();
+        new import_obsidian10.Notice("All scheduled tasks enabled");
+      }
+    });
+    this.addCommand({
+      id: "disable-all-jobs",
+      name: "Disable all scheduled tasks",
+      callback: async () => {
+        await this.disableAllJobs();
+        new import_obsidian10.Notice("All scheduled tasks disabled");
+      }
+    });
+    this.addCommand({
+      id: "sync-schedule-notes",
+      name: "Sync schedule notes now",
+      callback: async () => {
+        if (!this.settings.scheduleNotesEnabled) {
+          new import_obsidian10.Notice("Schedule notes are not enabled in settings.");
+          return;
+        }
+        try {
+          const written = await this.notesSync.syncAll();
+          new import_obsidian10.Notice(written ? `${written} note(s) reconciled.` : "All schedule notes are up to date.");
+        } catch (error) {
+          new import_obsidian10.Notice(`Could not sync schedule notes: ${errorText(error)}`, 8e3);
+        }
+      }
+    });
+    this.addCommand({
       id: "view-changelog",
       name: "View changelog / what's new",
       callback: () => new ChangelogModal(this.app, this).open()

@@ -188,41 +188,45 @@
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 12px;
+	gap: 14px;
 	padding: 12px 16px;
-	border-radius: 8px;
-	margin-bottom: 18px;
-	background: var(--background-modifier-error);
-	border: 1px solid var(--text-error);
-	color: var(--text-normal);
+	border-radius: var(--radius-m, 8px);
+	margin-bottom: 20px;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-left: 4px solid var(--color-red, #e03e3e);
 }
 
 .ai-scheduler-alert-content {
 	display: flex;
-	align-items: flex-start;
-	gap: 10px;
-	font-size: 13px;
-	line-height: 1.4;
+	align-items: center;
+	gap: 12px;
+	flex: 1 1 auto;
 }
 
 .ai-scheduler-alert-icon {
-	font-size: 18px;
+	font-size: 20px;
 	line-height: 1;
+	flex-shrink: 0;
 }
 
 .ai-scheduler-alert-title {
 	font-weight: 600;
+	font-size: 13px;
+	color: var(--text-normal);
 	margin-bottom: 2px;
-	color: var(--text-error);
 }
 
 .ai-scheduler-alert-desc {
 	color: var(--text-muted);
 	font-size: 12px;
+	line-height: 1.4;
 }
 
 .ai-scheduler-alert-btn {
+	flex-shrink: 0;
 	white-space: nowrap;
+	font-size: 12px;
 	padding: 6px 14px;
 }
 
