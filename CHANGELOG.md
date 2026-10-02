@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.7.9] - 2026-10-02
+
+### Highlights
+- **About AI Scheduler Section**: Added a dedicated project overview, author credits, and GNU GPL-3.0 licensing in plugin Settings.
+- **Creator Support (Buy Me a Coffee)**: Added a "☕ Buy me a coffee" support button in Settings and Changelog dialog ([buymeacoffee.com/rachitasthana](https://buymeacoffee.com/rachitasthana)).
+- **Documentation & Funding**: Enriched repository documentation with creator support badges and funding guides.
+
+### Added
+- Dedicated "About & support" section in Settings tab with version info, author metadata, and repository links.
+- "☕ Buy me a coffee" button in Settings and Changelog modal footer.
+- Support and funding documentation in project README.
+
+### Contributors
+- [@racstan](https://github.com/racstan) (Rachit Asthana)
+
+---
+
 ## [2.1.7.8] - 2026-10-02
 
 ### Highlights

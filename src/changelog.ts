@@ -23,6 +23,29 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.7.9',
+		date: '2026-10-02',
+		title: 'About AI Scheduler & Creator Support (Buy Me a Coffee)',
+		highlights: [
+			'About AI Scheduler Section: Added dedicated project overview, author credits, and license details in Settings.',
+			'Creator Support (Buy Me a Coffee): Added "☕ Buy me a coffee" creator support button in Settings and Changelog dialog (https://buymeacoffee.com/rachitasthana).',
+			'Documentation & Funding Links: Enriched repository documentation with creator support badges and funding guides.',
+		],
+		added: [
+			'Dedicated "About & support" section in Settings tab with version info, author metadata, and repository links.',
+			'"☕ Buy me a coffee" button in Settings and Changelog modal footer.',
+			'Support and funding documentation in project README.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author & Lead Maintainer',
+			},
+		],
+	},
+	{
 		version: '2.1.7.8',
 		date: '2026-10-02',
 		title: 'Task ID Badges, Execution Confirmations & Smart Timeout Protection',

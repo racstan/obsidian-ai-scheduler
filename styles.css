@@ -1199,6 +1199,15 @@
 	justify-content: space-between;
 	align-items: center;
 	margin-top: 8px;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.ai-scheduler-changelog-left-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
 }
 
 .ai-scheduler-star-btn {
@@ -1208,14 +1217,88 @@
 	font-size: 13px;
 	padding: 6px 14px;
 	border-radius: var(--radius-m, 6px);
-	transition: background 0.15s ease;
+	transition: all 0.15s ease;
 }
 
 .ai-scheduler-star-btn:hover {
 	background: var(--background-modifier-hover);
+	border-color: var(--interactive-accent);
+}
+
+.ai-scheduler-coffee-btn {
+	background: linear-gradient(135deg, #FFDD00 0%, #FFC700 100%) !important;
+	color: #000000 !important;
+	font-weight: 600 !important;
+	border: 1px solid #E5B800 !important;
+	cursor: pointer;
+	font-size: 13px;
+	padding: 6px 14px;
+	border-radius: var(--radius-m, 6px);
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	transition: all 0.15s ease;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.ai-scheduler-coffee-btn:hover {
+	background: linear-gradient(135deg, #FFE433 0%, #FFD21A 100%) !important;
+	box-shadow: 0 2px 8px rgba(255, 221, 0, 0.4);
+	transform: translateY(-1px);
 }
 
 .ai-scheduler-close-btn {
 	padding: 6px 20px;
 	font-weight: 600;
 }
+
+/* ---- About Section ------------------------------------------------------ */
+
+.ai-scheduler-about-card {
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m, 8px);
+	padding: 16px 18px;
+	margin: 12px 0 16px;
+}
+
+.ai-scheduler-about-header {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-bottom: 8px;
+	flex-wrap: wrap;
+}
+
+.ai-scheduler-about-title {
+	margin: 0 !important;
+	font-size: 16px !important;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.ai-scheduler-about-desc {
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--text-muted);
+	margin-bottom: 12px;
+}
+
+.ai-scheduler-about-meta {
+	font-size: 12px;
+	color: var(--text-faint);
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.ai-scheduler-about-meta a {
+	color: var(--interactive-accent);
+	text-decoration: none;
+}
+
+.ai-scheduler-about-meta a:hover {
+	text-decoration: underline;
+}
+

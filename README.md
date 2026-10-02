@@ -2,8 +2,9 @@
 
 <div align="center">
 
-[![Release](https://img.shields.io/badge/release-v2.1.7.8-blue.svg?style=flat-square)](https://github.com/racstan/obsidian-ai-scheduler/releases)
+[![Release](https://img.shields.io/badge/release-v2.1.7.9-blue.svg?style=flat-square)](https://github.com/racstan/obsidian-ai-scheduler/releases)
 [![Obsidian](https://img.shields.io/badge/Obsidian-v1.6.6%2B-purple.svg?style=flat-square)](https://obsidian.md)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Donate-FFDD00.svg?style=flat-square&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/rachitasthana)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-3178C6.svg?style=flat-square)](tsconfig.json)
 [![Local First](https://img.shields.io/badge/Privacy-100%25%20Local--First-success.svg?style=flat-square)](#privacy-and-safety)
@@ -265,9 +266,21 @@ npm run build
 
 ---
 
+## ☕ Support the Project
+
+AI Scheduler is 100% free, open-source under GPL-3.0, and privacy-first (zero telemetry, zero proprietary servers).
+
+If you find AI Scheduler helpful and it improves your daily vault workflow, consider supporting ongoing development:
+
+[![Buy Me a Coffee](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=☕&slug=rachitasthana&button_colour=FFDD00&font_colour=000000&font_family=Inter&outline_colour=000000&coffee_colour=ffffff)](https://buymeacoffee.com/rachitasthana)
+
+You can also support the project by giving it a ⭐ **Star on GitHub** and sharing it with the Obsidian community!
+
+---
+
 ## License & Attribution
 
 This project is licensed under the [GNU General Public License v3.0 (GPL-3.0)](LICENSE) © 2026 **Rachit Asthana**.
 
 - **Attribution Required**: Any distribution, fork, or derivative work must retain the original copyright notice, credit the author, and remain open-source under GPL-3.0.
-- **Support the Project**: If you find AI Scheduler useful or fork the project, please consider giving the repository a ⭐ star on GitHub to support ongoing maintenance!
+- **Support the Project**: If you find AI Scheduler useful or fork the project, please consider giving the repository a ⭐ star on GitHub and [buying a coffee](https://buymeacoffee.com/rachitasthana) to support ongoing maintenance!

@@ -359,5 +359,47 @@ export class AssistantSettingTab extends PluginSettingTab {
 			.addButton(button => button.setButtonText('Report an issue').onClick(() => {
 				window.open('https://github.com/racstan/obsidian-ai-scheduler/issues', '_blank');
 			}));
+
+		// -------------------------------------------------------------------------
+		// Section 7: About & Creator Support
+		// -------------------------------------------------------------------------
+		new Setting(containerEl).setName('About & support').setHeading();
+
+		const aboutCard = containerEl.createDiv({ cls: 'ai-scheduler-about-card' });
+		const aboutHeader = aboutCard.createDiv({ cls: 'ai-scheduler-about-header' });
+		aboutHeader.createEl('h3', { text: '⚡ AI Scheduler for Obsidian', cls: 'ai-scheduler-about-title' });
+		aboutHeader.createSpan({ text: `v${this.plugin.manifest.version}`, cls: 'ai-scheduler-version-badge is-latest' });
+
+		aboutCard.createEl('p', {
+			text: 'The autonomous background scheduling and proactive intelligence engine for Obsidian. Turn your vault into an active thinking partner that plans, reviews, executes, and synthesizes your knowledge in the background.',
+			cls: 'ai-scheduler-about-desc',
+		});
+
+		const metaRow = aboutCard.createDiv({ cls: 'ai-scheduler-about-meta' });
+		metaRow.createSpan({ text: 'Author: Rachit Asthana' });
+		metaRow.createSpan({ text: ' · ' });
+		metaRow.createSpan({ text: 'License: GNU GPL-3.0' });
+		metaRow.createSpan({ text: ' · ' });
+		const ghLink = metaRow.createEl('a', { text: 'GitHub Repository', href: 'https://github.com/racstan/obsidian-ai-scheduler' });
+		ghLink.target = '_blank';
+
+		new Setting(containerEl)
+			.setName('Buy me a coffee ☕')
+			.setDesc('AI Scheduler is free and open-source. If it saves you time and brings intelligence to your vault, consider buying me a coffee to support continued development!')
+			.addButton(button => {
+				button
+					.setButtonText('☕ Buy me a coffee')
+					.setClass('ai-scheduler-coffee-btn')
+					.onClick(() => {
+						window.open('https://buymeacoffee.com/rachitasthana', '_blank');
+					});
+			});
+
+		new Setting(containerEl)
+			.setName('Documentation & source code')
+			.setDesc('Read the setup guide, contribute, or star the project on GitHub.')
+			.addButton(button => button.setButtonText('View on GitHub').onClick(() => {
+				window.open('https://github.com/racstan/obsidian-ai-scheduler', '_blank');
+			}));
 	}
 }

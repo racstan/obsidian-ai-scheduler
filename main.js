@@ -2659,6 +2659,29 @@ var import_obsidian7 = require("obsidian");
 // src/changelog.ts
 var CHANGELOG_DATA = [
   {
+    version: "2.1.7.9",
+    date: "2026-10-02",
+    title: "About AI Scheduler & Creator Support (Buy Me a Coffee)",
+    highlights: [
+      "About AI Scheduler Section: Added dedicated project overview, author credits, and license details in Settings.",
+      'Creator Support (Buy Me a Coffee): Added "\u2615 Buy me a coffee" creator support button in Settings and Changelog dialog (https://buymeacoffee.com/rachitasthana).',
+      "Documentation & Funding Links: Enriched repository documentation with creator support badges and funding guides."
+    ],
+    added: [
+      'Dedicated "About & support" section in Settings tab with version info, author metadata, and repository links.',
+      '"\u2615 Buy me a coffee" button in Settings and Changelog modal footer.',
+      "Support and funding documentation in project README."
+    ],
+    contributors: [
+      {
+        name: "Rachit Asthana",
+        username: "racstan",
+        url: "https://github.com/racstan",
+        role: "Author & Lead Maintainer"
+      }
+    ]
+  },
+  {
     version: "2.1.7.8",
     date: "2026-10-02",
     title: "Task ID Badges, Execution Confirmations & Smart Timeout Protection",
@@ -3243,12 +3266,20 @@ var ChangelogModal = class extends import_obsidian7.Modal {
       });
     });
     const actionsRow = footerEl.createDiv({ cls: "ai-scheduler-changelog-actions" });
-    const starBtn = actionsRow.createEl("button", {
+    const leftActions = actionsRow.createDiv({ cls: "ai-scheduler-changelog-left-actions" });
+    const starBtn = leftActions.createEl("button", {
       text: "\u2B50 Star on GitHub",
       cls: "ai-scheduler-star-btn"
     });
     starBtn.addEventListener("click", () => {
       window.open("https://github.com/racstan/obsidian-ai-scheduler", "_blank");
+    });
+    const coffeeBtn = leftActions.createEl("button", {
+      text: "\u2615 Buy me a coffee",
+      cls: "ai-scheduler-coffee-btn"
+    });
+    coffeeBtn.addEventListener("click", () => {
+      window.open("https://buymeacoffee.com/rachitasthana", "_blank");
     });
     const closeBtn = actionsRow.createEl("button", {
       text: "Got it",
@@ -3556,6 +3587,30 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
     new import_obsidian8.Setting(containerEl).setName("Help & community").setHeading();
     new import_obsidian8.Setting(containerEl).setName("Facing a problem?").setDesc("Found a bug or have a suggestion? Create an issue on GitHub to get help from the community.").addButton((button) => button.setButtonText("Report an issue").onClick(() => {
       window.open("https://github.com/racstan/obsidian-ai-scheduler/issues", "_blank");
+    }));
+    new import_obsidian8.Setting(containerEl).setName("About & support").setHeading();
+    const aboutCard = containerEl.createDiv({ cls: "ai-scheduler-about-card" });
+    const aboutHeader = aboutCard.createDiv({ cls: "ai-scheduler-about-header" });
+    aboutHeader.createEl("h3", { text: "\u26A1 AI Scheduler for Obsidian", cls: "ai-scheduler-about-title" });
+    aboutHeader.createSpan({ text: `v${this.plugin.manifest.version}`, cls: "ai-scheduler-version-badge is-latest" });
+    aboutCard.createEl("p", {
+      text: "The autonomous background scheduling and proactive intelligence engine for Obsidian. Turn your vault into an active thinking partner that plans, reviews, executes, and synthesizes your knowledge in the background.",
+      cls: "ai-scheduler-about-desc"
+    });
+    const metaRow = aboutCard.createDiv({ cls: "ai-scheduler-about-meta" });
+    metaRow.createSpan({ text: "Author: Rachit Asthana" });
+    metaRow.createSpan({ text: " \xB7 " });
+    metaRow.createSpan({ text: "License: GNU GPL-3.0" });
+    metaRow.createSpan({ text: " \xB7 " });
+    const ghLink = metaRow.createEl("a", { text: "GitHub Repository", href: "https://github.com/racstan/obsidian-ai-scheduler" });
+    ghLink.target = "_blank";
+    new import_obsidian8.Setting(containerEl).setName("Buy me a coffee \u2615").setDesc("AI Scheduler is free and open-source. If it saves you time and brings intelligence to your vault, consider buying me a coffee to support continued development!").addButton((button) => {
+      button.setButtonText("\u2615 Buy me a coffee").setClass("ai-scheduler-coffee-btn").onClick(() => {
+        window.open("https://buymeacoffee.com/rachitasthana", "_blank");
+      });
+    });
+    new import_obsidian8.Setting(containerEl).setName("Documentation & source code").setDesc("Read the setup guide, contribute, or star the project on GitHub.").addButton((button) => button.setButtonText("View on GitHub").onClick(() => {
+      window.open("https://github.com/racstan/obsidian-ai-scheduler", "_blank");
     }));
   }
 };

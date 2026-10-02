@@ -102,12 +102,22 @@ export class ChangelogModal extends Modal {
 
 		const actionsRow = footerEl.createDiv({ cls: 'ai-scheduler-changelog-actions' });
 
-		const starBtn = actionsRow.createEl('button', {
+		const leftActions = actionsRow.createDiv({ cls: 'ai-scheduler-changelog-left-actions' });
+
+		const starBtn = leftActions.createEl('button', {
 			text: '⭐ Star on GitHub',
 			cls: 'ai-scheduler-star-btn',
 		});
 		starBtn.addEventListener('click', () => {
 			window.open('https://github.com/racstan/obsidian-ai-scheduler', '_blank');
+		});
+
+		const coffeeBtn = leftActions.createEl('button', {
+			text: '☕ Buy me a coffee',
+			cls: 'ai-scheduler-coffee-btn',
+		});
+		coffeeBtn.addEventListener('click', () => {
+			window.open('https://buymeacoffee.com/rachitasthana', '_blank');
 		});
 
 		const closeBtn = actionsRow.createEl('button', {
