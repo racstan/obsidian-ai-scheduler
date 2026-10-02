@@ -35,19 +35,19 @@ export class PlannerModal extends Modal {
 		this.modalEl.addClass('ai-scheduler-modal-md');
 		contentEl.addClass('ai-scheduler-content');
 		contentEl.empty();
-		const shell = contentEl.createDiv('ai-scheduler-shell ai-scheduler-shell-md');
-		shell.createDiv('ai-scheduler-eyebrow').setText('AI Planner');
-		shell.createEl('h1', { text: 'Plan scheduled work' }).addClass('ai-scheduler-title ai-scheduler-title-sm');
-		shell.createEl('p', { text: 'Describe your goal in plain english. Your active AI backend will design and configure the scheduled jobs.' }).addClass('ai-scheduler-subtitle');
+		const shell = contentEl.createDiv({ cls: 'ai-scheduler-shell ai-scheduler-shell-md' });
+		shell.createDiv({ cls: 'ai-scheduler-eyebrow', text: 'AI Planner' });
+		shell.createEl('h1', { text: 'Plan scheduled work', cls: 'ai-scheduler-title ai-scheduler-title-sm' });
+		shell.createEl('p', { text: 'Describe your goal in plain english. Your active AI backend will design and configure the scheduled jobs.', cls: 'ai-scheduler-subtitle' });
 
 		const readiness = this.plugin.getBackendReadiness();
 		if (!readiness.ok) {
-			const banner = shell.createDiv('ai-scheduler-alert-banner');
-			const content = banner.createDiv('ai-scheduler-alert-content');
-			content.createSpan('ai-scheduler-alert-icon').setText('⚠️');
+			const banner = shell.createDiv({ cls: 'ai-scheduler-alert-banner' });
+			const content = banner.createDiv({ cls: 'ai-scheduler-alert-content' });
+			content.createSpan({ cls: 'ai-scheduler-alert-icon', text: '⚠️' });
 			const textCol = content.createDiv();
-			textCol.createDiv('ai-scheduler-alert-title').setText('AI backend not configured');
-			textCol.createDiv('ai-scheduler-alert-desc').setText(readiness.message);
+			textCol.createDiv({ cls: 'ai-scheduler-alert-title', text: 'AI backend not configured' });
+			textCol.createDiv({ cls: 'ai-scheduler-alert-desc', text: readiness.message });
 			const btn = banner.createEl('button', { text: 'Open settings', cls: 'mod-cta ai-scheduler-alert-btn' });
 			btn.onclick = () => {
 				this.close();
@@ -57,21 +57,17 @@ export class PlannerModal extends Modal {
 			};
 		}
 
-		shell.createDiv('ai-scheduler-form-label').setText('What would you like AI Scheduler to do?');
-		const textarea = shell.createEl('textarea');
-		textarea.addClass('ai-scheduler-textarea');
-		textarea.addClass('ai-scheduler-textarea-tall');
+		shell.createDiv({ cls: 'ai-scheduler-form-label', text: 'What would you like AI Scheduler to do?' });
+		const textarea = shell.createEl('textarea', { cls: 'ai-scheduler-textarea ai-scheduler-textarea-tall' });
 		textarea.placeholder = 'E.g. Every weekday at 9:00 am, review notes modified in the last 24 hours, extract action items, and create an executive summary in AI reviews/';
-		shell.createDiv('ai-scheduler-hint ai-scheduler-hint-gap').setText('Examples: "Review notes every evening at 10 pm", "run every 30 minutes for 8 iterations", "check for open tasks in projects/ every sunday at 6 pm"');
+		shell.createDiv({ cls: 'ai-scheduler-hint ai-scheduler-hint-gap', text: 'Examples: "Review notes every evening at 10 pm", "run every 30 minutes for 8 iterations", "check for open tasks in projects/ every sunday at 6 pm"' });
 
-		shell.createDiv('ai-scheduler-form-label').setText('Default result folder (optional)');
-		const resultFolder = shell.createEl('input', { type: 'text', placeholder: 'Optional result folder, e.g. AI Reviews or Projects/Notes' });
-		resultFolder.addClass('ai-scheduler-input');
-		resultFolder.addClass('ai-scheduler-form-gap');
+		shell.createDiv({ cls: 'ai-scheduler-form-label', text: 'Default result folder (optional)' });
+		const resultFolder = shell.createEl('input', { type: 'text', cls: 'ai-scheduler-input ai-scheduler-form-gap', placeholder: 'Optional result folder, e.g. AI Reviews or Projects/Notes' });
 
 		const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), [], this.app);
 
-		const footer = shell.createDiv('ai-scheduler-footer');
+		const footer = shell.createDiv({ cls: 'ai-scheduler-footer' });
 		makeButton(footer, 'Cancel', () => this.close());
 		makeButton(footer, '✨ Create AI plan', async button => {
 			const goal = textarea.value.trim();
@@ -97,12 +93,11 @@ export class PlannerModal extends Modal {
 		this.modalEl.addClass('ai-scheduler-modal-lg');
 		contentEl.addClass('ai-scheduler-content');
 		contentEl.empty();
-		const shell = contentEl.createDiv('ai-scheduler-shell ai-scheduler-shell-lg');
-		shell.createEl('h1', { text: 'Schedule created' }).addClass('ai-scheduler-title ai-scheduler-title-sm');
-		shell.createEl('p', { text: 'Your tasks are scheduled. The cron form is shown for reference — the scheduler uses it behind the scenes.' }).addClass('ai-scheduler-subtitle');
+		const shell = contentEl.createDiv({ cls: 'ai-scheduler-shell ai-scheduler-shell-lg' });
+		shell.createEl('h1', { text: 'Schedule created', cls: 'ai-scheduler-title ai-scheduler-title-sm' });
+		shell.createEl('p', { text: 'Your tasks are scheduled. The cron form is shown for reference — the scheduler uses it behind the scenes.', cls: 'ai-scheduler-subtitle' });
 
-		const table = shell.createEl('table');
-		table.addClass('ai-scheduler-result-table');
+		const table = shell.createEl('table', { cls: 'ai-scheduler-result-table' });
 		const head = table.createEl('tr');
 		['Task', 'Cron form', 'Schedule', 'Next runs'].forEach(label => {
 			head.createEl('th', { text: label });
@@ -121,8 +116,8 @@ export class PlannerModal extends Modal {
 		}
 
 		const summary = makeCard(shell, 'ai-scheduler-card-tight', 'ai-scheduler-card-gap');
-		summary.createDiv({ text: 'You can edit any task from the dashboard or its schedule note; the AI can also rewrite schedules in plain language.' }).addClass('ai-scheduler-hint');
-		const footer = shell.createDiv('ai-scheduler-footer');
+		summary.createDiv({ cls: 'ai-scheduler-hint', text: 'You can edit any task from the dashboard or its schedule note; the AI can also rewrite schedules in plain language.' });
+		const footer = shell.createDiv({ cls: 'ai-scheduler-footer' });
 		makeButton(footer, 'Close', () => this.close());
 		makeButton(footer, 'Open AI Scheduler', () => {
 			this.close();

@@ -84,24 +84,24 @@ export class JobModal extends Modal {
 		}, true);
 
 		const aiSection = makeCard(shell, 'ai-scheduler-card-ai');
-		aiSection.createDiv('ai-scheduler-lead ai-scheduler-gap-6').setText('Edit with AI (optional)');
+		aiSection.createDiv({ cls: 'ai-scheduler-lead ai-scheduler-gap-6', text: 'Edit with AI (optional)' });
 		const readiness = this.plugin.getBackendReadiness();
 		if (!readiness.ok) {
-			const banner = aiSection.createDiv('ai-scheduler-alert-banner');
-			const content = banner.createDiv('ai-scheduler-alert-content');
-			content.createSpan('ai-scheduler-alert-icon').setText('⚠️');
+			const banner = aiSection.createDiv({ cls: 'ai-scheduler-alert-banner' });
+			const content = banner.createDiv({ cls: 'ai-scheduler-alert-content' });
+			content.createSpan({ cls: 'ai-scheduler-alert-icon', text: '⚠️' });
 			const textCol = content.createDiv();
-			textCol.createDiv('ai-scheduler-alert-title').setText('AI backend not configured');
-			textCol.createDiv('ai-scheduler-alert-desc').setText(readiness.message);
+			textCol.createDiv({ cls: 'ai-scheduler-alert-title', text: 'AI backend not configured' });
+			textCol.createDiv({ cls: 'ai-scheduler-alert-desc', text: readiness.message });
 			const btn = banner.createEl('button', { text: 'Open settings', cls: 'mod-cta ai-scheduler-alert-btn' });
 			btn.onclick = () => {
 				this.close();
-				this.plugin.openSettingsTab();
+				window.setTimeout(() => {
+					this.plugin.openSettingsTab();
+				}, 50);
 			};
 		}
-		const request = aiSection.createEl('textarea', { placeholder: 'Example: Change this to run every 30 minutes for 8 iterations, and save each result in Projects/News.' });
-		request.addClass('ai-scheduler-textarea');
-		request.addClass('ai-scheduler-textarea-ai');
+		const request = aiSection.createEl('textarea', { placeholder: 'Example: Change this to run every 30 minutes for 8 iterations, and save each result in Projects/News.', cls: 'ai-scheduler-textarea ai-scheduler-textarea-ai' });
 		makeButton(aiSection, 'Update task with AI', async button => {
 			const change = request.value.trim();
 			if (!change) { new Notice('Describe the task change first.'); return; }
@@ -125,7 +125,7 @@ export class JobModal extends Modal {
 	 * next-runs preview. Cron expressions are validated on every keystroke. */
 	private renderScheduleEditor(shell: HTMLElement): void {
 		const card = makeCard(shell, 'ai-scheduler-card-tight', 'ai-scheduler-card-flush');
-		card.createDiv('ai-scheduler-lead ai-scheduler-gap-8').setText('Schedule');
+		card.createDiv({ cls: 'ai-scheduler-lead ai-scheduler-gap-8', text: 'Schedule' });
 
 		const kindRow = card.createDiv('ai-scheduler-kind-row');
 		this.kindSelect = kindRow.createEl('select');

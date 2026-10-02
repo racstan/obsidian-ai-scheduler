@@ -1456,24 +1456,24 @@ var JobModal = class extends import_obsidian4.Modal {
       }
     }, true);
     const aiSection = makeCard(shell, "ai-scheduler-card-ai");
-    aiSection.createDiv("ai-scheduler-lead ai-scheduler-gap-6").setText("Edit with AI (optional)");
+    aiSection.createDiv({ cls: "ai-scheduler-lead ai-scheduler-gap-6", text: "Edit with AI (optional)" });
     const readiness = this.plugin.getBackendReadiness();
     if (!readiness.ok) {
-      const banner = aiSection.createDiv("ai-scheduler-alert-banner");
-      const content = banner.createDiv("ai-scheduler-alert-content");
-      content.createSpan("ai-scheduler-alert-icon").setText("\u26A0\uFE0F");
+      const banner = aiSection.createDiv({ cls: "ai-scheduler-alert-banner" });
+      const content = banner.createDiv({ cls: "ai-scheduler-alert-content" });
+      content.createSpan({ cls: "ai-scheduler-alert-icon", text: "\u26A0\uFE0F" });
       const textCol = content.createDiv();
-      textCol.createDiv("ai-scheduler-alert-title").setText("AI backend not configured");
-      textCol.createDiv("ai-scheduler-alert-desc").setText(readiness.message);
+      textCol.createDiv({ cls: "ai-scheduler-alert-title", text: "AI backend not configured" });
+      textCol.createDiv({ cls: "ai-scheduler-alert-desc", text: readiness.message });
       const btn = banner.createEl("button", { text: "Open settings", cls: "mod-cta ai-scheduler-alert-btn" });
       btn.onclick = () => {
         this.close();
-        this.plugin.openSettingsTab();
+        window.setTimeout(() => {
+          this.plugin.openSettingsTab();
+        }, 50);
       };
     }
-    const request = aiSection.createEl("textarea", { placeholder: "Example: Change this to run every 30 minutes for 8 iterations, and save each result in Projects/News." });
-    request.addClass("ai-scheduler-textarea");
-    request.addClass("ai-scheduler-textarea-ai");
+    const request = aiSection.createEl("textarea", { placeholder: "Example: Change this to run every 30 minutes for 8 iterations, and save each result in Projects/News.", cls: "ai-scheduler-textarea ai-scheduler-textarea-ai" });
     makeButton(aiSection, "Update task with AI", async (button) => {
       const change = request.value.trim();
       if (!change) {
@@ -1502,7 +1502,7 @@ var JobModal = class extends import_obsidian4.Modal {
    * next-runs preview. Cron expressions are validated on every keystroke. */
   renderScheduleEditor(shell) {
     const card = makeCard(shell, "ai-scheduler-card-tight", "ai-scheduler-card-flush");
-    card.createDiv("ai-scheduler-lead ai-scheduler-gap-8").setText("Schedule");
+    card.createDiv({ cls: "ai-scheduler-lead ai-scheduler-gap-8", text: "Schedule" });
     const kindRow = card.createDiv("ai-scheduler-kind-row");
     this.kindSelect = kindRow.createEl("select");
     SCHEDULE_KINDS.forEach((option) => {
@@ -1743,18 +1743,18 @@ var PlannerModal = class extends import_obsidian5.Modal {
     this.modalEl.addClass("ai-scheduler-modal-md");
     contentEl.addClass("ai-scheduler-content");
     contentEl.empty();
-    const shell = contentEl.createDiv("ai-scheduler-shell ai-scheduler-shell-md");
-    shell.createDiv("ai-scheduler-eyebrow").setText("AI Planner");
-    shell.createEl("h1", { text: "Plan scheduled work" }).addClass("ai-scheduler-title ai-scheduler-title-sm");
-    shell.createEl("p", { text: "Describe your goal in plain english. Your active AI backend will design and configure the scheduled jobs." }).addClass("ai-scheduler-subtitle");
+    const shell = contentEl.createDiv({ cls: "ai-scheduler-shell ai-scheduler-shell-md" });
+    shell.createDiv({ cls: "ai-scheduler-eyebrow", text: "AI Planner" });
+    shell.createEl("h1", { text: "Plan scheduled work", cls: "ai-scheduler-title ai-scheduler-title-sm" });
+    shell.createEl("p", { text: "Describe your goal in plain english. Your active AI backend will design and configure the scheduled jobs.", cls: "ai-scheduler-subtitle" });
     const readiness = this.plugin.getBackendReadiness();
     if (!readiness.ok) {
-      const banner = shell.createDiv("ai-scheduler-alert-banner");
-      const content = banner.createDiv("ai-scheduler-alert-content");
-      content.createSpan("ai-scheduler-alert-icon").setText("\u26A0\uFE0F");
+      const banner = shell.createDiv({ cls: "ai-scheduler-alert-banner" });
+      const content = banner.createDiv({ cls: "ai-scheduler-alert-content" });
+      content.createSpan({ cls: "ai-scheduler-alert-icon", text: "\u26A0\uFE0F" });
       const textCol = content.createDiv();
-      textCol.createDiv("ai-scheduler-alert-title").setText("AI backend not configured");
-      textCol.createDiv("ai-scheduler-alert-desc").setText(readiness.message);
+      textCol.createDiv({ cls: "ai-scheduler-alert-title", text: "AI backend not configured" });
+      textCol.createDiv({ cls: "ai-scheduler-alert-desc", text: readiness.message });
       const btn = banner.createEl("button", { text: "Open settings", cls: "mod-cta ai-scheduler-alert-btn" });
       btn.onclick = () => {
         this.close();
@@ -1763,18 +1763,14 @@ var PlannerModal = class extends import_obsidian5.Modal {
         }, 50);
       };
     }
-    shell.createDiv("ai-scheduler-form-label").setText("What would you like AI Scheduler to do?");
-    const textarea = shell.createEl("textarea");
-    textarea.addClass("ai-scheduler-textarea");
-    textarea.addClass("ai-scheduler-textarea-tall");
+    shell.createDiv({ cls: "ai-scheduler-form-label", text: "What would you like AI Scheduler to do?" });
+    const textarea = shell.createEl("textarea", { cls: "ai-scheduler-textarea ai-scheduler-textarea-tall" });
     textarea.placeholder = "E.g. Every weekday at 9:00 am, review notes modified in the last 24 hours, extract action items, and create an executive summary in AI reviews/";
-    shell.createDiv("ai-scheduler-hint ai-scheduler-hint-gap").setText('Examples: "Review notes every evening at 10 pm", "run every 30 minutes for 8 iterations", "check for open tasks in projects/ every sunday at 6 pm"');
-    shell.createDiv("ai-scheduler-form-label").setText("Default result folder (optional)");
-    const resultFolder = shell.createEl("input", { type: "text", placeholder: "Optional result folder, e.g. AI Reviews or Projects/Notes" });
-    resultFolder.addClass("ai-scheduler-input");
-    resultFolder.addClass("ai-scheduler-form-gap");
+    shell.createDiv({ cls: "ai-scheduler-hint ai-scheduler-hint-gap", text: 'Examples: "Review notes every evening at 10 pm", "run every 30 minutes for 8 iterations", "check for open tasks in projects/ every sunday at 6 pm"' });
+    shell.createDiv({ cls: "ai-scheduler-form-label", text: "Default result folder (optional)" });
+    const resultFolder = shell.createEl("input", { type: "text", cls: "ai-scheduler-input ai-scheduler-form-gap", placeholder: "Optional result folder, e.g. AI Reviews or Projects/Notes" });
     const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), [], this.app);
-    const footer = shell.createDiv("ai-scheduler-footer");
+    const footer = shell.createDiv({ cls: "ai-scheduler-footer" });
     makeButton(footer, "Cancel", () => this.close());
     makeButton(footer, "\u2728 Create AI plan", async (button) => {
       const goal = textarea.value.trim();
@@ -1802,11 +1798,10 @@ var PlannerModal = class extends import_obsidian5.Modal {
     this.modalEl.addClass("ai-scheduler-modal-lg");
     contentEl.addClass("ai-scheduler-content");
     contentEl.empty();
-    const shell = contentEl.createDiv("ai-scheduler-shell ai-scheduler-shell-lg");
-    shell.createEl("h1", { text: "Schedule created" }).addClass("ai-scheduler-title ai-scheduler-title-sm");
-    shell.createEl("p", { text: "Your tasks are scheduled. The cron form is shown for reference \u2014 the scheduler uses it behind the scenes." }).addClass("ai-scheduler-subtitle");
-    const table = shell.createEl("table");
-    table.addClass("ai-scheduler-result-table");
+    const shell = contentEl.createDiv({ cls: "ai-scheduler-shell ai-scheduler-shell-lg" });
+    shell.createEl("h1", { text: "Schedule created", cls: "ai-scheduler-title ai-scheduler-title-sm" });
+    shell.createEl("p", { text: "Your tasks are scheduled. The cron form is shown for reference \u2014 the scheduler uses it behind the scenes.", cls: "ai-scheduler-subtitle" });
+    const table = shell.createEl("table", { cls: "ai-scheduler-result-table" });
     const head = table.createEl("tr");
     ["Task", "Cron form", "Schedule", "Next runs"].forEach((label) => {
       head.createEl("th", { text: label });
@@ -1824,8 +1819,8 @@ var PlannerModal = class extends import_obsidian5.Modal {
       row.createEl("td").setText(runs.length ? runs.join(" \xB7 ") : "on trigger");
     }
     const summary = makeCard(shell, "ai-scheduler-card-tight", "ai-scheduler-card-gap");
-    summary.createDiv({ text: "You can edit any task from the dashboard or its schedule note; the AI can also rewrite schedules in plain language." }).addClass("ai-scheduler-hint");
-    const footer = shell.createDiv("ai-scheduler-footer");
+    summary.createDiv({ cls: "ai-scheduler-hint", text: "You can edit any task from the dashboard or its schedule note; the AI can also rewrite schedules in plain language." });
+    const footer = shell.createDiv({ cls: "ai-scheduler-footer" });
     makeButton(footer, "Close", () => this.close());
     makeButton(footer, "Open AI Scheduler", () => {
       this.close();
@@ -1913,18 +1908,18 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
     const activeCount = userJobs.filter((job) => job.enabled).length;
     const pausedCount = userJobs.filter((job) => !job.enabled).length;
     const next = userJobs.filter((job) => job.enabled && job.nextRunAt).sort((a, b) => new Date(a.nextRunAt).getTime() - new Date(b.nextRunAt).getTime())[0];
-    const stats = shell.createDiv("ai-scheduler-stats");
+    const stats = shell.createDiv({ cls: "ai-scheduler-stats" });
     [
       [activeCount, "ACTIVE TASKS"],
       [pausedCount, "PAUSED / PAST"],
-      [next ? formatDate(next.nextRunAt) : "None", "NEXT RUN"]
+      [next ? formatDate(next.nextRunAt) : "None", next ? `NEXT RUN: #${next.taskNumber} ${next.title.slice(0, 18)}` : "SOONEST RUN"]
     ].forEach(([value, label]) => {
       const stat = makeCard(stats, "ai-scheduler-card-stat");
-      stat.createDiv({ text: String(value) }).addClass("ai-scheduler-stat-value");
-      stat.createDiv({ text: label }).addClass("ai-scheduler-stat-label");
+      stat.createDiv({ cls: "ai-scheduler-stat-value", text: String(value) });
+      stat.createDiv({ cls: "ai-scheduler-stat-label", text: label });
     });
     this.renderSection(shell, "Scheduled tasks", `${activeCount} ${activeCount === 1 ? "task" : "tasks"} enabled`);
-    const bulkActions = shell.createDiv("ai-scheduler-row-actions");
+    const bulkActions = shell.createDiv({ cls: "ai-scheduler-row-actions" });
     makeButton(bulkActions, "Enable all", async () => {
       await this.plugin.enableAllJobs();
       this.render();
@@ -1950,14 +1945,16 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
     if (!scheduled.length) {
       const empty = makeCard(jobs, "ai-scheduler-card-muted");
       empty.createDiv({ text: "No scheduled tasks yet." });
-      empty.createDiv({ text: "Ask AI to plan a schedule from a plain-language goal." }).addClass("ai-scheduler-empty-sub");
+      empty.createDiv({ cls: "ai-scheduler-empty-sub", text: "Ask AI to plan a schedule from a plain-language goal." });
     }
     for (const job of scheduled) {
       const card = makeCard(jobs, "ai-scheduler-task-card");
       const copy = card.createDiv();
-      copy.createDiv({ text: `#${job.taskNumber} \xB7 ${job.title}` }).addClass("ai-scheduler-task-title");
-      copy.createDiv({ text: `${describeBinding(job)} \xB7 ${describeSchedule(job)}${job.runCount ? ` \xB7 ${job.runCount} run${job.runCount === 1 ? "" : "s"}` : ""}` }).addClass("ai-scheduler-task-meta");
-      const controls = card.createDiv("ai-scheduler-task-actions");
+      copy.createDiv({ cls: "ai-scheduler-task-title", text: `#${job.taskNumber} \xB7 ${job.title}` });
+      copy.createDiv({ cls: "ai-scheduler-task-meta", text: `${describeBinding(job)} \xB7 ${describeSchedule(job)}${job.runCount ? ` \xB7 ${job.runCount} run${job.runCount === 1 ? "" : "s"}` : ""}` });
+      const nextText = job.nextRunAt ? `Next run: ${formatDate(job.nextRunAt)}` : job.schedule.kind === "event" ? "\u26A1 Trigger: On vault note modification" : "\u23F0 Next run: Not scheduled";
+      copy.createDiv({ cls: "ai-scheduler-task-next", text: `\u23F0 ${nextText}` });
+      const controls = card.createDiv({ cls: "ai-scheduler-task-actions" });
       makeButton(controls, "Edit", () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
       makeButton(controls, "Disable", async () => {
         job.enabled = false;
@@ -1983,9 +1980,10 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
       for (const job of disabled) {
         const card = makeCard(disabledList, "ai-scheduler-task-card");
         const copy = card.createDiv();
-        copy.createDiv({ text: `#${job.taskNumber} \xB7 ${job.title}` }).addClass("ai-scheduler-task-title");
-        copy.createDiv({ text: `${describeBinding(job)} \xB7 ${describeSchedule(job)} \xB7 Disabled` }).addClass("ai-scheduler-task-meta");
-        const controls = card.createDiv("ai-scheduler-task-actions");
+        copy.createDiv({ cls: "ai-scheduler-task-title", text: `#${job.taskNumber} \xB7 ${job.title}` });
+        copy.createDiv({ cls: "ai-scheduler-task-meta", text: `${describeBinding(job)} \xB7 ${describeSchedule(job)}` });
+        copy.createDiv({ cls: "ai-scheduler-task-paused", text: "\u23F8\uFE0F Paused (click Enable to schedule next run)" });
+        const controls = card.createDiv({ cls: "ai-scheduler-task-actions" });
         makeButton(controls, "Edit", () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
         makeButton(controls, "Enable", async () => {
           await this.plugin.enableJob(job);
@@ -2008,8 +2006,11 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
       for (const job of past) {
         const card = makeCard(pastList, "ai-scheduler-task-card");
         const copy = card.createDiv();
-        copy.createDiv({ text: `#${job.taskNumber} \xB7 ${job.title}` }).addClass("ai-scheduler-task-title");
-        copy.createDiv({ text: `${describeBinding(job)} \xB7 ${job.lastStatus || job.status || "completed"}${job.runCount ? ` \xB7 ${job.runCount} run${job.runCount === 1 ? "" : "s"}` : ""}${job.lastRunAt ? ` \xB7 Last run ${formatDate(job.lastRunAt)}` : ""}` }).addClass("ai-scheduler-task-meta");
+        copy.createDiv({ cls: "ai-scheduler-task-title", text: `#${job.taskNumber} \xB7 ${job.title}` });
+        copy.createDiv({ cls: "ai-scheduler-task-meta", text: `${describeBinding(job)} \xB7 ${job.lastStatus || job.status || "completed"}${job.runCount ? ` \xB7 ${job.runCount} run${job.runCount === 1 ? "" : "s"}` : ""}` });
+        if (job.lastRunAt) {
+          copy.createDiv({ cls: "ai-scheduler-task-paused", text: `Last ran: ${formatDate(job.lastRunAt)}` });
+        }
         const controls = card.createDiv("ai-scheduler-task-actions");
         makeButton(controls, "Edit", () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
         makeButton(controls, "Run again", async () => {

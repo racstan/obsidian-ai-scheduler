@@ -80,19 +80,19 @@ export class AssistantModal extends Modal {
 		const activeCount = userJobs.filter(job => job.enabled).length;
 		const pausedCount = userJobs.filter(job => !job.enabled).length;
 		const next = userJobs.filter(job => job.enabled && job.nextRunAt).sort((a, b) => new Date(a.nextRunAt as string).getTime() - new Date(b.nextRunAt as string).getTime())[0];
-		const stats = shell.createDiv('ai-scheduler-stats');
+		const stats = shell.createDiv({ cls: 'ai-scheduler-stats' });
 		[
 			[activeCount, 'ACTIVE TASKS'],
 			[pausedCount, 'PAUSED / PAST'],
-			[next ? formatDate(next.nextRunAt) : 'None', 'NEXT RUN'],
+			[next ? formatDate(next.nextRunAt) : 'None', next ? `NEXT RUN: #${next.taskNumber} ${next.title.slice(0, 18)}` : 'SOONEST RUN'],
 		].forEach(([value, label]) => {
 			const stat = makeCard(stats, 'ai-scheduler-card-stat');
-			stat.createDiv({ text: String(value) }).addClass('ai-scheduler-stat-value');
-			stat.createDiv({ text: label as string }).addClass('ai-scheduler-stat-label');
+			stat.createDiv({ cls: 'ai-scheduler-stat-value', text: String(value) });
+			stat.createDiv({ cls: 'ai-scheduler-stat-label', text: label as string });
 		});
 
 		this.renderSection(shell, 'Scheduled tasks', `${activeCount} ${activeCount === 1 ? 'task' : 'tasks'} enabled`);
-		const bulkActions = shell.createDiv('ai-scheduler-row-actions');
+		const bulkActions = shell.createDiv({ cls: 'ai-scheduler-row-actions' });
 		makeButton(bulkActions, 'Enable all', async () => {
 			await this.plugin.enableAllJobs();
 			this.render();
@@ -118,14 +118,16 @@ export class AssistantModal extends Modal {
 		if (!scheduled.length) {
 			const empty = makeCard(jobs, 'ai-scheduler-card-muted');
 			empty.createDiv({ text: 'No scheduled tasks yet.' });
-			empty.createDiv({ text: 'Ask AI to plan a schedule from a plain-language goal.' }).addClass('ai-scheduler-empty-sub');
+			empty.createDiv({ cls: 'ai-scheduler-empty-sub', text: 'Ask AI to plan a schedule from a plain-language goal.' });
 		}
 		for (const job of scheduled) {
 			const card = makeCard(jobs, 'ai-scheduler-task-card');
 			const copy = card.createDiv();
-			copy.createDiv({ text: `#${job.taskNumber} · ${job.title}` }).addClass('ai-scheduler-task-title');
-			copy.createDiv({ text: `${describeBinding(job)} · ${describeSchedule(job)}${job.runCount ? ` · ${job.runCount} run${job.runCount === 1 ? '' : 's'}` : ''}` }).addClass('ai-scheduler-task-meta');
-			const controls = card.createDiv('ai-scheduler-task-actions');
+			copy.createDiv({ cls: 'ai-scheduler-task-title', text: `#${job.taskNumber} · ${job.title}` });
+			copy.createDiv({ cls: 'ai-scheduler-task-meta', text: `${describeBinding(job)} · ${describeSchedule(job)}${job.runCount ? ` · ${job.runCount} run${job.runCount === 1 ? '' : 's'}` : ''}` });
+			const nextText = job.nextRunAt ? `Next run: ${formatDate(job.nextRunAt)}` : (job.schedule.kind === 'event' ? '⚡ Trigger: On vault note modification' : '⏰ Next run: Not scheduled');
+			copy.createDiv({ cls: 'ai-scheduler-task-next', text: `⏰ ${nextText}` });
+			const controls = card.createDiv({ cls: 'ai-scheduler-task-actions' });
 			makeButton(controls, 'Edit', () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
 			makeButton(controls, 'Disable', async () => {
 				job.enabled = false;
@@ -152,9 +154,10 @@ export class AssistantModal extends Modal {
 			for (const job of disabled) {
 				const card = makeCard(disabledList, 'ai-scheduler-task-card');
 				const copy = card.createDiv();
-				copy.createDiv({ text: `#${job.taskNumber} · ${job.title}` }).addClass('ai-scheduler-task-title');
-				copy.createDiv({ text: `${describeBinding(job)} · ${describeSchedule(job)} · Disabled` }).addClass('ai-scheduler-task-meta');
-				const controls = card.createDiv('ai-scheduler-task-actions');
+				copy.createDiv({ cls: 'ai-scheduler-task-title', text: `#${job.taskNumber} · ${job.title}` });
+				copy.createDiv({ cls: 'ai-scheduler-task-meta', text: `${describeBinding(job)} · ${describeSchedule(job)}` });
+				copy.createDiv({ cls: 'ai-scheduler-task-paused', text: '⏸️ Paused (click Enable to schedule next run)' });
+				const controls = card.createDiv({ cls: 'ai-scheduler-task-actions' });
 				makeButton(controls, 'Edit', () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
 				makeButton(controls, 'Enable', async () => {
 					await this.plugin.enableJob(job);
@@ -178,8 +181,11 @@ export class AssistantModal extends Modal {
 			for (const job of past) {
 				const card = makeCard(pastList, 'ai-scheduler-task-card');
 				const copy = card.createDiv();
-				copy.createDiv({ text: `#${job.taskNumber} · ${job.title}` }).addClass('ai-scheduler-task-title');
-				copy.createDiv({ text: `${describeBinding(job)} · ${job.lastStatus || job.status || 'completed'}${job.runCount ? ` · ${job.runCount} run${job.runCount === 1 ? '' : 's'}` : ''}${job.lastRunAt ? ` · Last run ${formatDate(job.lastRunAt)}` : ''}` }).addClass('ai-scheduler-task-meta');
+				copy.createDiv({ cls: 'ai-scheduler-task-title', text: `#${job.taskNumber} · ${job.title}` });
+				copy.createDiv({ cls: 'ai-scheduler-task-meta', text: `${describeBinding(job)} · ${job.lastStatus || job.status || 'completed'}${job.runCount ? ` · ${job.runCount} run${job.runCount === 1 ? '' : 's'}` : ''}` });
+				if (job.lastRunAt) {
+					copy.createDiv({ cls: 'ai-scheduler-task-paused', text: `Last ran: ${formatDate(job.lastRunAt)}` });
+				}
 				const controls = card.createDiv('ai-scheduler-task-actions');
 				makeButton(controls, 'Edit', () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
 				makeButton(controls, 'Run again', async () => { await this.plugin.retryJob(job); this.render(); });
