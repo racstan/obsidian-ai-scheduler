@@ -2582,6 +2582,26 @@ var import_obsidian7 = require("obsidian");
 // src/changelog.ts
 var CHANGELOG_DATA = [
   {
+    version: "2.1.7.7",
+    date: "2026-10-02",
+    title: "Zero-Scroll Changelog Dialog with Always-Visible Action Buttons",
+    highlights: [
+      'Always-Visible Footer Actions: Pinned "Got it" and "\u2B50 Star on GitHub" buttons at the bottom of the changelog modal without requiring vertical scrolling.',
+      "Isolated Middle Scroll Container: Release notes and version history smoothly scroll in the middle while header, tabs, and actions stay anchored."
+    ],
+    fixed: [
+      "Fixed changelog dialog footer getting cut off by outer viewport height."
+    ],
+    contributors: [
+      {
+        name: "Rachit Asthana",
+        username: "racstan",
+        url: "https://github.com/racstan",
+        role: "Author & Lead Maintainer"
+      }
+    ]
+  },
+  {
     version: "2.1.7.6",
     date: "2026-10-02",
     title: "Zero Modal Stacking, Live Execution Indicators, Instant Run & Stop Controls",
@@ -3068,7 +3088,11 @@ var ChangelogModal = class extends import_obsidian7.Modal {
     this.options = options;
   }
   onOpen() {
+    closeExistingSchedulerModals(this);
     const { contentEl } = this;
+    this.modalEl.addClass("ai-scheduler-modal");
+    this.modalEl.addClass("ai-scheduler-modal-md");
+    this.modalEl.addClass("ai-scheduler-changelog-window");
     contentEl.empty();
     contentEl.addClass("ai-scheduler-changelog-modal");
     const currentVersion = this.options.currentVersion || this.plugin.manifest.version;

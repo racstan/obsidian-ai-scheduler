@@ -23,6 +23,26 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.7.7',
+		date: '2026-10-02',
+		title: 'Zero-Scroll Changelog Dialog with Always-Visible Action Buttons',
+		highlights: [
+			'Always-Visible Footer Actions: Pinned "Got it" and "⭐ Star on GitHub" buttons at the bottom of the changelog modal without requiring vertical scrolling.',
+			'Isolated Middle Scroll Container: Release notes and version history smoothly scroll in the middle while header, tabs, and actions stay anchored.',
+		],
+		fixed: [
+			'Fixed changelog dialog footer getting cut off by outer viewport height.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author & Lead Maintainer',
+			},
+		],
+	},
+	{
 		version: '2.1.7.6',
 		date: '2026-10-02',
 		title: 'Zero Modal Stacking, Live Execution Indicators, Instant Run & Stop Controls',

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.7.7] - 2026-10-02
+
+### Highlights
+- **Always-Visible Changelog Actions**: Fixed changelog modal layout using structured flexbox so "Got it" and "⭐ Star on GitHub" remain permanently pinned at the bottom without requiring vertical scrolling.
+- **Isolated Scroll Container**: Release notes scroll cleanly in the middle while header, tabs, and footer stay anchored.
+
+### Fixed
+- Fixed changelog dialog footer getting cut off on lower-height viewports.
+
+### Contributors
+- [@racstan](https://github.com/racstan) (Rachit Asthana)
+
+---
+
 ## [2.1.7.6] - 2026-10-02
 
 ### Highlights
