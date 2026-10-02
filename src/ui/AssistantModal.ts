@@ -56,18 +56,24 @@ export class AssistantModal extends Modal {
 			const btn = banner.createEl('button', { text: 'Open settings', cls: 'mod-cta ai-scheduler-alert-btn' });
 			btn.onclick = () => {
 				this.close();
-				this.plugin.openSettingsTab();
+				window.setTimeout(() => {
+					this.plugin.openSettingsTab();
+				}, 50);
 			};
 		}
 
 		const actions = shell.createDiv('ai-scheduler-actions');
 		makeButton(actions, '✨ Ask AI to plan', () => {
 			this.close();
-			new PlannerModal(this.app, this.plugin, () => new AssistantModal(this.app, this.plugin).open()).open();
+			window.setTimeout(() => {
+				new PlannerModal(this.app, this.plugin, () => new AssistantModal(this.app, this.plugin).open()).open();
+			}, 50);
 		}, true);
 		makeButton(actions, '⚙️ Settings', () => {
 			this.close();
-			this.plugin.openSettingsTab();
+			window.setTimeout(() => {
+				this.plugin.openSettingsTab();
+			}, 50);
 		});
 
 		const userJobs = this.plugin.jobs.filter(job => !isNightlyReviewJob(job));

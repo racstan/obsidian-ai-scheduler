@@ -1758,7 +1758,9 @@ var PlannerModal = class extends import_obsidian5.Modal {
       const btn = banner.createEl("button", { text: "Open settings", cls: "mod-cta ai-scheduler-alert-btn" });
       btn.onclick = () => {
         this.close();
-        this.plugin.openSettingsTab();
+        window.setTimeout(() => {
+          this.plugin.openSettingsTab();
+        }, 50);
       };
     }
     shell.createDiv("ai-scheduler-form-label").setText("What would you like AI Scheduler to do?");
@@ -1827,13 +1829,17 @@ var PlannerModal = class extends import_obsidian5.Modal {
     makeButton(footer, "Close", () => this.close());
     makeButton(footer, "Open AI Scheduler", () => {
       this.close();
-      new AssistantModal(this.app, this.plugin).open();
+      window.setTimeout(() => {
+        new AssistantModal(this.app, this.plugin).open();
+      }, 50);
     }, true);
   }
   onClose() {
     this.contentEl.empty();
     if (this.onCloseCallback && !this.planned) {
-      this.onCloseCallback();
+      window.setTimeout(() => {
+        if (this.onCloseCallback) this.onCloseCallback();
+      }, 50);
     }
   }
 };
@@ -1885,17 +1891,23 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
       const btn = banner.createEl("button", { text: "Open settings", cls: "mod-cta ai-scheduler-alert-btn" });
       btn.onclick = () => {
         this.close();
-        this.plugin.openSettingsTab();
+        window.setTimeout(() => {
+          this.plugin.openSettingsTab();
+        }, 50);
       };
     }
     const actions = shell.createDiv("ai-scheduler-actions");
     makeButton(actions, "\u2728 Ask AI to plan", () => {
       this.close();
-      new PlannerModal(this.app, this.plugin, () => new _AssistantModal(this.app, this.plugin).open()).open();
+      window.setTimeout(() => {
+        new PlannerModal(this.app, this.plugin, () => new _AssistantModal(this.app, this.plugin).open()).open();
+      }, 50);
     }, true);
     makeButton(actions, "\u2699\uFE0F Settings", () => {
       this.close();
-      this.plugin.openSettingsTab();
+      window.setTimeout(() => {
+        this.plugin.openSettingsTab();
+      }, 50);
     });
     const userJobs = this.plugin.jobs.filter((job) => !isNightlyReviewJob(job));
     const activeCount = userJobs.filter((job) => job.enabled).length;

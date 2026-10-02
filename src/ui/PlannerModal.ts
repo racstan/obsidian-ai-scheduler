@@ -51,7 +51,9 @@ export class PlannerModal extends Modal {
 			const btn = banner.createEl('button', { text: 'Open settings', cls: 'mod-cta ai-scheduler-alert-btn' });
 			btn.onclick = () => {
 				this.close();
-				this.plugin.openSettingsTab();
+				window.setTimeout(() => {
+					this.plugin.openSettingsTab();
+				}, 50);
 			};
 		}
 
@@ -124,14 +126,18 @@ export class PlannerModal extends Modal {
 		makeButton(footer, 'Close', () => this.close());
 		makeButton(footer, 'Open AI Scheduler', () => {
 			this.close();
-			new AssistantModal(this.app, this.plugin).open();
+			window.setTimeout(() => {
+				new AssistantModal(this.app, this.plugin).open();
+			}, 50);
 		}, true);
 	}
 
 	onClose(): void {
 		this.contentEl.empty();
 		if (this.onCloseCallback && !this.planned) {
-			this.onCloseCallback();
+			window.setTimeout(() => {
+				if (this.onCloseCallback) this.onCloseCallback();
+			}, 50);
 		}
 	}
 }

@@ -11,29 +11,30 @@
 	padding: 0;
 	display: flex;
 	flex-direction: column;
-	max-height: min(85vh, 800px);
+	max-height: min(88vh, 850px);
 }
 
 .ai-scheduler-modal-md {
 	width: min(720px, calc(100vw - 32px));
-	max-height: min(85vh, 800px);
+	min-height: min(580px, 85vh);
 }
 
 .ai-scheduler-modal-lg {
-	width: min(780px, calc(100vw - 32px));
-	max-height: min(85vh, 800px);
+	width: min(800px, calc(100vw - 32px));
+	min-height: min(620px, 85vh);
 }
 
 .ai-scheduler-modal-sm {
 	width: min(680px, calc(100vw - 32px));
-	max-height: min(85vh, 800px);
+	min-height: min(520px, 85vh);
 }
 
 .ai-scheduler-content {
 	padding: 0;
 	overflow-y: auto;
 	flex: 1 1 auto;
-	max-height: calc(85vh - 40px);
+	min-height: 0;
+	max-height: calc(88vh - 40px);
 }
 
 .ai-scheduler-shell {
