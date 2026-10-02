@@ -15,6 +15,7 @@ export const DEFAULT_SETTINGS: AISettings = {
 	reviewTime: '22:00',
 	nightlyReviewEnabled: false,
 	notifyOnCompletion: true,
+	systemNotifications: true,
 	catchUpOnStart: false,
 	catchUpHours: 24,
 	reviewContextMode: 'modified-today',
@@ -146,6 +147,7 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 	if (!settings.scheduleFolder) settings.scheduleFolder = DEFAULT_SETTINGS.scheduleFolder;
 	if (typeof settings.showChangelogOnUpdate !== 'boolean') settings.showChangelogOnUpdate = true;
 	if (typeof settings.lastSeenVersion !== 'string') settings.lastSeenVersion = '';
+	if (typeof settings.systemNotifications !== 'boolean') settings.systemNotifications = true;
 
 	const legacyTasks = stored.tasks as Array<Record<string, unknown>> | undefined;
 	const jobs = Array.isArray(stored.jobs)

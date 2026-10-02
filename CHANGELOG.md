@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.7.2] - 2026-10-02
+
+### Highlights
+- **Native Desktop / System Notifications**: Real OS desktop notifications on Windows, macOS, and Linux when tasks complete or fail.
+- **Bulk Actions Confirmation & Feedback**: "Enable all" now requires confirmation, and bulk enable/disable/delete actions display exact count toasts.
+- **Enhanced Notifications Settings**: Dedicated toggles for in-app notices, system desktop notifications, and a full testing utility.
+
+### Added
+- Native desktop notification integration using the Web/Electron Notification API.
+- Confirmation dialog before enabling all scheduled tasks in bulk.
+- Exact task count notifications when enabling, disabling, or deleting tasks.
+- System desktop notifications toggle under Background Execution & Notifications settings.
+
+### Changed
+- Test notification button now triggers both in-app and system desktop alerts to verify OS permissions.
+
+### Contributors
+- [@racstan](https://github.com/racstan) (Rachit Asthana)
+
+---
+
 ## [2.1.7.1] - 2026-10-02
 
 ### Highlights

@@ -32,7 +32,7 @@ import {
 import { executionPrompt, plannerPrompt, refinePrompt, reviewPrompt } from './prompts';
 import { getPathsContext, getVaultContextOptions, JobContext } from './context';
 import * as backends from './backends';
-import { extractJson, errorText, formatDate, isDisabledTask, isNightlyReviewJob, localDateKey, localTimestampKey, logActivityEntry, sleep, validateJobSchema } from './util';
+import { extractJson, errorText, formatDate, isDisabledTask, isNightlyReviewJob, localDateKey, localTimestampKey, logActivityEntry, sendSystemNotification, sleep, validateJobSchema } from './util';
 import { AssistantModal } from './ui/AssistantModal';
 import { PlannerModal } from './ui/PlannerModal';
 import { AssistantSettingTab } from './ui/SettingsTab';
@@ -131,16 +131,16 @@ export class AISchedulerPlugin extends Plugin {
 			id: 'enable-all-jobs',
 			name: 'Enable all scheduled tasks',
 			callback: async () => {
-				await this.enableAllJobs();
-				new Notice('All scheduled tasks enabled');
+				const count = await this.enableAllJobs();
+				new Notice(count > 0 ? `${count} scheduled task(s) enabled.` : 'All scheduled tasks are already enabled.');
 			},
 		});
 		this.addCommand({
 			id: 'disable-all-jobs',
 			name: 'Disable all scheduled tasks',
 			callback: async () => {
-				await this.disableAllJobs();
-				new Notice('All scheduled tasks disabled');
+				const count = await this.disableAllJobs();
+				new Notice(count > 0 ? `${count} scheduled task(s) disabled.` : 'All scheduled tasks are already disabled.');
 			},
 		});
 		this.addCommand({
@@ -338,7 +338,12 @@ export class AISchedulerPlugin extends Plugin {
 			}
 			reconcileAfterRun(job);
 			this.logActivity('completed', job.title, job.id);
-			if (this.settings.notifyOnCompletion && job.notify !== false) new Notice(`AI completed: ${job.title}`, 5000);
+			if (this.settings.notifyOnCompletion && job.notify !== false) {
+				new Notice(`AI completed: ${job.title}`, 5000);
+			}
+			if (this.settings.systemNotifications && job.notify !== false) {
+				sendSystemNotification('AI Scheduler', `AI completed: ${job.title}`);
+			}
 		} catch (error) {
 			job.status = 'failed';
 			job.lastStatus = 'failed';
@@ -347,6 +352,9 @@ export class AISchedulerPlugin extends Plugin {
 			this.lastTickError = job.lastError;
 			this.logActivity('failed', `${job.title}: ${job.lastError}`, job.id);
 			new Notice(`AI task failed: ${job.title}\n${job.lastError}`, 8000);
+			if (this.settings.systemNotifications) {
+				sendSystemNotification('AI Scheduler', `AI task failed: ${job.title}`);
+			}
 		}
 		await this.saveState();
 	}
@@ -472,7 +480,12 @@ export class AISchedulerPlugin extends Plugin {
 			const path = `${this.settings.reportFolder}/${filename}`;
 			await this.writeOutput(this.settings.reportFolder, filename, `# ${reportTitle} - ${today}\n\nGenerated: ${formatDate(now.toISOString())}\n\n${report}`);
 			this.logActivity('review', `Daily review written to ${path}`);
-			if (manual || this.settings.notifyOnCompletion) new Notice(`Review written to ${path}`, 6000);
+			if (manual || this.settings.notifyOnCompletion) {
+				new Notice(`Review written to ${path}`, 6000);
+			}
+			if (this.settings.systemNotifications) {
+				sendSystemNotification('AI Scheduler', `Review written to ${path}`);
+			}
 			await this.saveState();
 			return report;
 		} finally {
@@ -730,6 +743,10 @@ export class AISchedulerPlugin extends Plugin {
 
 	testNotification(): void {
 		new Notice('AI Scheduler notifications are working.');
+		const sentSystem = sendSystemNotification('AI Scheduler', 'AI Scheduler desktop notifications are working.');
+		if (!sentSystem && typeof window !== 'undefined' && typeof window.Notification !== 'undefined' && window.Notification.permission === 'denied') {
+			new Notice('System desktop notifications are blocked by Windows/Obsidian permissions.', 6000);
+		}
 		this.logActivity('notification', 'Test notification sent');
 		void this.saveState();
 	}
@@ -751,14 +768,20 @@ export class AISchedulerPlugin extends Plugin {
 		await this.saveState();
 	}
 
-	async disableAllJobs(): Promise<void> {
+	async disableAllJobs(): Promise<number> {
+		let count = 0;
 		for (const job of this.jobs.filter(candidate => !isNightlyReviewJob(candidate) && candidate.enabled)) {
 			job.enabled = false;
 			job.nextRunAt = null;
 			job.status = 'disabled';
 			job.lastStatus = 'disabled';
+			count++;
 		}
-		await this.saveState();
+		if (count > 0) {
+			this.logActivity('status', `Disabled ${count} scheduled task(s)`);
+			await this.saveState();
+		}
+		return count;
 	}
 
 	async enableJob(job: Job): Promise<void> {
@@ -770,18 +793,24 @@ export class AISchedulerPlugin extends Plugin {
 		await this.saveState();
 	}
 
-	async enableAllJobs(): Promise<void> {
+	async enableAllJobs(): Promise<number> {
+		let count = 0;
 		for (const job of this.jobs.filter(candidate => !isNightlyReviewJob(candidate) && isDisabledTask(candidate))) {
 			job.enabled = true;
 			job.status = 'scheduled';
 			job.lastStatus = null;
 			job.lastError = null;
 			rescheduleEnabledJob(job);
+			count++;
 		}
-		await this.saveState();
+		if (count > 0) {
+			this.logActivity('status', `Enabled ${count} scheduled task(s)`);
+			await this.saveState();
+		}
+		return count;
 	}
 
-	async deleteAllJobs(): Promise<void> {
+	async deleteAllJobs(): Promise<number> {
 		const toDelete = this.jobs.filter(job => !isNightlyReviewJob(job));
 		for (const job of toDelete) {
 			if (job.notePath) {
@@ -797,8 +826,11 @@ export class AISchedulerPlugin extends Plugin {
 			}
 		}
 		this.jobs = this.jobs.filter(job => isNightlyReviewJob(job));
-		this.logActivity('deleted', 'Deleted all scheduled tasks');
-		await this.saveState();
+		if (toDelete.length > 0) {
+			this.logActivity('deleted', `Deleted ${toDelete.length} scheduled task(s)`);
+			await this.saveState();
+		}
+		return toDelete.length;
 	}
 
 	async updateJob(job: Job, changes: Partial<Job> & { cooldownMinutes?: number }): Promise<void> {

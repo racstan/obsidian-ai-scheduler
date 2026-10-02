@@ -23,6 +23,33 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.7.2',
+		date: '2026-10-02',
+		title: 'Native Desktop Notifications, Bulk Actions Feedback & Confirmations',
+		highlights: [
+			'Native Desktop / System Notifications: Real OS desktop notifications on Windows, macOS, and Linux when tasks complete or fail.',
+			'Bulk Actions Confirmation & Feedback: "Enable all" now requires confirmation, and bulk enable/disable/delete actions display exact count toasts.',
+			'Enhanced Notifications Settings: Dedicated toggles for in-app notices, system desktop notifications, and a full testing utility.',
+		],
+		added: [
+			'Native desktop notification integration using the Web/Electron Notification API.',
+			'Confirmation dialog before enabling all scheduled tasks in bulk.',
+			'Exact task count notifications when enabling, disabling, or deleting tasks.',
+			'System desktop notifications toggle under Background Execution & Notifications settings.',
+		],
+		changed: [
+			'Test notification button now triggers both in-app and system desktop alerts to verify OS permissions.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Maintainer',
+			},
+		],
+	},
+	{
 		version: '2.1.7.1',
 		date: '2026-10-02',
 		title: 'Dynamic AI Backend Configuration, Categorized Settings & UI Polish',

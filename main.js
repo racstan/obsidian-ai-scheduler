@@ -493,6 +493,28 @@ function logActivityEntry(activity, type, message, jobId = null) {
   activity.push({ id: id("event"), at: (/* @__PURE__ */ new Date()).toISOString(), type, message, jobId });
   if (activity.length > 50) activity.splice(0, activity.length - 50);
 }
+function sendSystemNotification(title, body) {
+  if (typeof window === "undefined" || typeof window.Notification === "undefined") {
+    return false;
+  }
+  try {
+    if (window.Notification.permission === "granted") {
+      new window.Notification(title, { body });
+      return true;
+    }
+    if (window.Notification.permission !== "denied") {
+      void window.Notification.requestPermission().then((permission) => {
+        if (permission === "granted") {
+          new window.Notification(title, { body });
+        }
+      });
+      return true;
+    }
+  } catch (error) {
+    console.warn("[ai-scheduler] Native system notification dispatch failed:", error);
+  }
+  return false;
+}
 
 // src/schedule.ts
 function parseClock(value) {
@@ -710,6 +732,7 @@ var DEFAULT_SETTINGS = {
   reviewTime: "22:00",
   nightlyReviewEnabled: false,
   notifyOnCompletion: true,
+  systemNotifications: true,
   catchUpOnStart: false,
   catchUpHours: 24,
   reviewContextMode: "modified-today",
@@ -808,6 +831,7 @@ function parseStoredData(data) {
   if (!settings.scheduleFolder) settings.scheduleFolder = DEFAULT_SETTINGS.scheduleFolder;
   if (typeof settings.showChangelogOnUpdate !== "boolean") settings.showChangelogOnUpdate = true;
   if (typeof settings.lastSeenVersion !== "string") settings.lastSeenVersion = "";
+  if (typeof settings.systemNotifications !== "boolean") settings.systemNotifications = true;
   const legacyTasks = stored.tasks;
   const jobs = Array.isArray(stored.jobs) ? stored.jobs.map((job) => normalizeJob(job)) : Array.isArray(legacyTasks) ? legacyTasks.map((task) => normalizeJob({
     ...task,
@@ -1928,14 +1952,20 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
     });
     this.renderSection(shell, "Scheduled tasks", `${activeCount} ${activeCount === 1 ? "task" : "tasks"} enabled`);
     const bulkActions = shell.createDiv({ cls: "ai-scheduler-row-actions" });
-    makeButton(bulkActions, "Enable all", async () => {
-      await this.plugin.enableAllJobs();
-      this.render();
+    makeButton(bulkActions, "Enable all", () => {
+      new ConfirmModal(this.app, "Enable all scheduled tasks?", () => {
+        void (async () => {
+          const count = await this.plugin.enableAllJobs();
+          new import_obsidian6.Notice(count > 0 ? `${count} scheduled task(s) enabled.` : "All scheduled tasks are already enabled.");
+          this.render();
+        })();
+      }).open();
     });
     makeButton(bulkActions, "Disable all", () => {
       new ConfirmModal(this.app, "Disable all scheduled tasks?", () => {
         void (async () => {
-          await this.plugin.disableAllJobs();
+          const count = await this.plugin.disableAllJobs();
+          new import_obsidian6.Notice(count > 0 ? `${count} scheduled task(s) disabled.` : "All scheduled tasks are already disabled.");
           this.render();
         })();
       }).open();
@@ -1943,7 +1973,8 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
     makeButton(bulkActions, "Delete all", () => {
       new ConfirmModal(this.app, "Delete all scheduled tasks? This cannot be undone.", () => {
         void (async () => {
-          await this.plugin.deleteAllJobs();
+          const count = await this.plugin.deleteAllJobs();
+          new import_obsidian6.Notice(count > 0 ? `${count} scheduled task(s) deleted.` : "No scheduled tasks to delete.");
           this.render();
         })();
       }).open();
@@ -2073,6 +2104,33 @@ var import_obsidian7 = require("obsidian");
 
 // src/changelog.ts
 var CHANGELOG_DATA = [
+  {
+    version: "2.1.7.2",
+    date: "2026-10-02",
+    title: "Native Desktop Notifications, Bulk Actions Feedback & Confirmations",
+    highlights: [
+      "Native Desktop / System Notifications: Real OS desktop notifications on Windows, macOS, and Linux when tasks complete or fail.",
+      'Bulk Actions Confirmation & Feedback: "Enable all" now requires confirmation, and bulk enable/disable/delete actions display exact count toasts.',
+      "Enhanced Notifications Settings: Dedicated toggles for in-app notices, system desktop notifications, and a full testing utility."
+    ],
+    added: [
+      "Native desktop notification integration using the Web/Electron Notification API.",
+      "Confirmation dialog before enabling all scheduled tasks in bulk.",
+      "Exact task count notifications when enabling, disabling, or deleting tasks.",
+      "System desktop notifications toggle under Background Execution & Notifications settings."
+    ],
+    changed: [
+      "Test notification button now triggers both in-app and system desktop alerts to verify OS permissions."
+    ],
+    contributors: [
+      {
+        name: "Rachit Asthana",
+        username: "racstan",
+        url: "https://github.com/racstan",
+        role: "Maintainer"
+      }
+    ]
+  },
   {
     version: "2.1.7.1",
     date: "2026-10-02",
@@ -2652,7 +2710,6 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
         addModelSetting("Nightly review model", "Used by the recurring nightly review and the Run AI nightly review now command.", "nightlyReviewModel");
       }
     }
-    new import_obsidian8.Setting(containerEl).setName("Test notification").setDesc("Send a test Obsidian notification across the app without calling AI.").addButton((button) => button.setButtonText("Send test notification").onClick(() => this.plugin.testNotification()));
     new import_obsidian8.Setting(containerEl).setName("Daily & nightly reviews").setHeading();
     new import_obsidian8.Setting(containerEl).setName("Run daily preview now").setDesc("Immediately synthesize a preview report from notes modified today.").addButton((button) => button.setButtonText("Run preview now").onClick(() => {
       void this.plugin.startReviewRun(true, "daily");
@@ -2697,13 +2754,20 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
         void this.plugin.startReviewRun(true, "nightly");
       }));
     }
-    new import_obsidian8.Setting(containerEl).setName("Background execution & recovery").setHeading();
-    new import_obsidian8.Setting(containerEl).setName("Completion notifications").setDesc("Show an Obsidian notice when an AI job finishes.").addToggle((toggle) => toggle.setValue(this.plugin.settings.notifyOnCompletion).onChange((value) => {
+    new import_obsidian8.Setting(containerEl).setName("Background execution & notifications").setHeading();
+    new import_obsidian8.Setting(containerEl).setName("In-app completion notices").setDesc("Show an Obsidian notice when an AI job or review finishes.").addToggle((toggle) => toggle.setValue(this.plugin.settings.notifyOnCompletion).onChange((value) => {
       void (async () => {
         this.plugin.settings.notifyOnCompletion = value;
         await this.plugin.saveState();
       })();
     }));
+    new import_obsidian8.Setting(containerEl).setName("System desktop notifications").setDesc("Send native OS desktop notifications (Windows / macOS / Linux) when tasks finish or fail.").addToggle((toggle) => toggle.setValue(this.plugin.settings.systemNotifications).onChange((value) => {
+      void (async () => {
+        this.plugin.settings.systemNotifications = value;
+        await this.plugin.saveState();
+      })();
+    }));
+    new import_obsidian8.Setting(containerEl).setName("Test notifications").setDesc("Send a test alert to verify both Obsidian in-app notices and system desktop notifications.").addButton((button) => button.setButtonText("Send test notification").onClick(() => this.plugin.testNotification()));
     new import_obsidian8.Setting(containerEl).setName("Run missed jobs after startup").setDesc("Off by default. Enable only if you explicitly want AI work to run after Obsidian was closed.").addToggle((toggle) => toggle.setValue(this.plugin.settings.catchUpOnStart).onChange((value) => {
       void (async () => {
         this.plugin.settings.catchUpOnStart = value;
@@ -3141,16 +3205,16 @@ var AISchedulerPlugin = class extends import_obsidian10.Plugin {
       id: "enable-all-jobs",
       name: "Enable all scheduled tasks",
       callback: async () => {
-        await this.enableAllJobs();
-        new import_obsidian10.Notice("All scheduled tasks enabled");
+        const count = await this.enableAllJobs();
+        new import_obsidian10.Notice(count > 0 ? `${count} scheduled task(s) enabled.` : "All scheduled tasks are already enabled.");
       }
     });
     this.addCommand({
       id: "disable-all-jobs",
       name: "Disable all scheduled tasks",
       callback: async () => {
-        await this.disableAllJobs();
-        new import_obsidian10.Notice("All scheduled tasks disabled");
+        const count = await this.disableAllJobs();
+        new import_obsidian10.Notice(count > 0 ? `${count} scheduled task(s) disabled.` : "All scheduled tasks are already disabled.");
       }
     });
     this.addCommand({
@@ -3333,7 +3397,12 @@ var AISchedulerPlugin = class extends import_obsidian10.Plugin {
       }
       reconcileAfterRun(job);
       this.logActivity("completed", job.title, job.id);
-      if (this.settings.notifyOnCompletion && job.notify !== false) new import_obsidian10.Notice(`AI completed: ${job.title}`, 5e3);
+      if (this.settings.notifyOnCompletion && job.notify !== false) {
+        new import_obsidian10.Notice(`AI completed: ${job.title}`, 5e3);
+      }
+      if (this.settings.systemNotifications && job.notify !== false) {
+        sendSystemNotification("AI Scheduler", `AI completed: ${job.title}`);
+      }
     } catch (error) {
       job.status = "failed";
       job.lastStatus = "failed";
@@ -3343,6 +3412,9 @@ var AISchedulerPlugin = class extends import_obsidian10.Plugin {
       this.logActivity("failed", `${job.title}: ${job.lastError}`, job.id);
       new import_obsidian10.Notice(`AI task failed: ${job.title}
 ${job.lastError}`, 8e3);
+      if (this.settings.systemNotifications) {
+        sendSystemNotification("AI Scheduler", `AI task failed: ${job.title}`);
+      }
     }
     await this.saveState();
   }
@@ -3464,7 +3536,12 @@ Generated: ${formatDate(now.toISOString())}
 
 ${report}`);
       this.logActivity("review", `Daily review written to ${path}`);
-      if (manual || this.settings.notifyOnCompletion) new import_obsidian10.Notice(`Review written to ${path}`, 6e3);
+      if (manual || this.settings.notifyOnCompletion) {
+        new import_obsidian10.Notice(`Review written to ${path}`, 6e3);
+      }
+      if (this.settings.systemNotifications) {
+        sendSystemNotification("AI Scheduler", `Review written to ${path}`);
+      }
       await this.saveState();
       return report;
     } finally {
@@ -3689,6 +3766,10 @@ ${report}`);
   }
   testNotification() {
     new import_obsidian10.Notice("AI Scheduler notifications are working.");
+    const sentSystem = sendSystemNotification("AI Scheduler", "AI Scheduler desktop notifications are working.");
+    if (!sentSystem && typeof window !== "undefined" && typeof window.Notification !== "undefined" && window.Notification.permission === "denied") {
+      new import_obsidian10.Notice("System desktop notifications are blocked by Windows/Obsidian permissions.", 6e3);
+    }
     this.logActivity("notification", "Test notification sent");
     void this.saveState();
   }
@@ -3709,13 +3790,19 @@ ${report}`);
     await this.saveState();
   }
   async disableAllJobs() {
+    let count = 0;
     for (const job of this.jobs.filter((candidate) => !isNightlyReviewJob(candidate) && candidate.enabled)) {
       job.enabled = false;
       job.nextRunAt = null;
       job.status = "disabled";
       job.lastStatus = "disabled";
+      count++;
     }
-    await this.saveState();
+    if (count > 0) {
+      this.logActivity("status", `Disabled ${count} scheduled task(s)`);
+      await this.saveState();
+    }
+    return count;
   }
   async enableJob(job) {
     job.enabled = true;
@@ -3726,14 +3813,20 @@ ${report}`);
     await this.saveState();
   }
   async enableAllJobs() {
+    let count = 0;
     for (const job of this.jobs.filter((candidate) => !isNightlyReviewJob(candidate) && isDisabledTask(candidate))) {
       job.enabled = true;
       job.status = "scheduled";
       job.lastStatus = null;
       job.lastError = null;
       rescheduleEnabledJob(job);
+      count++;
     }
-    await this.saveState();
+    if (count > 0) {
+      this.logActivity("status", `Enabled ${count} scheduled task(s)`);
+      await this.saveState();
+    }
+    return count;
   }
   async deleteAllJobs() {
     const toDelete = this.jobs.filter((job) => !isNightlyReviewJob(job));
@@ -3751,8 +3844,11 @@ ${report}`);
       }
     }
     this.jobs = this.jobs.filter((job) => isNightlyReviewJob(job));
-    this.logActivity("deleted", "Deleted all scheduled tasks");
-    await this.saveState();
+    if (toDelete.length > 0) {
+      this.logActivity("deleted", `Deleted ${toDelete.length} scheduled task(s)`);
+      await this.saveState();
+    }
+    return toDelete.length;
   }
   async updateJob(job, changes) {
     Object.assign(job, changes);

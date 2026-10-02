@@ -1,4 +1,4 @@
-import { App, Modal, Setting } from 'obsidian';
+import { App, Modal, Notice, Setting } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
 import { formatDate, describeBinding, isDisabledTask, isNightlyReviewJob, summarizeTasks } from '../util';
 import { describeSchedule } from '../schedule';
@@ -93,14 +93,20 @@ export class AssistantModal extends Modal {
 
 		this.renderSection(shell, 'Scheduled tasks', `${activeCount} ${activeCount === 1 ? 'task' : 'tasks'} enabled`);
 		const bulkActions = shell.createDiv({ cls: 'ai-scheduler-row-actions' });
-		makeButton(bulkActions, 'Enable all', async () => {
-			await this.plugin.enableAllJobs();
-			this.render();
+		makeButton(bulkActions, 'Enable all', () => {
+			new ConfirmModal(this.app, 'Enable all scheduled tasks?', () => {
+				void (async () => {
+					const count = await this.plugin.enableAllJobs();
+					new Notice(count > 0 ? `${count} scheduled task(s) enabled.` : 'All scheduled tasks are already enabled.');
+					this.render();
+				})();
+			}).open();
 		});
 		makeButton(bulkActions, 'Disable all', () => {
 			new ConfirmModal(this.app, 'Disable all scheduled tasks?', () => {
 				void (async () => {
-					await this.plugin.disableAllJobs();
+					const count = await this.plugin.disableAllJobs();
+					new Notice(count > 0 ? `${count} scheduled task(s) disabled.` : 'All scheduled tasks are already disabled.');
 					this.render();
 				})();
 			}).open();
@@ -108,7 +114,8 @@ export class AssistantModal extends Modal {
 		makeButton(bulkActions, 'Delete all', () => {
 			new ConfirmModal(this.app, 'Delete all scheduled tasks? This cannot be undone.', () => {
 				void (async () => {
-					await this.plugin.deleteAllJobs();
+					const count = await this.plugin.deleteAllJobs();
+					new Notice(count > 0 ? `${count} scheduled task(s) deleted.` : 'No scheduled tasks to delete.');
 					this.render();
 				})();
 			}).open();

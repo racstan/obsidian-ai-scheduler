@@ -84,6 +84,7 @@ export interface AISettings {
 	reviewTime: string;
 	nightlyReviewEnabled: boolean;
 	notifyOnCompletion: boolean;
+	systemNotifications: boolean;
 	catchUpOnStart: boolean;
 	catchUpHours: number;
 	reviewContextMode: 'modified-today' | 'all-markdown' | 'no-files';

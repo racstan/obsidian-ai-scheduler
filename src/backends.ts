@@ -8,7 +8,7 @@
  */
 import { App, Notice, TFile, TFolder } from 'obsidian';
 import { AISettings, BACKEND_INFO, Job } from './types';
-import { contentFromMessage, sleep, withTimeout } from './util';
+import { contentFromMessage, sendSystemNotification, sleep, withTimeout } from './util';
 
 export const AGENT_TIMEOUT_MS = 30 * 60 * 1000;
 
@@ -550,4 +550,5 @@ export async function resolveJobExecution(host: BackendHost, job: Job): Promise<
 
 export function notify(message: string, timeout = 5000): void {
 	new Notice(message, timeout);
+	sendSystemNotification('AI Scheduler', message);
 }

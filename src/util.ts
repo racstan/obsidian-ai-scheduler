@@ -144,3 +144,31 @@ export function logActivityEntry(activity: ActivityEntry[], type: string, messag
 	activity.push({ id: id('event'), at: new Date().toISOString(), type, message, jobId });
 	if (activity.length > 50) activity.splice(0, activity.length - 50);
 }
+
+/**
+ * Sends a native desktop/system notification (Windows Action Center, macOS Notification Center, Linux).
+ * Safely requests permission if not yet decided and falls back cleanly in headless/unsupported environments.
+ */
+export function sendSystemNotification(title: string, body: string): boolean {
+	if (typeof window === 'undefined' || typeof window.Notification === 'undefined') {
+		return false;
+	}
+	try {
+		if (window.Notification.permission === 'granted') {
+			new window.Notification(title, { body });
+			return true;
+		}
+		if (window.Notification.permission !== 'denied') {
+			void window.Notification.requestPermission().then(permission => {
+				if (permission === 'granted') {
+					new window.Notification(title, { body });
+				}
+			});
+			return true;
+		}
+	} catch (error) {
+		console.warn('[ai-scheduler] Native system notification dispatch failed:', error);
+	}
+	return false;
+}
+

@@ -142,11 +142,6 @@ export class AssistantSettingTab extends PluginSettingTab {
 			}
 		}
 
-		new Setting(containerEl)
-			.setName('Test notification')
-			.setDesc('Send a test Obsidian notification across the app without calling AI.')
-			.addButton(button => button.setButtonText('Send test notification').onClick(() => this.plugin.testNotification()));
-
 		// -------------------------------------------------------------------------
 		// Section 2: Daily & Nightly Reviews
 		// -------------------------------------------------------------------------
@@ -227,17 +222,32 @@ export class AssistantSettingTab extends PluginSettingTab {
 		// -------------------------------------------------------------------------
 		// Section 3: Background Execution & Notifications
 		// -------------------------------------------------------------------------
-		new Setting(containerEl).setName('Background execution & recovery').setHeading();
+		new Setting(containerEl).setName('Background execution & notifications').setHeading();
 
 		new Setting(containerEl)
-			.setName('Completion notifications')
-			.setDesc('Show an Obsidian notice when an AI job finishes.')
+			.setName('In-app completion notices')
+			.setDesc('Show an Obsidian notice when an AI job or review finishes.')
 			.addToggle(toggle => toggle.setValue(this.plugin.settings.notifyOnCompletion).onChange(value => {
 				void (async () => {
 					this.plugin.settings.notifyOnCompletion = value;
 					await this.plugin.saveState();
 				})();
 			}));
+
+		new Setting(containerEl)
+			.setName('System desktop notifications')
+			.setDesc('Send native OS desktop notifications (Windows / macOS / Linux) when tasks finish or fail.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.systemNotifications).onChange(value => {
+				void (async () => {
+					this.plugin.settings.systemNotifications = value;
+					await this.plugin.saveState();
+				})();
+			}));
+
+		new Setting(containerEl)
+			.setName('Test notifications')
+			.setDesc('Send a test alert to verify both Obsidian in-app notices and system desktop notifications.')
+			.addButton(button => button.setButtonText('Send test notification').onClick(() => this.plugin.testNotification()));
 
 		new Setting(containerEl)
 			.setName('Run missed jobs after startup')
