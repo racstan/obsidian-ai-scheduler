@@ -786,10 +786,12 @@ function normalizeMaxIterationsField(value) {
   return Number.isInteger(number) && number > 0 ? number : null;
 }
 function parseStoredData(data) {
+  var _a;
   const stored = data || {};
-  const settings = Object.assign({}, DEFAULT_SETTINGS, stored.settings || {});
-  settings.backendMode = settings.backendMode === "copilot" ? "copilot" : "claudian";
   const oldSettings = stored.settings || {};
+  const settings = Object.assign({}, DEFAULT_SETTINGS, oldSettings);
+  const rawBackend = String((_a = oldSettings.backendMode) != null ? _a : "");
+  settings.backendMode = rawBackend === "copilot" ? "copilot" : rawBackend === "claudian" ? "claudian" : rawBackend === "none" ? "none" : DEFAULT_SETTINGS.backendMode;
   const oldDefault = oldSettings.defaultProfile || oldSettings.planningProfile || "";
   settings.planningModel = settings.planningModel || oldSettings.planningProfile || oldDefault;
   settings.executionModel = settings.executionModel || oldDefault;
@@ -1281,9 +1283,15 @@ async function checkClaudianSetup(host) {
   return { ok: true, needsInstall: false, message: `${info.name} is ready with ${models.length} available model option${models.length === 1 ? "" : "s"}.`, githubUrl: info.githubUrl };
 }
 function checkBackendSetup(host, mode = host.settings.backendMode) {
+  if (mode === "none" || !mode) {
+    return { ok: false, needsInstall: false, message: "Please select an AI backend in AI Scheduler settings.", githubUrl: "" };
+  }
   return mode === "copilot" ? checkCopilotSetup(host) : checkClaudianSetup(host);
 }
 async function resolveModel(host, value, action = "this action") {
+  if (host.settings.backendMode === "none" || !host.settings.backendMode) {
+    throw new Error(`No AI backend selected for ${action}. Choose Claudian or Obsidian Copilot in AI Scheduler settings.`);
+  }
   if (host.settings.backendMode === "copilot") {
     const setup = checkCopilotSetup(host);
     if (!setup.ok) {
@@ -2518,8 +2526,10 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
     return [];
   }
   renderBackendStatus(containerEl) {
-    const info = BACKEND_INFO[this.plugin.settings.backendMode === "copilot" ? "copilot" : "claudian"];
-    const setting = new import_obsidian8.Setting(containerEl).setName("Active backend").setDesc("Checking readiness...");
+    const mode = this.plugin.settings.backendMode;
+    if (mode === "none" || !mode) return;
+    const info = BACKEND_INFO[mode === "copilot" ? "copilot" : "claudian"];
+    const setting = new import_obsidian8.Setting(containerEl).setName("Backend connection status").setDesc("Checking readiness...");
     const update = (result) => {
       setting.setDesc("");
       const desc = setting.descEl;
@@ -2532,7 +2542,7 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
         link.target = "_blank";
       }
     };
-    const installed = this.plugin.settings.backendMode === "copilot" ? Boolean(this.plugin.getCopilotPlugin()) : Boolean(this.plugin.getClaudianPlugin());
+    const installed = mode === "copilot" ? Boolean(this.plugin.getCopilotPlugin()) : Boolean(this.plugin.getClaudianPlugin());
     if (!installed) {
       update({ ok: false, needsInstall: true, message: `${info.name} is not installed or enabled.`, githubUrl: info.githubUrl });
       return;
@@ -2547,17 +2557,34 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
   renderSettings() {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("p", { text: "Choose one AI backend. AI Scheduler never runs Claudian and Copilot at the same time." });
-    new import_obsidian8.Setting(containerEl).setName("AI backend").setDesc("Claudian uses the model choices below. Copilot uses the active model configured in Obsidian Copilot.").addDropdown((dropdown) => dropdown.addOption("claudian", "Claudian").addOption("copilot", "Obsidian Copilot").setValue(this.plugin.settings.backendMode === "copilot" ? "copilot" : "claudian").onChange((value) => {
+    new import_obsidian8.Setting(containerEl).setName("AI backend & models").setHeading();
+    containerEl.createEl("p", {
+      text: "Choose which AI plugin AI Scheduler uses to execute tasks, plan schedules, and generate reviews.",
+      cls: "ai-scheduler-subtitle"
+    });
+    new import_obsidian8.Setting(containerEl).setName("AI backend").setDesc("Select Claudian (for Claude and custom providers) or Obsidian Copilot (for OpenAI, Gemini, Ollama, etc.).").addDropdown((dropdown) => dropdown.addOption("none", "Select an AI backend...").addOption("claudian", "Claudian (Recommended)").addOption("copilot", "Obsidian Copilot").setValue(this.plugin.settings.backendMode || "none").onChange((value) => {
       void (async () => {
-        this.plugin.settings.backendMode = value === "copilot" ? "copilot" : "claudian";
+        this.plugin.settings.backendMode = value;
         await this.plugin.saveState();
         this.renderSettings();
       })();
     }));
-    this.renderBackendStatus(containerEl);
-    const models = this.plugin.settings.backendMode === "copilot" ? [] : this.plugin.getModelOptions();
-    if (this.plugin.settings.backendMode === "claudian") {
+    const mode = this.plugin.settings.backendMode;
+    if (mode === "none" || !mode) {
+      const infoBox = containerEl.createDiv({ cls: "ai-scheduler-card ai-scheduler-card-flush" });
+      infoBox.createDiv({
+        cls: "ai-scheduler-hint",
+        text: "\u{1F449} Select an AI backend above to configure your AI models and connections. AI Scheduler connects to your installed Claudian or Obsidian Copilot plugin."
+      });
+    } else if (mode === "copilot") {
+      this.renderBackendStatus(containerEl);
+      const infoBox = containerEl.createDiv({ cls: "ai-scheduler-card ai-scheduler-card-flush" });
+      infoBox.createDiv({
+        cls: "ai-scheduler-hint",
+        text: "Obsidian Copilot uses the active model and provider configured inside the Copilot plugin settings."
+      });
+    } else if (mode === "claudian") {
+      this.renderBackendStatus(containerEl);
       new import_obsidian8.Setting(containerEl).setName("Available Claudian models").setDesc("Refresh this list after adding, removing, or changing models in Claudian.").addButton((button) => button.setButtonText("Refresh models").onClick(() => {
         void (async () => {
           button.setDisabled(true);
@@ -2571,6 +2598,7 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
           }
         })();
       }));
+      const models = this.plugin.getModelOptions();
       const addModelSetting = (name, desc, key) => new import_obsidian8.Setting(containerEl).setName(name).setDesc(desc).addDropdown((dropdown) => {
         dropdown.addOption("", models.length ? "Select a model" : "No models found - open Claudian");
         models.forEach((model) => {
@@ -2592,7 +2620,7 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
         addModelSetting("Nightly review model", "Used by the recurring nightly review and the Run AI nightly review now command.", "nightlyReviewModel");
       }
     }
-    new import_obsidian8.Setting(containerEl).setName("Test notification").setDesc("Send a normal Obsidian notification visible across the app, without using AI.").addButton((button) => button.setButtonText("Send test notification").onClick(() => this.plugin.testNotification()));
+    new import_obsidian8.Setting(containerEl).setName("Test notification").setDesc("Send a test Obsidian notification across the app without calling AI.").addButton((button) => button.setButtonText("Send test notification").onClick(() => this.plugin.testNotification()));
     new import_obsidian8.Setting(containerEl).setName("Daily & nightly reviews").setHeading();
     new import_obsidian8.Setting(containerEl).setName("Run daily preview now").setDesc("Immediately synthesize a preview report from notes modified today.").addButton((button) => button.setButtonText("Run preview now").onClick(() => {
       void this.plugin.startReviewRun(true, "daily");
@@ -2637,6 +2665,7 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
         void this.plugin.startReviewRun(true, "nightly");
       }));
     }
+    new import_obsidian8.Setting(containerEl).setName("Background execution & recovery").setHeading();
     new import_obsidian8.Setting(containerEl).setName("Completion notifications").setDesc("Show an Obsidian notice when an AI job finishes.").addToggle((toggle) => toggle.setValue(this.plugin.settings.notifyOnCompletion).onChange((value) => {
       void (async () => {
         this.plugin.settings.notifyOnCompletion = value;
@@ -2658,7 +2687,7 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
         })();
       }));
     }
-    new import_obsidian8.Setting(containerEl).setName("Schedule notes (optional)").setHeading();
+    new import_obsidian8.Setting(containerEl).setName("Vault schedule notes (optional)").setHeading();
     new import_obsidian8.Setting(containerEl).setName("Keep schedule notes in my vault").setDesc("Off by default. When enabled, every task gets a Markdown note whose frontmatter holds its schedule and prompt \u2014 edit the note or the dashboard, both stay in sync. Note: deleting a task note in Obsidian permanently removes that task.").addToggle((toggle) => toggle.setValue(this.plugin.settings.scheduleNotesEnabled).onChange((value) => {
       void (async () => {
         this.plugin.settings.scheduleNotesEnabled = value;
@@ -2694,7 +2723,7 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
         })();
       }));
     }
-    new import_obsidian8.Setting(containerEl).setName("Changelog & updates").setHeading();
+    new import_obsidian8.Setting(containerEl).setName("Updates & release notes").setHeading();
     new import_obsidian8.Setting(containerEl).setName("Show changelog after updates").setDesc("Automatically open the what's new dialog when AI Scheduler is updated.").addToggle((toggle) => toggle.setValue(this.plugin.settings.showChangelogOnUpdate).onChange((value) => {
       void (async () => {
         this.plugin.settings.showChangelogOnUpdate = value;
@@ -3598,6 +3627,9 @@ ${report}`);
   }
   getBackendReadiness() {
     const mode = this.settings.backendMode;
+    if (mode === "none" || !mode) {
+      return { ok: false, message: "No AI backend selected. Choose Claudian or Obsidian Copilot in AI Scheduler settings." };
+    }
     if (mode === "copilot") {
       const copilot = this.getCopilotPlugin();
       if (!copilot) {

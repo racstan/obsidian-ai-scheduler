@@ -699,6 +699,9 @@ export class AISchedulerPlugin extends Plugin {
 
 	getBackendReadiness(): { ok: boolean; message: string } {
 		const mode = this.settings.backendMode;
+		if (mode === 'none' || !mode) {
+			return { ok: false, message: 'No AI backend selected. Choose Claudian or Obsidian Copilot in AI Scheduler settings.' };
+		}
 		if (mode === 'copilot') {
 			const copilot = this.getCopilotPlugin();
 			if (!copilot) {

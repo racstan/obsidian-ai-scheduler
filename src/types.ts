@@ -5,7 +5,7 @@
  * backend owns providers, models, permissions, and vault tools; this plugin
  * owns when the agent should wake up and what should happen after it replies.
  */
-export type BackendMode = 'claudian' | 'copilot';
+export type BackendMode = 'claudian' | 'copilot' | 'none';
 
 export type ScheduleKind = 'once' | 'daily' | 'weekly' | 'multi' | 'hourly' | 'interval' | 'event' | 'cron';
 

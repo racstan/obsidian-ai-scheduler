@@ -488,10 +488,16 @@ export async function checkClaudianSetup(host: BackendHost): Promise<{ ok: boole
 }
 
 export function checkBackendSetup(host: BackendHost, mode = host.settings.backendMode): Promise<{ ok: boolean; needsInstall: boolean; message: string; githubUrl: string }> | { ok: boolean; needsInstall: boolean; message: string; githubUrl: string } {
+	if (mode === 'none' || !mode) {
+		return { ok: false, needsInstall: false, message: 'Please select an AI backend in AI Scheduler settings.', githubUrl: '' };
+	}
 	return mode === 'copilot' ? checkCopilotSetup(host) : checkClaudianSetup(host);
 }
 
 export async function resolveModel(host: BackendHost, value: string | null | undefined, action = 'this action'): Promise<ResolvedExecution> {
+	if (host.settings.backendMode === 'none' || !host.settings.backendMode) {
+		throw new Error(`No AI backend selected for ${action}. Choose Claudian or Obsidian Copilot in AI Scheduler settings.`);
+	}
 	if (host.settings.backendMode === 'copilot') {
 		const setup = checkCopilotSetup(host);
 		if (!setup.ok) {

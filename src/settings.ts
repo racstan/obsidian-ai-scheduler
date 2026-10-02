@@ -119,12 +119,13 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 	activity: ActivityEntry[];
 } {
 	const stored = data || {};
-	const settings = Object.assign({}, DEFAULT_SETTINGS, stored.settings || {});
-	settings.backendMode = settings.backendMode === 'copilot' ? 'copilot' : 'claudian';
+	const oldSettings = (stored.settings || {}) as Record<string, unknown>;
+	const settings = Object.assign({}, DEFAULT_SETTINGS, oldSettings as Partial<AISettings>);
+	const rawBackend = String(oldSettings.backendMode ?? '');
+	settings.backendMode = rawBackend === 'copilot' ? 'copilot' : rawBackend === 'claudian' ? 'claudian' : (rawBackend === 'none' ? 'none' : DEFAULT_SETTINGS.backendMode);
 	// Migrate the old profile names to explicit models for each action. The
 	// values are still Claudian model references, but users no longer need to
 	// understand the internal conversation/profile concept.
-	const oldSettings = (stored.settings || {}) as Record<string, unknown>;
 	const oldDefault = (oldSettings.defaultProfile || oldSettings.planningProfile || '') as string;
 	settings.planningModel = settings.planningModel || (oldSettings.planningProfile as string) || oldDefault;
 	settings.executionModel = settings.executionModel || oldDefault;

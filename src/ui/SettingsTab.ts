@@ -1,6 +1,6 @@
 import { PluginSettingTab, App, Setting, Notice } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
-import { BACKEND_INFO } from '../types';
+import { BACKEND_INFO, BackendMode } from '../types';
 import { errorText } from '../util';
 import { ChangelogModal } from './ChangelogModal';
 
@@ -17,9 +17,12 @@ export class AssistantSettingTab extends PluginSettingTab {
 	}
 
 	renderBackendStatus(containerEl: HTMLElement): void {
-		const info = BACKEND_INFO[this.plugin.settings.backendMode === 'copilot' ? 'copilot' : 'claudian'];
+		const mode = this.plugin.settings.backendMode;
+		if (mode === 'none' || !mode) return;
+
+		const info = BACKEND_INFO[mode === 'copilot' ? 'copilot' : 'claudian'];
 		const setting = new Setting(containerEl)
-			.setName('Active backend')
+			.setName('Backend connection status')
 			.setDesc('Checking readiness...');
 		const update = (result: { ok: boolean; needsInstall: boolean; message: string; githubUrl?: string }) => {
 			setting.setDesc('');
@@ -33,7 +36,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 				link.target = '_blank';
 			}
 		};
-		const installed = this.plugin.settings.backendMode === 'copilot'
+		const installed = mode === 'copilot'
 			? Boolean(this.plugin.getCopilotPlugin())
 			: Boolean(this.plugin.getClaudianPlugin());
 		if (!installed) {
@@ -52,25 +55,50 @@ export class AssistantSettingTab extends PluginSettingTab {
 	renderSettings(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		containerEl.createEl('p', { text: 'Choose one AI backend. AI Scheduler never runs Claudian and Copilot at the same time.' });
+
+		// -------------------------------------------------------------------------
+		// Section 1: AI Backend & Models
+		// -------------------------------------------------------------------------
+		new Setting(containerEl).setName('AI backend & models').setHeading();
+		containerEl.createEl('p', {
+			text: 'Choose which AI plugin AI Scheduler uses to execute tasks, plan schedules, and generate reviews.',
+			cls: 'ai-scheduler-subtitle',
+		});
+
 		new Setting(containerEl)
 			.setName('AI backend')
-			.setDesc('Claudian uses the model choices below. Copilot uses the active model configured in Obsidian Copilot.')
+			.setDesc('Select Claudian (for Claude and custom providers) or Obsidian Copilot (for OpenAI, Gemini, Ollama, etc.).')
 			.addDropdown(dropdown => dropdown
-				.addOption('claudian', 'Claudian')
+				.addOption('none', 'Select an AI backend...')
+				.addOption('claudian', 'Claudian (Recommended)')
 				.addOption('copilot', 'Obsidian Copilot')
-				.setValue(this.plugin.settings.backendMode === 'copilot' ? 'copilot' : 'claudian')
+				.setValue(this.plugin.settings.backendMode || 'none')
 				.onChange(value => {
 					void (async () => {
-						this.plugin.settings.backendMode = value === 'copilot' ? 'copilot' : 'claudian';
+						this.plugin.settings.backendMode = value as BackendMode;
 						await this.plugin.saveState();
 						this.renderSettings();
 					})();
 				}));
-		this.renderBackendStatus(containerEl);
 
-		const models = this.plugin.settings.backendMode === 'copilot' ? [] : this.plugin.getModelOptions();
-		if (this.plugin.settings.backendMode === 'claudian') {
+		const mode = this.plugin.settings.backendMode;
+
+		if (mode === 'none' || !mode) {
+			const infoBox = containerEl.createDiv({ cls: 'ai-scheduler-card ai-scheduler-card-flush' });
+			infoBox.createDiv({
+				cls: 'ai-scheduler-hint',
+				text: '👉 Select an AI backend above to configure your AI models and connections. AI Scheduler connects to your installed Claudian or Obsidian Copilot plugin.',
+			});
+		} else if (mode === 'copilot') {
+			this.renderBackendStatus(containerEl);
+			const infoBox = containerEl.createDiv({ cls: 'ai-scheduler-card ai-scheduler-card-flush' });
+			infoBox.createDiv({
+				cls: 'ai-scheduler-hint',
+				text: 'Obsidian Copilot uses the active model and provider configured inside the Copilot plugin settings.',
+			});
+		} else if (mode === 'claudian') {
+			this.renderBackendStatus(containerEl);
+
 			new Setting(containerEl)
 				.setName('Available Claudian models')
 				.setDesc('Refresh this list after adding, removing, or changing models in Claudian.')
@@ -87,6 +115,9 @@ export class AssistantSettingTab extends PluginSettingTab {
 						}
 					})();
 				}));
+
+			const models = this.plugin.getModelOptions();
+
 			const addModelSetting = (name: string, desc: string, key: 'planningModel' | 'executionModel' | 'dailyReviewModel' | 'nightlyReviewModel') => new Setting(containerEl)
 				.setName(name)
 				.setDesc(desc)
@@ -102,6 +133,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 						})();
 					});
 				});
+
 			addModelSetting('Planning model', 'Used when Ask AI to plan creates tasks and when AI updates a task.', 'planningModel');
 			addModelSetting('Scheduled task model', 'Used when an enabled task runs, including tasks created by the planner.', 'executionModel');
 			addModelSetting('Daily preview model', 'Used by Run daily preview.', 'dailyReviewModel');
@@ -112,9 +144,12 @@ export class AssistantSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Test notification')
-			.setDesc('Send a normal Obsidian notification visible across the app, without using AI.')
+			.setDesc('Send a test Obsidian notification across the app without calling AI.')
 			.addButton(button => button.setButtonText('Send test notification').onClick(() => this.plugin.testNotification()));
 
+		// -------------------------------------------------------------------------
+		// Section 2: Daily & Nightly Reviews
+		// -------------------------------------------------------------------------
 		new Setting(containerEl).setName('Daily & nightly reviews').setHeading();
 
 		new Setting(containerEl)
@@ -189,6 +224,11 @@ export class AssistantSettingTab extends PluginSettingTab {
 				}));
 		}
 
+		// -------------------------------------------------------------------------
+		// Section 3: Background Execution & Notifications
+		// -------------------------------------------------------------------------
+		new Setting(containerEl).setName('Background execution & recovery').setHeading();
+
 		new Setting(containerEl)
 			.setName('Completion notifications')
 			.setDesc('Show an Obsidian notice when an AI job finishes.')
@@ -222,7 +262,10 @@ export class AssistantSettingTab extends PluginSettingTab {
 				}));
 		}
 
-		new Setting(containerEl).setName('Schedule notes (optional)').setHeading();
+		// -------------------------------------------------------------------------
+		// Section 4: Vault Schedule Notes Sync
+		// -------------------------------------------------------------------------
+		new Setting(containerEl).setName('Vault schedule notes (optional)').setHeading();
 		new Setting(containerEl)
 			.setName('Keep schedule notes in my vault')
 			.setDesc('Off by default. When enabled, every task gets a Markdown note whose frontmatter holds its schedule and prompt — edit the note or the dashboard, both stay in sync. Note: deleting a task note in Obsidian permanently removes that task.')
@@ -269,7 +312,10 @@ export class AssistantSettingTab extends PluginSettingTab {
 				}));
 		}
 
-		new Setting(containerEl).setName('Changelog & updates').setHeading();
+		// -------------------------------------------------------------------------
+		// Section 5: Updates & Changelog
+		// -------------------------------------------------------------------------
+		new Setting(containerEl).setName('Updates & release notes').setHeading();
 		new Setting(containerEl)
 			.setName('Show changelog after updates')
 			.setDesc('Automatically open the what\'s new dialog when AI Scheduler is updated.')
@@ -287,6 +333,9 @@ export class AssistantSettingTab extends PluginSettingTab {
 				new ChangelogModal(this.app, this.plugin).open();
 			}));
 
+		// -------------------------------------------------------------------------
+		// Section 6: Help & Community
+		// -------------------------------------------------------------------------
 		new Setting(containerEl).setName('Help & community').setHeading();
 		new Setting(containerEl)
 			.setName('Facing a problem?')
