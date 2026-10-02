@@ -98,7 +98,7 @@ export class AssistantModal extends Modal {
 					this.render();
 				})();
 			}).open();
-		}, false, true);
+		}, false, false);
 		makeButton(bulkActions, 'Delete all', () => {
 			new ConfirmModal(this.app, 'Delete all scheduled tasks? This cannot be undone.', () => {
 				void (async () => {
@@ -128,7 +128,7 @@ export class AssistantModal extends Modal {
 				job.lastStatus = 'disabled';
 				await this.plugin.saveState();
 				this.render();
-			}, false, true);
+			}, false, false);
 			makeButton(controls, 'Delete', () => {
 				new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
 					void (async () => {

@@ -54,19 +54,22 @@
 }
 
 .ai-scheduler-title {
-	font-size: 32px;
-	margin: 0 0 8px;
-	letter-spacing: -0.03em;
+	font-size: 28px;
+	font-weight: 700;
+	margin: 0 0 6px;
+	letter-spacing: -0.02em;
+	color: var(--text-normal);
 }
 
 .ai-scheduler-title-sm {
-	font-size: 30px;
+	font-size: 24px;
 }
 
 .ai-scheduler-subtitle {
-	margin: 0 0 22px;
+	margin: 0 0 20px;
 	color: var(--text-muted);
-	max-width: 560px;
+	max-width: 580px;
+	font-size: 13.5px;
 	line-height: 1.5;
 }
 
@@ -74,15 +77,16 @@
 	color: var(--interactive-accent);
 	font-size: 11px;
 	font-weight: 700;
-	letter-spacing: 0.12em;
-	margin-bottom: 8px;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	margin-bottom: 6px;
 }
 
 .ai-scheduler-actions {
 	display: flex;
 	gap: 10px;
 	flex-wrap: wrap;
-	padding-bottom: 24px;
+	padding-bottom: 20px;
 	border-bottom: 1px solid var(--background-modifier-border);
 }
 
@@ -90,6 +94,7 @@
 	display: flex;
 	justify-content: flex-end;
 	gap: 10px;
+	margin-top: 20px;
 }
 
 .ai-scheduler-footer-wrap {
@@ -97,6 +102,7 @@
 	gap: 8px;
 	justify-content: flex-end;
 	flex-wrap: wrap;
+	margin-top: 18px;
 }
 
 /* ---- Dashboard ---------------------------------------------------------- */
@@ -104,19 +110,24 @@
 .ai-scheduler-stats {
 	display: grid;
 	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: 10px;
-	margin: 22px 0;
+	gap: 12px;
+	margin: 20px 0 24px;
 }
 
 .ai-scheduler-stat-value {
-	font-size: 17px;
+	font-size: 22px;
 	font-weight: 700;
+	color: var(--text-normal);
+	letter-spacing: -0.02em;
+	line-height: 1.2;
 }
 
 .ai-scheduler-stat-label {
-	margin-top: 3px;
-	font-size: 10px;
-	letter-spacing: 0.1em;
+	margin-top: 4px;
+	font-size: 10.5px;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
 	color: var(--text-muted);
 }
 
@@ -124,25 +135,27 @@
 	display: flex;
 	justify-content: space-between;
 	align-items: baseline;
-	margin-bottom: 10px;
+	margin: 20px 0 10px;
 }
 
 .ai-scheduler-section-title {
 	margin: 0;
-	font-size: 17px;
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--text-normal);
 }
 
 .ai-scheduler-section-desc {
-	color: var(--text-muted);
+	color: var(--text-faint);
 	font-size: 12px;
 }
 
 .ai-scheduler-row-actions {
 	display: flex;
-	gap: 6px;
+	gap: 8px;
 	flex-wrap: wrap;
 	justify-content: flex-end;
-	margin-bottom: 10px;
+	margin-bottom: 12px;
 }
 
 .ai-scheduler-task-actions {
@@ -153,9 +166,9 @@
 }
 
 .ai-scheduler-empty-sub {
-	margin-top: 6px;
+	margin-top: 4px;
 	font-size: 12px;
-	color: var(--text-muted);
+	color: var(--text-faint);
 }
 
 .ai-scheduler-task-card {
@@ -163,11 +176,22 @@
 	justify-content: space-between;
 	gap: 14px;
 	align-items: center;
-	margin-bottom: 9px;
+	margin-bottom: 8px;
+	padding: 14px 16px;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m, 8px);
+	transition: border-color 0.15s ease;
+}
+
+.ai-scheduler-task-card:hover {
+	border-color: var(--background-modifier-border-hover, var(--interactive-accent));
 }
 
 .ai-scheduler-task-title {
 	font-weight: 600;
+	font-size: 13.5px;
+	color: var(--text-normal);
 }
 
 .ai-scheduler-task-meta {
@@ -189,45 +213,47 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 14px;
-	padding: 12px 16px;
+	padding: 14px 18px;
 	border-radius: var(--radius-m, 8px);
-	margin-bottom: 20px;
+	margin-bottom: 22px;
 	background: var(--background-secondary);
 	border: 1px solid var(--background-modifier-border);
-	border-left: 4px solid var(--color-red, #e03e3e);
+	border-left: 4px solid var(--color-orange, #e5933a);
 }
 
 .ai-scheduler-alert-content {
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	gap: 14px;
 	flex: 1 1 auto;
 }
 
 .ai-scheduler-alert-icon {
-	font-size: 20px;
+	font-size: 22px;
 	line-height: 1;
 	flex-shrink: 0;
 }
 
 .ai-scheduler-alert-title {
 	font-weight: 600;
-	font-size: 13px;
+	font-size: 13.5px;
 	color: var(--text-normal);
 	margin-bottom: 2px;
 }
 
 .ai-scheduler-alert-desc {
 	color: var(--text-muted);
-	font-size: 12px;
-	line-height: 1.4;
+	font-size: 12.5px;
+	line-height: 1.45;
 }
 
 .ai-scheduler-alert-btn {
 	flex-shrink: 0;
 	white-space: nowrap;
-	font-size: 12px;
+	font-size: 12.5px;
+	font-weight: 500;
 	padding: 6px 14px;
+	border-radius: var(--radius-s, 4px);
 }
 
 .ai-scheduler-activity-scroll-window {
@@ -235,8 +261,8 @@
 	max-height: 170px;
 	overflow-y: auto;
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 10px;
-	background: var(--background-primary-alt);
+	border-radius: var(--radius-m, 8px);
+	background: var(--background-secondary);
 	padding: 0 16px;
 }
 
@@ -253,9 +279,12 @@
 .ai-scheduler-activity-row {
 	display: flex;
 	justify-content: space-between;
+	align-items: center;
 	gap: 12px;
-	padding: 10px 0;
+	padding: 9px 0;
 	border-bottom: 1px solid var(--background-modifier-border);
+	font-size: 12.5px;
+	color: var(--text-normal);
 }
 
 .ai-scheduler-activity-row:last-child {
@@ -263,7 +292,7 @@
 }
 
 .ai-scheduler-activity-time {
-	color: var(--text-muted);
+	color: var(--text-faint);
 	font-size: 11px;
 	white-space: nowrap;
 }
@@ -272,17 +301,25 @@
 
 .ai-scheduler-card {
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 12px;
+	border-radius: var(--radius-m, 8px);
 	padding: 16px;
-	background: var(--background-primary-alt);
+	background: var(--background-secondary);
 }
 
 .ai-scheduler-card-stat {
-	padding: 13px 14px;
+	padding: 14px 16px;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m, 8px);
+	transition: border-color 0.15s ease;
+}
+
+.ai-scheduler-card-stat:hover {
+	border-color: var(--background-modifier-border-hover, var(--interactive-accent));
 }
 
 .ai-scheduler-card-tight {
-	padding: 12px 14px;
+	padding: 14px 16px;
 }
 
 .ai-scheduler-card-flush {
@@ -295,30 +332,51 @@
 
 .ai-scheduler-card-ai {
 	margin-top: 18px;
-	padding: 14px;
+	padding: 16px;
 }
 
 .ai-scheduler-card-muted {
+	background: var(--background-secondary);
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: var(--radius-m, 8px);
+	padding: 24px 16px;
+	text-align: center;
 	color: var(--text-muted);
+	font-size: 13px;
 }
 
 .ai-scheduler-button-danger {
-	color: var(--text-error);
-	border-color: var(--text-error);
+	color: var(--text-error, #e03e3e);
+	border: 1px solid var(--background-modifier-border);
+	background: transparent;
+	transition: all 0.15s ease;
+	cursor: pointer;
+}
+
+.ai-scheduler-button-danger:hover {
+	color: #ffffff;
+	background: var(--text-error, #e03e3e);
+	border-color: var(--text-error, #e03e3e);
 }
 
 .ai-scheduler-input {
 	width: 100%;
 	box-sizing: border-box;
-	padding: 6px;
+	padding: 8px 10px;
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 6px;
+	border-radius: var(--radius-s, 4px);
 	background: var(--background-primary);
 	color: var(--text-normal);
+	font-size: 13px;
+}
+
+.ai-scheduler-input:focus {
+	border-color: var(--interactive-accent);
+	outline: none;
 }
 
 .ai-scheduler-input-mono {
-	font-family: monospace;
+	font-family: var(--font-monospace, monospace);
 }
 
 .ai-scheduler-textarea {
@@ -329,56 +387,65 @@
 	line-height: 1.5;
 	padding: 12px;
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 10px;
-	background: var(--background-primary-alt);
+	border-radius: var(--radius-m, 8px);
+	background: var(--background-primary);
 	color: var(--text-normal);
+	font-size: 13px;
+}
+
+.ai-scheduler-textarea:focus {
+	border-color: var(--interactive-accent);
+	outline: none;
 }
 
 .ai-scheduler-textarea-tall {
 	min-height: 170px;
-	margin: 14px 0 8px;
+	margin: 10px 0 8px;
 }
 
 .ai-scheduler-textarea-short {
 	min-height: 70px;
-	padding: 8px;
-	border-radius: 6px;
+	padding: 8px 10px;
+	border-radius: var(--radius-s, 4px);
 }
 
 .ai-scheduler-textarea-ai {
 	min-height: 90px;
 	padding: 10px;
-	margin-bottom: 10px;
+	margin-bottom: 12px;
 }
 
 .ai-scheduler-select {
 	width: 100%;
-	padding: 6px;
+	padding: 7px 10px;
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 6px;
+	border-radius: var(--radius-s, 4px);
 	background: var(--background-primary);
 	color: var(--text-normal);
+	font-size: 13px;
 }
 
 /* ---- Planner ------------------------------------------------------------ */
 
 .ai-scheduler-form-label {
-	color: var(--text-muted);
-	font-size: 12px;
-	margin-bottom: 4px;
+	color: var(--text-normal);
+	font-weight: 500;
+	font-size: 13px;
+	margin-bottom: 6px;
 }
 
 .ai-scheduler-form-gap {
-	margin-bottom: 10px;
+	margin-bottom: 12px;
 }
 
 .ai-scheduler-hint {
 	color: var(--text-muted);
 	font-size: 12px;
+	line-height: 1.4;
 }
 
 .ai-scheduler-hint-gap {
-	margin-bottom: 22px;
+	margin-bottom: 20px;
 }
 
 .ai-scheduler-result-table {
@@ -393,6 +460,8 @@
 	border-bottom: 2px solid var(--background-modifier-border);
 	padding: 8px 10px;
 	white-space: nowrap;
+	color: var(--text-normal);
+	font-weight: 600;
 }
 
 .ai-scheduler-result-table td {
@@ -415,6 +484,8 @@
 
 .ai-scheduler-lead {
 	font-weight: 600;
+	font-size: 14px;
+	color: var(--text-normal);
 }
 
 .ai-scheduler-gap-4 {
@@ -443,7 +514,7 @@
 .ai-scheduler-field-label {
 	font-size: 12px;
 	color: var(--text-muted);
-	margin: 8px 0 4px;
+	margin: 10px 0 4px;
 }
 
 .ai-scheduler-days {
@@ -484,6 +555,8 @@
 	padding: 6px;
 	background: var(--background-primary);
 	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
 }
 
 .ai-scheduler-picker-controls {
@@ -736,4 +809,3 @@
 .ai-scheduler-close-btn {
 	padding: 6px 18px;
 }
-

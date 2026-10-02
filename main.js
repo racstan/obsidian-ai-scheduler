@@ -1340,10 +1340,7 @@ var import_obsidian6 = require("obsidian");
 function makeButton(parent, label, onClick, primary = false, danger = false) {
   const button = parent.createEl("button", { text: label });
   if (primary) button.addClass("mod-cta");
-  if (danger) {
-    button.addClass("mod-warning");
-    button.addClass("ai-scheduler-button-danger");
-  }
+  if (danger) button.addClass("ai-scheduler-button-danger");
   button.onclick = () => {
     void onClick(button);
   };
@@ -1927,7 +1924,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
           this.render();
         })();
       }).open();
-    }, false, true);
+    }, false, false);
     makeButton(bulkActions, "Delete all", () => {
       new ConfirmModal(this.app, "Delete all scheduled tasks? This cannot be undone.", () => {
         void (async () => {
@@ -1957,7 +1954,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
         job.lastStatus = "disabled";
         await this.plugin.saveState();
         this.render();
-      }, false, true);
+      }, false, false);
       makeButton(controls, "Delete", () => {
         new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
           void (async () => {

@@ -1,10 +1,7 @@
 export function makeButton(parent: HTMLElement, label: string, onClick: (button: HTMLButtonElement) => void | Promise<void>, primary = false, danger = false): HTMLButtonElement {
 	const button = parent.createEl('button', { text: label });
 	if (primary) button.addClass('mod-cta');
-	if (danger) {
-		button.addClass('mod-warning');
-		button.addClass('ai-scheduler-button-danger');
-	}
+	if (danger) button.addClass('ai-scheduler-button-danger');
 	button.onclick = () => { void onClick(button); };
 	return button;
 }
