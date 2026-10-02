@@ -2,7 +2,7 @@ import { App, Modal, Notice, Setting } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
 import { formatDate, describeBinding, isDisabledTask, isNightlyReviewJob, summarizeTasks } from '../util';
 import { describeSchedule } from '../schedule';
-import { makeButton, makeCard } from './dom';
+import { closeExistingSchedulerModals, makeButton, makeCard } from './dom';
 import { JobModal } from './JobModal';
 import { PlannerModal } from './PlannerModal';
 
@@ -11,6 +11,8 @@ export class ConfirmModal extends Modal {
 		super(app);
 	}
 	onOpen(): void {
+		this.modalEl.addClass('ai-scheduler-modal');
+		this.modalEl.addClass('ai-scheduler-confirm-modal');
 		this.contentEl.createEl('h3', { text: 'Confirm' });
 		this.contentEl.createEl('p', { text: this.message });
 		new Setting(this.contentEl)
@@ -27,13 +29,21 @@ export class ConfirmModal extends Modal {
 
 export class AssistantModal extends Modal {
 	plugin: AISchedulerPlugin;
+	private refreshTimer: number | null = null;
 
 	constructor(app: AISchedulerPlugin['app'], plugin: AISchedulerPlugin) {
 		super(app);
 		this.plugin = plugin;
 	}
 
-	onOpen(): void { this.render(); }
+	onOpen(): void {
+		closeExistingSchedulerModals(this);
+		this.render();
+		// Live auto-refresh every 3s so task progress and state transitions update in real time
+		this.refreshTimer = window.setInterval(() => {
+			this.render();
+		}, 3000);
+	}
 
 	render(): void {
 		const { contentEl } = this;
@@ -66,7 +76,7 @@ export class AssistantModal extends Modal {
 		makeButton(actions, '✨ Ask AI to plan', () => {
 			this.close();
 			window.setTimeout(() => {
-				new PlannerModal(this.app, this.plugin, () => new AssistantModal(this.app, this.plugin).open()).open();
+				new PlannerModal(this.app, this.plugin).open();
 			}, 50);
 		}, true);
 		makeButton(actions, '⚙️ Settings', () => {
@@ -79,17 +89,31 @@ export class AssistantModal extends Modal {
 		const userJobs = this.plugin.jobs.filter(job => !isNightlyReviewJob(job));
 		const activeCount = userJobs.filter(job => job.enabled).length;
 		const pausedCount = userJobs.filter(job => !job.enabled).length;
-		const next = userJobs.filter(job => job.enabled && job.nextRunAt).sort((a, b) => new Date(a.nextRunAt as string).getTime() - new Date(b.nextRunAt as string).getTime())[0];
+		const runningJobs = userJobs.filter(job => job.status === 'running' || this.plugin.runningJobs.has(job.id));
+		const next = userJobs.filter(job => job.enabled && job.nextRunAt && job.status !== 'running').sort((a, b) => new Date(a.nextRunAt as string).getTime() - new Date(b.nextRunAt as string).getTime())[0];
+
 		const stats = shell.createDiv({ cls: 'ai-scheduler-stats' });
-		[
-			[activeCount, 'ACTIVE TASKS'],
-			[pausedCount, 'PAUSED / PAST'],
-			[next ? formatDate(next.nextRunAt) : 'None', next ? `NEXT RUN: #${next.taskNumber} ${next.title.slice(0, 18)}` : 'SOONEST RUN'],
-		].forEach(([value, label]) => {
-			const stat = makeCard(stats, 'ai-scheduler-card-stat');
-			stat.createDiv({ cls: 'ai-scheduler-stat-value', text: String(value) });
-			stat.createDiv({ cls: 'ai-scheduler-stat-label', text: label as string });
-		});
+
+		// Stat 1: Active tasks
+		const statActive = makeCard(stats, 'ai-scheduler-card-stat');
+		statActive.createDiv({ cls: 'ai-scheduler-stat-value', text: String(activeCount) });
+		statActive.createDiv({ cls: 'ai-scheduler-stat-label', text: 'ACTIVE TASKS' });
+
+		// Stat 2: Paused / Past
+		const statPaused = makeCard(stats, 'ai-scheduler-card-stat');
+		statPaused.createDiv({ cls: 'ai-scheduler-stat-value', text: String(pausedCount) });
+		statPaused.createDiv({ cls: 'ai-scheduler-stat-label', text: 'PAUSED / PAST' });
+
+		// Stat 3: Running or Next run
+		const statThird = makeCard(stats, 'ai-scheduler-card-stat');
+		if (runningJobs.length > 0) {
+			statThird.addClass('ai-scheduler-stat-running');
+			statThird.createDiv({ cls: 'ai-scheduler-stat-value ai-scheduler-text-glow', text: `⚡ ${runningJobs.length} Running` });
+			statThird.createDiv({ cls: 'ai-scheduler-stat-label', text: 'EXECUTING IN BACKGROUND' });
+		} else {
+			statThird.createDiv({ cls: 'ai-scheduler-stat-value', text: next ? formatDate(next.nextRunAt) : 'None' });
+			statThird.createDiv({ cls: 'ai-scheduler-stat-label', text: next ? `NEXT RUN: #${next.taskNumber} ${next.title.slice(0, 18)}` : 'SOONEST RUN' });
+		}
 
 		this.renderSection(shell, 'Scheduled tasks', `${activeCount} ${activeCount === 1 ? 'task' : 'tasks'} enabled`);
 		const bulkActions = shell.createDiv({ cls: 'ai-scheduler-row-actions' });
@@ -132,30 +156,81 @@ export class AssistantModal extends Modal {
 				})();
 			}).open();
 		}, false, true);
-		const scheduled = userJobs.filter(job => job.enabled).sort((a, b) => String(a.nextRunAt).localeCompare(String(b.nextRunAt)));
-		const jobs = shell.createDiv();
+
+		const scheduled = userJobs.filter(job => job.enabled).sort((a, b) => {
+			if (a.status === 'running' && b.status !== 'running') return -1;
+			if (b.status === 'running' && a.status !== 'running') return 1;
+			return String(a.nextRunAt).localeCompare(String(b.nextRunAt));
+		});
+
+		const jobsContainer = shell.createDiv();
 		if (!scheduled.length) {
-			const empty = makeCard(jobs, 'ai-scheduler-card-muted');
+			const empty = makeCard(jobsContainer, 'ai-scheduler-card-muted');
 			empty.createDiv({ text: 'No scheduled tasks yet.' });
 			empty.createDiv({ cls: 'ai-scheduler-empty-sub', text: 'Ask AI to plan a schedule from a plain-language goal.' });
 		}
+
 		for (const job of scheduled) {
-			const card = makeCard(jobs, 'ai-scheduler-task-card');
+			const isRunning = job.status === 'running' || this.plugin.runningJobs.has(job.id);
+			const card = makeCard(jobsContainer, 'ai-scheduler-task-card');
+			if (isRunning) card.addClass('ai-scheduler-task-running');
+
 			const copy = card.createDiv();
-			copy.createDiv({ cls: 'ai-scheduler-task-title', text: `#${job.taskNumber} · ${job.title}` });
+			const titleRow = copy.createDiv({ cls: 'ai-scheduler-task-header' });
+			titleRow.createDiv({ cls: 'ai-scheduler-task-title', text: `#${job.taskNumber} · ${job.title}` });
+
+			if (isRunning) {
+				const badge = titleRow.createSpan({ cls: 'ai-scheduler-status-badge ai-scheduler-status-running' });
+				badge.createSpan({ cls: 'ai-scheduler-spinner-tiny' });
+				badge.createSpan({ text: '⚡ Running now in background...' });
+			}
+
 			copy.createDiv({ cls: 'ai-scheduler-task-meta', text: `${describeBinding(job)} · ${describeSchedule(job)}${job.runCount ? ` · ${job.runCount} run${job.runCount === 1 ? '' : 's'}` : ''}` });
-			const nextText = job.nextRunAt ? `Next run: ${formatDate(job.nextRunAt)}` : (job.schedule.kind === 'event' ? '⚡ Trigger: On vault note modification' : '⏰ Next run: Not scheduled');
-			copy.createDiv({ cls: 'ai-scheduler-task-next', text: `⏰ ${nextText}` });
+
+			if (isRunning) {
+				const runInfo = copy.createDiv({ cls: 'ai-scheduler-task-next ai-scheduler-text-running' });
+				runInfo.setText(`⚡ Started execution at ${formatDate(job.lastRunAt || job.nextRunAt || new Date().toISOString())} · AI is generating results`);
+			} else {
+				const nextText = job.nextRunAt ? `Next run: ${formatDate(job.nextRunAt)}` : (job.schedule.kind === 'event' ? '⚡ Trigger: On vault note modification' : '⏰ Next run: Not scheduled');
+				copy.createDiv({ cls: 'ai-scheduler-task-next', text: `⏰ ${nextText}` });
+			}
+
 			const controls = card.createDiv({ cls: 'ai-scheduler-task-actions' });
-			makeButton(controls, 'Edit', () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
-			makeButton(controls, 'Disable', async () => {
-				job.enabled = false;
-				job.nextRunAt = null;
-				job.status = 'disabled';
-				job.lastStatus = 'disabled';
-				await this.plugin.saveState();
-				this.render();
-			}, false, false);
+
+			if (isRunning) {
+				makeButton(controls, '⏹️ Reset / Stop', async () => {
+					await this.plugin.resetRunningJob(job);
+					new Notice(`Reset task #${job.taskNumber}.`);
+					this.render();
+				}, false, true);
+			} else {
+				makeButton(controls, '▶️ Run now', async () => {
+					new Notice(`Starting task #${job.taskNumber} now...`);
+					await this.plugin.runJobNow(job);
+					this.render();
+				});
+			}
+
+			makeButton(controls, 'Edit', () => {
+				this.close();
+				window.setTimeout(() => {
+					new JobModal(this.app, this.plugin, job, () => {
+						new AssistantModal(this.app, this.plugin).open();
+					}).open();
+				}, 50);
+			});
+
+			if (!isRunning) {
+				makeButton(controls, 'Disable', async () => {
+					job.enabled = false;
+					job.nextRunAt = null;
+					job.status = 'disabled';
+					job.lastStatus = 'disabled';
+					await this.plugin.saveState();
+					this.render();
+				}, false, false);
+			}
+
 			makeButton(controls, 'Delete', () => {
 				new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
 					void (async () => {
@@ -177,7 +252,14 @@ export class AssistantModal extends Modal {
 				copy.createDiv({ cls: 'ai-scheduler-task-meta', text: `${describeBinding(job)} · ${describeSchedule(job)}` });
 				copy.createDiv({ cls: 'ai-scheduler-task-paused', text: '⏸️ Paused (click Enable to schedule next run)' });
 				const controls = card.createDiv({ cls: 'ai-scheduler-task-actions' });
-				makeButton(controls, 'Edit', () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
+				makeButton(controls, 'Edit', () => {
+					this.close();
+					window.setTimeout(() => {
+						new JobModal(this.app, this.plugin, job, () => {
+							new AssistantModal(this.app, this.plugin).open();
+						}).open();
+					}, 50);
+				});
 				makeButton(controls, 'Enable', async () => {
 					await this.plugin.enableJob(job);
 					this.render();
@@ -206,7 +288,14 @@ export class AssistantModal extends Modal {
 					copy.createDiv({ cls: 'ai-scheduler-task-paused', text: `Last ran: ${formatDate(job.lastRunAt)}` });
 				}
 				const controls = card.createDiv('ai-scheduler-task-actions');
-				makeButton(controls, 'Edit', () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
+				makeButton(controls, 'Edit', () => {
+					this.close();
+					window.setTimeout(() => {
+						new JobModal(this.app, this.plugin, job, () => {
+							new AssistantModal(this.app, this.plugin).open();
+						}).open();
+					}, 50);
+				});
 				makeButton(controls, 'Run again', async () => { await this.plugin.retryJob(job); this.render(); });
 				makeButton(controls, 'Delete', () => {
 					new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
@@ -233,9 +322,25 @@ export class AssistantModal extends Modal {
 		} else {
 			for (const event of activity) {
 				const row = activityContainer.createDiv('ai-scheduler-activity-row');
-				row.createSpan({ text: event.message });
+				const left = row.createDiv({ cls: 'ai-scheduler-activity-left' });
+				const badge = left.createSpan({ cls: `ai-scheduler-act-badge ai-scheduler-act-${event.type || 'info'}` });
+				badge.setText(this.getActivityTypeLabel(event.type));
+				left.createSpan({ text: event.message, cls: 'ai-scheduler-activity-msg' });
 				row.createSpan({ text: formatDate(event.at) }).addClass('ai-scheduler-activity-time');
 			}
+		}
+	}
+
+	private getActivityTypeLabel(type: string): string {
+		switch (type) {
+			case 'running': return '⚡ RUNNING';
+			case 'completed': return '✅ DONE';
+			case 'failed': return '❌ FAILED';
+			case 'planned': return '✨ PLANNED';
+			case 'cancelled': return '⏹️ RESET';
+			case 'deleted': return '🗑️ DELETED';
+			case 'status': return 'ℹ️ STATUS';
+			default: return 'LOG';
 		}
 	}
 
@@ -246,5 +351,11 @@ export class AssistantModal extends Modal {
 		return heading;
 	}
 
-	onClose(): void { this.contentEl.empty(); }
+	onClose(): void {
+		if (this.refreshTimer) {
+			window.clearInterval(this.refreshTimer);
+			this.refreshTimer = null;
+		}
+		this.contentEl.empty();
+	}
 }

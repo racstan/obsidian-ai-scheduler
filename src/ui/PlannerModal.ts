@@ -8,7 +8,7 @@ import { AISchedulerPlugin } from '../main';
 import { errorText, formatDate } from '../util';
 import { cronFormFor, describeSchedule, previewSchedule } from '../schedule';
 import { createContextPicker } from './contextPicker';
-import { makeButton, makeCard } from './dom';
+import { closeExistingSchedulerModals, makeButton, makeCard } from './dom';
 import { AssistantModal } from './AssistantModal';
 import { Job } from '../types';
 import { attachMentionSuggest } from './mentionSuggest';
@@ -17,16 +17,16 @@ import { JobModal } from './JobModal';
 export class PlannerModal extends Modal {
 	plugin: AISchedulerPlugin;
 	private plannedJobs: Job[] | null = null;
-	private onCloseCallback?: () => void;
 
-	constructor(app: AISchedulerPlugin['app'], plugin: AISchedulerPlugin, onCloseCallback?: () => void) {
+	constructor(app: AISchedulerPlugin['app'], plugin: AISchedulerPlugin, plannedJobs: Job[] | null = null) {
 		super(app);
 		this.plugin = plugin;
-		this.onCloseCallback = onCloseCallback;
+		this.plannedJobs = plannedJobs;
 	}
 
 	async onOpen(): Promise<void> {
-		if (this.plannedJobs) this.renderResults();
+		closeExistingSchedulerModals(this);
+		if (this.plannedJobs && this.plannedJobs.length) this.renderResults();
 		else await this.renderForm();
 	}
 
@@ -171,9 +171,12 @@ export class PlannerModal extends Modal {
 
 			const actions = top.createDiv({ cls: 'ai-scheduler-planned-actions' });
 			makeButton(actions, '✏️ Edit', () => {
-				new JobModal(this.app, this.plugin, job, () => {
-					this.renderResults();
-				}).open();
+				this.close();
+				window.setTimeout(() => {
+					new JobModal(this.app, this.plugin, job, () => {
+						new PlannerModal(this.app, this.plugin, this.plannedJobs).open();
+					}).open();
+				}, 50);
 			});
 			makeButton(actions, '🗑️ Discard', async () => {
 				await this.plugin.deleteJob(job);
@@ -225,10 +228,5 @@ export class PlannerModal extends Modal {
 
 	onClose(): void {
 		this.contentEl.empty();
-		if (this.onCloseCallback && !this.plannedJobs) {
-			window.setTimeout(() => {
-				if (this.onCloseCallback) this.onCloseCallback();
-			}, 50);
-		}
 	}
 }

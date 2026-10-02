@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.7.6] - 2026-10-02
+
+### Highlights
+- **Zero Modal Stacking**: Fixed layered window stacking across Dashboard, Planner, and Job Editor with clean single-window lifecycle management.
+- **Live Background Execution Indicators**: Prominent glowing "⚡ Running now..." badges, started timestamps, and real-time dashboard auto-refresh.
+- **Instant "Run Now" & "Reset/Stop" Controls**: Manually trigger any scheduled task immediately or reset long-running background tasks.
+- **Detailed Activity Badges**: Color-coded status badges for running, completed, failed, planned, and reset activities.
+
+### Added
+- Live running badges with pulsating glow and spinner for active background tasks.
+- Instant "▶️ Run now" button on scheduled tasks.
+- Direct "⏹️ Reset / Stop" button for active background jobs.
+- Automated 3-second live refresh on open dashboard modals.
+- Color-coded activity log tags and start-of-execution activity logging.
+
+### Fixed
+- Fixed modal stacking and dual close button layering across all dialogs.
+- Fixed misleading "Next run: <past time>" timestamp during background execution.
+
+### Contributors
+- [@racstan](https://github.com/racstan) (Rachit Asthana)
+
+---
+
 ## [2.1.7.5] - 2026-10-02
 
 ### Highlights

@@ -52,7 +52,7 @@ export class AISchedulerPlugin extends Plugin {
 	lastTickError: string | null = null;
 	notesSync: ScheduleNotesSync = new ScheduleNotesSync(this);
 	pendingVaultEvents: string[] = [];
-	private runningJobs = new Set<string>();
+	runningJobs = new Set<string>();
 	private selfWrites = new Set<string>();
 
 	markSelfWrite(path: string): void {
@@ -319,6 +319,7 @@ export class AISchedulerPlugin extends Plugin {
 		job.status = 'running';
 		job.lastRunAt = new Date().toISOString();
 		job.attempts = Number(job.attempts || 0) + 1;
+		this.logActivity('running', `Task #${job.taskNumber} started: ${job.title}`, job.id);
 		await this.saveState();
 		try {
 			const execution = await backends.resolveJobExecution(this, job);
@@ -351,7 +352,7 @@ export class AISchedulerPlugin extends Plugin {
 				await this.writeOutput(job.output.folder, job.output.filename, reply);
 			}
 			reconcileAfterRun(job);
-			this.logActivity('completed', job.title, job.id);
+			this.logActivity('completed', `Task #${job.taskNumber} finished: ${job.title}`, job.id);
 			if (this.settings.notifyOnCompletion && job.notify !== false) {
 				new Notice(`AI completed: ${job.title}`, 5000);
 			}
@@ -364,7 +365,7 @@ export class AISchedulerPlugin extends Plugin {
 			job.lastError = errorText(error);
 			reconcileAfterRun(job, { failed: true });
 			this.lastTickError = job.lastError;
-			this.logActivity('failed', `${job.title}: ${job.lastError}`, job.id);
+			this.logActivity('failed', `Task #${job.taskNumber} failed: ${job.title} (${job.lastError})`, job.id);
 			new Notice(`AI task failed: ${job.title}\n${job.lastError}`, 8000);
 			if (this.settings.systemNotifications) {
 				sendSystemNotification('AI Scheduler', `AI task failed: ${job.title}`);
@@ -867,4 +868,25 @@ export class AISchedulerPlugin extends Plugin {
 		await this.saveState();
 		await this.tick();
 	}
+
+	async runJobNow(job: Job): Promise<void> {
+		job.enabled = true;
+		job.status = 'scheduled';
+		job.lastStatus = null;
+		job.lastError = null;
+		job.nextRunAt = new Date(Date.now() - 1000).toISOString();
+		await this.saveState();
+		await this.tick();
+	}
+
+	async resetRunningJob(job: Job): Promise<void> {
+		this.runningJobs.delete(job.id);
+		job.status = 'failed';
+		job.lastStatus = 'cancelled';
+		job.lastError = 'Cancelled or reset by user';
+		reconcileAfterRun(job, { failed: true });
+		this.logActivity('cancelled', `Task #${job.taskNumber} cancelled/reset by user: ${job.title}`, job.id);
+		await this.saveState();
+	}
 }
+

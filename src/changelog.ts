@@ -23,6 +23,36 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.7.6',
+		date: '2026-10-02',
+		title: 'Zero Modal Stacking, Live Execution Indicators, Instant Run & Stop Controls',
+		highlights: [
+			'Zero Window Stacking: Fixed layered modal stacking across Dashboard, Planner, and Job Editor with clean single-window lifecycle management.',
+			'Live Running Progress & Badges: Prominent glowing "⚡ Running now..." badges, started timestamps, and real-time dashboard auto-refresh.',
+			'Instant "Run Now" & "Reset/Stop" Controls: Manually trigger any scheduled task immediately or reset long-running background tasks.',
+			'Detailed Activity Badges: Color-coded status badges for running, completed, failed, planned, and reset activities.',
+		],
+		added: [
+			'Live running badges with pulsating glow and spinner for active background tasks.',
+			'Instant "▶️ Run now" button on scheduled tasks.',
+			'Direct "⏹️ Reset / Stop" button for active background jobs.',
+			'Automated 3-second live refresh on open dashboard modals.',
+			'Color-coded activity log tags and start-of-execution activity logging.',
+		],
+		fixed: [
+			'Fixed modal stacking and dual close button layering across all dialogs.',
+			'Fixed misleading "Next run: <past time>" timestamp during background execution.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author & Lead Maintainer',
+			},
+		],
+	},
+	{
 		version: '2.1.7.5',
 		date: '2026-10-02',
 		title: 'AI Planning Loading Animation, Interactive Plan Review & Direct Task Editing',

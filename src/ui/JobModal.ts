@@ -5,7 +5,7 @@ import { SCHEDULE_KINDS, ScheduleKind, TaskSchedule } from '../types';
 import { DAY_SHORT_NAMES, describeSchedule, formatMultiRules, getScheduleNextRun, parseMultiRulesText, previewSchedule, validClock } from '../schedule';
 import { validateCron } from '../cron';
 import { createContextPicker } from './contextPicker';
-import { makeButton, makeCard } from './dom';
+import { closeExistingSchedulerModals, makeButton, makeCard } from './dom';
 import { AssistantModal } from './AssistantModal';
 import { attachMentionSuggest } from './mentionSuggest';
 
@@ -45,6 +45,7 @@ export class JobModal extends Modal {
 	}
 
 	onOpen(): void {
+		closeExistingSchedulerModals(this);
 		const { contentEl } = this;
 		this.modalEl.addClass('ai-scheduler-modal');
 		this.modalEl.addClass('ai-scheduler-modal-sm');
@@ -59,9 +60,11 @@ export class JobModal extends Modal {
 		});
 		backBtn.onclick = () => {
 			this.close();
-			window.setTimeout(() => {
-				new AssistantModal(this.app, this.plugin).open();
-			}, 50);
+			if (this.onSaved) {
+				window.setTimeout(() => this.onSaved(), 50);
+			} else {
+				window.setTimeout(() => new AssistantModal(this.app, this.plugin).open(), 50);
+			}
 		};
 
 		shell.createEl('h2', { text: 'Edit scheduled task' });

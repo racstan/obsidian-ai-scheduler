@@ -1388,6 +1388,23 @@ function makeCard(parent, ...extraClasses) {
   for (const extra of extraClasses) card.addClass(extra);
   return card;
 }
+function closeExistingSchedulerModals(currentModal) {
+  if (typeof document === "undefined") return;
+  document.querySelectorAll(".ai-scheduler-modal").forEach((el) => {
+    if (currentModal && currentModal.modalEl && (el === currentModal.modalEl || el.contains(currentModal.modalEl))) {
+      return;
+    }
+    const container = el.closest(".modal-container");
+    if (container && currentModal && currentModal.contentEl && container.contains(currentModal.contentEl)) {
+      return;
+    }
+    if (container) {
+      const closeBtn = container.querySelector(".modal-close-button");
+      if (closeBtn) closeBtn.click();
+      else container.remove();
+    }
+  });
+}
 
 // src/ui/JobModal.ts
 var import_obsidian4 = require("obsidian");
@@ -1677,6 +1694,7 @@ var JobModal = class extends import_obsidian4.Modal {
     this.kind = job.schedule.kind;
   }
   onOpen() {
+    closeExistingSchedulerModals(this);
     const { contentEl } = this;
     this.modalEl.addClass("ai-scheduler-modal");
     this.modalEl.addClass("ai-scheduler-modal-sm");
@@ -1690,9 +1708,11 @@ var JobModal = class extends import_obsidian4.Modal {
     });
     backBtn.onclick = () => {
       this.close();
-      window.setTimeout(() => {
-        new AssistantModal(this.app, this.plugin).open();
-      }, 50);
+      if (this.onSaved) {
+        window.setTimeout(() => this.onSaved(), 50);
+      } else {
+        window.setTimeout(() => new AssistantModal(this.app, this.plugin).open(), 50);
+      }
     };
     shell.createEl("h2", { text: "Edit scheduled task" });
     shell.createEl("p", { text: "Adjust the schedule directly, or describe a change in plain language and let AI rewrite it.", cls: "ai-scheduler-subtitle" });
@@ -2031,15 +2051,16 @@ var JobModal = class extends import_obsidian4.Modal {
 
 // src/ui/PlannerModal.ts
 var import_obsidian5 = require("obsidian");
-var PlannerModal = class extends import_obsidian5.Modal {
-  constructor(app, plugin, onCloseCallback) {
+var PlannerModal = class _PlannerModal extends import_obsidian5.Modal {
+  constructor(app, plugin, plannedJobs = null) {
     super(app);
     this.plannedJobs = null;
     this.plugin = plugin;
-    this.onCloseCallback = onCloseCallback;
+    this.plannedJobs = plannedJobs;
   }
   async onOpen() {
-    if (this.plannedJobs) this.renderResults();
+    closeExistingSchedulerModals(this);
+    if (this.plannedJobs && this.plannedJobs.length) this.renderResults();
     else await this.renderForm();
   }
   async renderForm() {
@@ -2168,9 +2189,12 @@ var PlannerModal = class extends import_obsidian5.Modal {
       top.createDiv({ cls: "ai-scheduler-task-title", text: `#${job.taskNumber} \xB7 ${job.title}` });
       const actions = top.createDiv({ cls: "ai-scheduler-planned-actions" });
       makeButton(actions, "\u270F\uFE0F Edit", () => {
-        new JobModal(this.app, this.plugin, job, () => {
-          this.renderResults();
-        }).open();
+        this.close();
+        window.setTimeout(() => {
+          new JobModal(this.app, this.plugin, job, () => {
+            new _PlannerModal(this.app, this.plugin, this.plannedJobs).open();
+          }).open();
+        }, 50);
       });
       makeButton(actions, "\u{1F5D1}\uFE0F Discard", async () => {
         await this.plugin.deleteJob(job);
@@ -2215,11 +2239,6 @@ var PlannerModal = class extends import_obsidian5.Modal {
   }
   onClose() {
     this.contentEl.empty();
-    if (this.onCloseCallback && !this.plannedJobs) {
-      window.setTimeout(() => {
-        if (this.onCloseCallback) this.onCloseCallback();
-      }, 50);
-    }
   }
 };
 
@@ -2231,6 +2250,8 @@ var ConfirmModal = class extends import_obsidian6.Modal {
     this.onConfirm = onConfirm;
   }
   onOpen() {
+    this.modalEl.addClass("ai-scheduler-modal");
+    this.modalEl.addClass("ai-scheduler-confirm-modal");
     this.contentEl.createEl("h3", { text: "Confirm" });
     this.contentEl.createEl("p", { text: this.message });
     new import_obsidian6.Setting(this.contentEl).addButton((btn) => btn.setButtonText("Cancel").onClick(() => this.close())).addButton((btn) => btn.setButtonText("Confirm").setCta().onClick(() => {
@@ -2245,10 +2266,15 @@ var ConfirmModal = class extends import_obsidian6.Modal {
 var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
   constructor(app, plugin) {
     super(app);
+    this.refreshTimer = null;
     this.plugin = plugin;
   }
   onOpen() {
+    closeExistingSchedulerModals(this);
     this.render();
+    this.refreshTimer = window.setInterval(() => {
+      this.render();
+    }, 3e3);
   }
   render() {
     const { contentEl } = this;
@@ -2279,7 +2305,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
     makeButton(actions, "\u2728 Ask AI to plan", () => {
       this.close();
       window.setTimeout(() => {
-        new PlannerModal(this.app, this.plugin, () => new _AssistantModal(this.app, this.plugin).open()).open();
+        new PlannerModal(this.app, this.plugin).open();
       }, 50);
     }, true);
     makeButton(actions, "\u2699\uFE0F Settings", () => {
@@ -2291,17 +2317,24 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
     const userJobs = this.plugin.jobs.filter((job) => !isNightlyReviewJob(job));
     const activeCount = userJobs.filter((job) => job.enabled).length;
     const pausedCount = userJobs.filter((job) => !job.enabled).length;
-    const next = userJobs.filter((job) => job.enabled && job.nextRunAt).sort((a, b) => new Date(a.nextRunAt).getTime() - new Date(b.nextRunAt).getTime())[0];
+    const runningJobs = userJobs.filter((job) => job.status === "running" || this.plugin.runningJobs.has(job.id));
+    const next = userJobs.filter((job) => job.enabled && job.nextRunAt && job.status !== "running").sort((a, b) => new Date(a.nextRunAt).getTime() - new Date(b.nextRunAt).getTime())[0];
     const stats = shell.createDiv({ cls: "ai-scheduler-stats" });
-    [
-      [activeCount, "ACTIVE TASKS"],
-      [pausedCount, "PAUSED / PAST"],
-      [next ? formatDate(next.nextRunAt) : "None", next ? `NEXT RUN: #${next.taskNumber} ${next.title.slice(0, 18)}` : "SOONEST RUN"]
-    ].forEach(([value, label]) => {
-      const stat = makeCard(stats, "ai-scheduler-card-stat");
-      stat.createDiv({ cls: "ai-scheduler-stat-value", text: String(value) });
-      stat.createDiv({ cls: "ai-scheduler-stat-label", text: label });
-    });
+    const statActive = makeCard(stats, "ai-scheduler-card-stat");
+    statActive.createDiv({ cls: "ai-scheduler-stat-value", text: String(activeCount) });
+    statActive.createDiv({ cls: "ai-scheduler-stat-label", text: "ACTIVE TASKS" });
+    const statPaused = makeCard(stats, "ai-scheduler-card-stat");
+    statPaused.createDiv({ cls: "ai-scheduler-stat-value", text: String(pausedCount) });
+    statPaused.createDiv({ cls: "ai-scheduler-stat-label", text: "PAUSED / PAST" });
+    const statThird = makeCard(stats, "ai-scheduler-card-stat");
+    if (runningJobs.length > 0) {
+      statThird.addClass("ai-scheduler-stat-running");
+      statThird.createDiv({ cls: "ai-scheduler-stat-value ai-scheduler-text-glow", text: `\u26A1 ${runningJobs.length} Running` });
+      statThird.createDiv({ cls: "ai-scheduler-stat-label", text: "EXECUTING IN BACKGROUND" });
+    } else {
+      statThird.createDiv({ cls: "ai-scheduler-stat-value", text: next ? formatDate(next.nextRunAt) : "None" });
+      statThird.createDiv({ cls: "ai-scheduler-stat-label", text: next ? `NEXT RUN: #${next.taskNumber} ${next.title.slice(0, 18)}` : "SOONEST RUN" });
+    }
     this.renderSection(shell, "Scheduled tasks", `${activeCount} ${activeCount === 1 ? "task" : "tasks"} enabled`);
     const bulkActions = shell.createDiv({ cls: "ai-scheduler-row-actions" });
     makeButton(bulkActions, "Enable all", () => {
@@ -2343,30 +2376,69 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
         })();
       }).open();
     }, false, true);
-    const scheduled = userJobs.filter((job) => job.enabled).sort((a, b) => String(a.nextRunAt).localeCompare(String(b.nextRunAt)));
-    const jobs = shell.createDiv();
+    const scheduled = userJobs.filter((job) => job.enabled).sort((a, b) => {
+      if (a.status === "running" && b.status !== "running") return -1;
+      if (b.status === "running" && a.status !== "running") return 1;
+      return String(a.nextRunAt).localeCompare(String(b.nextRunAt));
+    });
+    const jobsContainer = shell.createDiv();
     if (!scheduled.length) {
-      const empty = makeCard(jobs, "ai-scheduler-card-muted");
+      const empty = makeCard(jobsContainer, "ai-scheduler-card-muted");
       empty.createDiv({ text: "No scheduled tasks yet." });
       empty.createDiv({ cls: "ai-scheduler-empty-sub", text: "Ask AI to plan a schedule from a plain-language goal." });
     }
     for (const job of scheduled) {
-      const card = makeCard(jobs, "ai-scheduler-task-card");
+      const isRunning = job.status === "running" || this.plugin.runningJobs.has(job.id);
+      const card = makeCard(jobsContainer, "ai-scheduler-task-card");
+      if (isRunning) card.addClass("ai-scheduler-task-running");
       const copy = card.createDiv();
-      copy.createDiv({ cls: "ai-scheduler-task-title", text: `#${job.taskNumber} \xB7 ${job.title}` });
+      const titleRow = copy.createDiv({ cls: "ai-scheduler-task-header" });
+      titleRow.createDiv({ cls: "ai-scheduler-task-title", text: `#${job.taskNumber} \xB7 ${job.title}` });
+      if (isRunning) {
+        const badge = titleRow.createSpan({ cls: "ai-scheduler-status-badge ai-scheduler-status-running" });
+        badge.createSpan({ cls: "ai-scheduler-spinner-tiny" });
+        badge.createSpan({ text: "\u26A1 Running now in background..." });
+      }
       copy.createDiv({ cls: "ai-scheduler-task-meta", text: `${describeBinding(job)} \xB7 ${describeSchedule(job)}${job.runCount ? ` \xB7 ${job.runCount} run${job.runCount === 1 ? "" : "s"}` : ""}` });
-      const nextText = job.nextRunAt ? `Next run: ${formatDate(job.nextRunAt)}` : job.schedule.kind === "event" ? "\u26A1 Trigger: On vault note modification" : "\u23F0 Next run: Not scheduled";
-      copy.createDiv({ cls: "ai-scheduler-task-next", text: `\u23F0 ${nextText}` });
+      if (isRunning) {
+        const runInfo = copy.createDiv({ cls: "ai-scheduler-task-next ai-scheduler-text-running" });
+        runInfo.setText(`\u26A1 Started execution at ${formatDate(job.lastRunAt || job.nextRunAt || (/* @__PURE__ */ new Date()).toISOString())} \xB7 AI is generating results`);
+      } else {
+        const nextText = job.nextRunAt ? `Next run: ${formatDate(job.nextRunAt)}` : job.schedule.kind === "event" ? "\u26A1 Trigger: On vault note modification" : "\u23F0 Next run: Not scheduled";
+        copy.createDiv({ cls: "ai-scheduler-task-next", text: `\u23F0 ${nextText}` });
+      }
       const controls = card.createDiv({ cls: "ai-scheduler-task-actions" });
-      makeButton(controls, "Edit", () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
-      makeButton(controls, "Disable", async () => {
-        job.enabled = false;
-        job.nextRunAt = null;
-        job.status = "disabled";
-        job.lastStatus = "disabled";
-        await this.plugin.saveState();
-        this.render();
-      }, false, false);
+      if (isRunning) {
+        makeButton(controls, "\u23F9\uFE0F Reset / Stop", async () => {
+          await this.plugin.resetRunningJob(job);
+          new import_obsidian6.Notice(`Reset task #${job.taskNumber}.`);
+          this.render();
+        }, false, true);
+      } else {
+        makeButton(controls, "\u25B6\uFE0F Run now", async () => {
+          new import_obsidian6.Notice(`Starting task #${job.taskNumber} now...`);
+          await this.plugin.runJobNow(job);
+          this.render();
+        });
+      }
+      makeButton(controls, "Edit", () => {
+        this.close();
+        window.setTimeout(() => {
+          new JobModal(this.app, this.plugin, job, () => {
+            new _AssistantModal(this.app, this.plugin).open();
+          }).open();
+        }, 50);
+      });
+      if (!isRunning) {
+        makeButton(controls, "Disable", async () => {
+          job.enabled = false;
+          job.nextRunAt = null;
+          job.status = "disabled";
+          job.lastStatus = "disabled";
+          await this.plugin.saveState();
+          this.render();
+        }, false, false);
+      }
       makeButton(controls, "Delete", () => {
         new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
           void (async () => {
@@ -2387,7 +2459,14 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
         copy.createDiv({ cls: "ai-scheduler-task-meta", text: `${describeBinding(job)} \xB7 ${describeSchedule(job)}` });
         copy.createDiv({ cls: "ai-scheduler-task-paused", text: "\u23F8\uFE0F Paused (click Enable to schedule next run)" });
         const controls = card.createDiv({ cls: "ai-scheduler-task-actions" });
-        makeButton(controls, "Edit", () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
+        makeButton(controls, "Edit", () => {
+          this.close();
+          window.setTimeout(() => {
+            new JobModal(this.app, this.plugin, job, () => {
+              new _AssistantModal(this.app, this.plugin).open();
+            }).open();
+          }, 50);
+        });
         makeButton(controls, "Enable", async () => {
           await this.plugin.enableJob(job);
           this.render();
@@ -2415,7 +2494,14 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
           copy.createDiv({ cls: "ai-scheduler-task-paused", text: `Last ran: ${formatDate(job.lastRunAt)}` });
         }
         const controls = card.createDiv("ai-scheduler-task-actions");
-        makeButton(controls, "Edit", () => new JobModal(this.app, this.plugin, job, () => this.render()).open());
+        makeButton(controls, "Edit", () => {
+          this.close();
+          window.setTimeout(() => {
+            new JobModal(this.app, this.plugin, job, () => {
+              new _AssistantModal(this.app, this.plugin).open();
+            }).open();
+          }, 50);
+        });
         makeButton(controls, "Run again", async () => {
           await this.plugin.retryJob(job);
           this.render();
@@ -2444,9 +2530,32 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
     } else {
       for (const event of activity) {
         const row = activityContainer.createDiv("ai-scheduler-activity-row");
-        row.createSpan({ text: event.message });
+        const left = row.createDiv({ cls: "ai-scheduler-activity-left" });
+        const badge = left.createSpan({ cls: `ai-scheduler-act-badge ai-scheduler-act-${event.type || "info"}` });
+        badge.setText(this.getActivityTypeLabel(event.type));
+        left.createSpan({ text: event.message, cls: "ai-scheduler-activity-msg" });
         row.createSpan({ text: formatDate(event.at) }).addClass("ai-scheduler-activity-time");
       }
+    }
+  }
+  getActivityTypeLabel(type) {
+    switch (type) {
+      case "running":
+        return "\u26A1 RUNNING";
+      case "completed":
+        return "\u2705 DONE";
+      case "failed":
+        return "\u274C FAILED";
+      case "planned":
+        return "\u2728 PLANNED";
+      case "cancelled":
+        return "\u23F9\uFE0F RESET";
+      case "deleted":
+        return "\u{1F5D1}\uFE0F DELETED";
+      case "status":
+        return "\u2139\uFE0F STATUS";
+      default:
+        return "LOG";
     }
   }
   renderSection(parent, title, description) {
@@ -2456,6 +2565,10 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
     return heading;
   }
   onClose() {
+    if (this.refreshTimer) {
+      window.clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
+    }
     this.contentEl.empty();
   }
 };
@@ -2468,6 +2581,36 @@ var import_obsidian7 = require("obsidian");
 
 // src/changelog.ts
 var CHANGELOG_DATA = [
+  {
+    version: "2.1.7.6",
+    date: "2026-10-02",
+    title: "Zero Modal Stacking, Live Execution Indicators, Instant Run & Stop Controls",
+    highlights: [
+      "Zero Window Stacking: Fixed layered modal stacking across Dashboard, Planner, and Job Editor with clean single-window lifecycle management.",
+      'Live Running Progress & Badges: Prominent glowing "\u26A1 Running now..." badges, started timestamps, and real-time dashboard auto-refresh.',
+      'Instant "Run Now" & "Reset/Stop" Controls: Manually trigger any scheduled task immediately or reset long-running background tasks.',
+      "Detailed Activity Badges: Color-coded status badges for running, completed, failed, planned, and reset activities."
+    ],
+    added: [
+      "Live running badges with pulsating glow and spinner for active background tasks.",
+      'Instant "\u25B6\uFE0F Run now" button on scheduled tasks.',
+      'Direct "\u23F9\uFE0F Reset / Stop" button for active background jobs.',
+      "Automated 3-second live refresh on open dashboard modals.",
+      "Color-coded activity log tags and start-of-execution activity logging."
+    ],
+    fixed: [
+      "Fixed modal stacking and dual close button layering across all dialogs.",
+      'Fixed misleading "Next run: <past time>" timestamp during background execution.'
+    ],
+    contributors: [
+      {
+        name: "Rachit Asthana",
+        username: "racstan",
+        url: "https://github.com/racstan",
+        role: "Author & Lead Maintainer"
+      }
+    ]
+  },
   {
     version: "2.1.7.5",
     date: "2026-10-02",
@@ -3833,6 +3976,7 @@ var AISchedulerPlugin = class extends import_obsidian10.Plugin {
     job.status = "running";
     job.lastRunAt = (/* @__PURE__ */ new Date()).toISOString();
     job.attempts = Number(job.attempts || 0) + 1;
+    this.logActivity("running", `Task #${job.taskNumber} started: ${job.title}`, job.id);
     await this.saveState();
     try {
       const execution = await resolveJobExecution(this, job);
@@ -3861,7 +4005,7 @@ var AISchedulerPlugin = class extends import_obsidian10.Plugin {
         await this.writeOutput(job.output.folder, job.output.filename, reply);
       }
       reconcileAfterRun(job);
-      this.logActivity("completed", job.title, job.id);
+      this.logActivity("completed", `Task #${job.taskNumber} finished: ${job.title}`, job.id);
       if (this.settings.notifyOnCompletion && job.notify !== false) {
         new import_obsidian10.Notice(`AI completed: ${job.title}`, 5e3);
       }
@@ -3874,7 +4018,7 @@ var AISchedulerPlugin = class extends import_obsidian10.Plugin {
       job.lastError = errorText(error);
       reconcileAfterRun(job, { failed: true });
       this.lastTickError = job.lastError;
-      this.logActivity("failed", `${job.title}: ${job.lastError}`, job.id);
+      this.logActivity("failed", `Task #${job.taskNumber} failed: ${job.title} (${job.lastError})`, job.id);
       new import_obsidian10.Notice(`AI task failed: ${job.title}
 ${job.lastError}`, 8e3);
       if (this.settings.systemNotifications) {
@@ -4333,5 +4477,23 @@ ${report}`);
     rescheduleEnabledJob(job);
     await this.saveState();
     await this.tick();
+  }
+  async runJobNow(job) {
+    job.enabled = true;
+    job.status = "scheduled";
+    job.lastStatus = null;
+    job.lastError = null;
+    job.nextRunAt = new Date(Date.now() - 1e3).toISOString();
+    await this.saveState();
+    await this.tick();
+  }
+  async resetRunningJob(job) {
+    this.runningJobs.delete(job.id);
+    job.status = "failed";
+    job.lastStatus = "cancelled";
+    job.lastError = "Cancelled or reset by user";
+    reconcileAfterRun(job, { failed: true });
+    this.logActivity("cancelled", `Task #${job.taskNumber} cancelled/reset by user: ${job.title}`, job.id);
+    await this.saveState();
   }
 };
