@@ -6,6 +6,7 @@ import { createContextPicker } from './contextPicker';
 import { makeButton, makeCard } from './dom';
 import { AssistantModal } from './AssistantModal';
 import { TaskSchedule } from '../types';
+import { attachMentionSuggest } from './mentionSuggest';
 
 interface PlannedJobSummary {
 	taskNumber: number;
@@ -36,6 +37,19 @@ export class PlannerModal extends Modal {
 		contentEl.addClass('ai-scheduler-content');
 		contentEl.empty();
 		const shell = contentEl.createDiv({ cls: 'ai-scheduler-shell ai-scheduler-shell-md' });
+
+		const navBar = shell.createDiv({ cls: 'ai-scheduler-modal-nav' });
+		const backBtn = navBar.createEl('button', {
+			cls: 'ai-scheduler-back-btn',
+			text: '← Back to dashboard',
+		});
+		backBtn.onclick = () => {
+			this.close();
+			window.setTimeout(() => {
+				new AssistantModal(this.app, this.plugin).open();
+			}, 50);
+		};
+
 		shell.createDiv({ cls: 'ai-scheduler-eyebrow', text: 'AI Planner' });
 		shell.createEl('h1', { text: 'Plan scheduled work', cls: 'ai-scheduler-title ai-scheduler-title-sm' });
 		shell.createEl('p', { text: 'Describe your goal in plain english. Your active AI backend will design and configure the scheduled jobs.', cls: 'ai-scheduler-subtitle' });
@@ -59,13 +73,22 @@ export class PlannerModal extends Modal {
 
 		shell.createDiv({ cls: 'ai-scheduler-form-label', text: 'What would you like AI Scheduler to do?' });
 		const textarea = shell.createEl('textarea', { cls: 'ai-scheduler-textarea ai-scheduler-textarea-tall' });
-		textarea.placeholder = 'E.g. Every weekday at 9:00 am, review notes modified in the last 24 hours, extract action items, and create an executive summary in AI reviews/';
-		shell.createDiv({ cls: 'ai-scheduler-hint ai-scheduler-hint-gap', text: 'Examples: "Review notes every evening at 10 pm", "run every 30 minutes for 8 iterations", "check for open tasks in projects/ every sunday at 6 pm"' });
+		textarea.placeholder = 'E.g. Every weekday at 9:00 am, review notes modified in the last 24 hours, extract action items, and create an executive summary in AI Reviews (type @ to attach files)...';
+		shell.createDiv({ cls: 'ai-scheduler-hint ai-scheduler-hint-gap', text: 'Tip: Type @ in the box above to quickly search and attach vault notes/files.' });
 
 		shell.createDiv({ cls: 'ai-scheduler-form-label', text: 'Default result folder (optional)' });
 		const resultFolder = shell.createEl('input', { type: 'text', cls: 'ai-scheduler-input ai-scheduler-form-gap', placeholder: 'Optional result folder, e.g. AI Reviews or Projects/Notes' });
 
 		const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), [], this.app);
+
+		attachMentionSuggest({
+			textarea,
+			app: this.app,
+			onSelect: file => {
+				contextPicker.addPath(file.path);
+				new Notice(`Attached to context: ${file.path}`);
+			},
+		});
 
 		const footer = shell.createDiv({ cls: 'ai-scheduler-footer' });
 		makeButton(footer, 'Cancel', () => this.close());

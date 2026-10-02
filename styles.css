@@ -555,22 +555,91 @@
 	line-height: 1.5;
 }
 
-/* ---- Context picker ------------------------------------------------------- */
+/* ---- Navigation Buttons --------------------------------------------------- */
 
-.ai-scheduler-picker-desc {
-	color: var(--text-muted);
-	font-size: 12px;
-	margin-bottom: 8px;
+.ai-scheduler-modal-nav {
+	margin-bottom: 14px;
 }
 
-.ai-scheduler-picker-select {
-	width: 100%;
-	min-height: 110px;
-	padding: 6px;
-	background: var(--background-primary);
-	color: var(--text-normal);
+.ai-scheduler-back-btn {
+	background: transparent;
 	border: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+	padding: 5px 12px;
+	font-size: 12px;
+	font-weight: 500;
 	border-radius: var(--radius-s, 4px);
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.ai-scheduler-back-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+	border-color: var(--interactive-accent);
+}
+
+/* ---- Context & Attachment Picker ----------------------------------------- */
+
+.ai-scheduler-context-header {
+	margin-bottom: 6px;
+}
+
+.ai-scheduler-context-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: 10px 0;
+	min-height: 28px;
+}
+
+.ai-scheduler-context-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 16px;
+	padding: 4px 10px;
+	font-size: 12px;
+	color: var(--text-normal);
+	transition: border-color 0.15s ease;
+}
+
+.ai-scheduler-context-chip:hover {
+	border-color: var(--interactive-accent);
+}
+
+.ai-scheduler-chip-icon {
+	font-size: 13px;
+}
+
+.ai-scheduler-chip-text {
+	font-family: var(--font-monospace, monospace);
+	font-size: 11.5px;
+	max-width: 320px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ai-scheduler-chip-remove {
+	cursor: pointer;
+	color: var(--text-muted);
+	font-size: 11px;
+	margin-left: 2px;
+	transition: color 0.15s ease;
+}
+
+.ai-scheduler-chip-remove:hover {
+	color: var(--text-error, #e03e3e);
+}
+
+.ai-scheduler-context-empty {
+	font-size: 12px;
+	color: var(--text-faint);
+	font-style: italic;
+	padding: 4px 0;
 }
 
 .ai-scheduler-picker-controls {
@@ -578,6 +647,84 @@
 	gap: 8px;
 	margin-top: 8px;
 	flex-wrap: wrap;
+}
+
+/* ---- Mention Suggestions Popup ------------------------------------------- */
+
+.ai-scheduler-mention-popup {
+	position: absolute;
+	bottom: calc(100% + 4px);
+	left: 0;
+	width: 100%;
+	max-width: 440px;
+	max-height: 220px;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m, 8px);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+	z-index: var(--layer-modal, 1000);
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+.ai-scheduler-mention-header {
+	padding: 6px 12px;
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--text-muted);
+	border-bottom: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary-alt, var(--background-secondary));
+}
+
+.ai-scheduler-mention-list {
+	overflow-y: auto;
+	flex: 1 1 auto;
+	max-height: 180px;
+}
+
+.ai-scheduler-mention-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 7px 12px;
+	cursor: pointer;
+	font-size: 12.5px;
+	color: var(--text-normal);
+	transition: background-color 0.1s ease;
+}
+
+.ai-scheduler-mention-item:hover,
+.ai-scheduler-mention-item.is-selected {
+	background: var(--background-modifier-hover);
+	color: var(--interactive-accent);
+}
+
+.ai-scheduler-mention-icon {
+	font-size: 14px;
+	flex-shrink: 0;
+}
+
+.ai-scheduler-mention-info {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
+.ai-scheduler-mention-name {
+	font-weight: 500;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ai-scheduler-mention-path {
+	font-size: 10.5px;
+	color: var(--text-faint);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 /* ---- Settings -------------------------------------------------------------- */

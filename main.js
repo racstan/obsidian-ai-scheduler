@@ -1390,38 +1390,262 @@ var import_obsidian4 = require("obsidian");
 
 // src/ui/contextPicker.ts
 var import_obsidian3 = require("obsidian");
+var FilePickerModal = class extends import_obsidian3.FuzzySuggestModal {
+  constructor(app, onChosen) {
+    super(app);
+    this.onChosen = onChosen;
+    this.setPlaceholder("Type to search files or notes to attach...");
+  }
+  getItems() {
+    return this.app.vault.getFiles().filter((f) => !f.path.startsWith("."));
+  }
+  getItemText(item) {
+    return item.path;
+  }
+  onChooseItem(item) {
+    this.onChosen(item);
+  }
+};
+var FolderPickerModal = class extends import_obsidian3.FuzzySuggestModal {
+  constructor(app, onChosen) {
+    super(app);
+    this.onChosen = onChosen;
+    this.setPlaceholder("Type to search vault folders to attach...");
+  }
+  getItems() {
+    const folders = [];
+    const scan = (folder) => {
+      folders.push(folder);
+      for (const child of folder.children) {
+        if (child instanceof import_obsidian3.TFolder) scan(child);
+      }
+    };
+    const root = this.app.vault.getRoot();
+    if (root) scan(root);
+    return folders.filter((f) => f.path && f.path !== "/" && !f.path.startsWith("."));
+  }
+  getItemText(item) {
+    return `${item.path}/`;
+  }
+  onChooseItem(item) {
+    this.onChosen(item);
+  }
+};
 function createContextPicker(parent, options, initialPaths, app) {
   const card = makeCard(parent, "ai-scheduler-card-flush");
-  card.createDiv("ai-scheduler-lead").setText("Context for this task");
-  card.createDiv("ai-scheduler-picker-desc").setText("Select pages or project folders the active backend should attach when this task runs.");
-  const select = card.createEl("select");
-  select.multiple = true;
-  select.size = 3;
-  select.addClass("ai-scheduler-picker-select");
-  const known = new Set(options.map((option) => option.path));
-  for (const path of initialPaths) {
-    if (!known.has(path)) options.push({ path, label: `Unavailable: ${path}`, type: "missing" });
-  }
-  options.sort((a, b) => a.label.localeCompare(b.label));
-  options.forEach((option) => {
-    const element = select.createEl("option", { value: option.path, text: option.label });
-    element.selected = initialPaths.includes(option.path);
+  const header = card.createDiv({ cls: "ai-scheduler-context-header" });
+  header.createDiv({ cls: "ai-scheduler-form-label", text: "\u{1F4CE} Context & Attachments for this task" });
+  header.createDiv({
+    cls: "ai-scheduler-hint",
+    text: "Attached notes and folders will be inspected and referenced by the AI when executing this task."
   });
-  const controls = card.createDiv("ai-scheduler-picker-controls");
-  makeButton(controls, "Use active page", () => {
-    const active = app.workspace && app.workspace.getActiveFile && app.workspace.getActiveFile();
-    if (!active) {
-      new import_obsidian3.Notice("No active Markdown page is open.");
+  const pathsSet = new Set(initialPaths);
+  const chipsContainer = card.createDiv({ cls: "ai-scheduler-context-chips" });
+  const renderChips = () => {
+    chipsContainer.empty();
+    if (pathsSet.size === 0) {
+      chipsContainer.createDiv({
+        cls: "ai-scheduler-context-empty",
+        text: "No attachments yet. Type @ in the prompt above to mention notes, or use the attach buttons below."
+      });
       return;
     }
-    const option = Array.from(select.options).find((candidate) => candidate.value === active.path);
-    if (option) option.selected = true;
-    else new import_obsidian3.Notice(`Active page is not available: ${active.path}`);
+    pathsSet.forEach((path) => {
+      const isFolder = path.endsWith("/") || !path.includes(".");
+      const chip = chipsContainer.createDiv({ cls: "ai-scheduler-context-chip" });
+      chip.createSpan({ cls: "ai-scheduler-chip-icon", text: isFolder ? "\u{1F4C1}" : "\u{1F4C4}" });
+      chip.createSpan({ cls: "ai-scheduler-chip-text", text: path });
+      const removeBtn = chip.createSpan({ cls: "ai-scheduler-chip-remove", text: "\u2715" });
+      removeBtn.setAttribute("title", "Remove attachment");
+      removeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        pathsSet.delete(path);
+        renderChips();
+      });
+    });
+  };
+  renderChips();
+  const controls = card.createDiv({ cls: "ai-scheduler-picker-controls" });
+  makeButton(controls, "\u{1F4CE} Attach file...", () => {
+    new FilePickerModal(app, (file) => {
+      pathsSet.add(file.path);
+      renderChips();
+      new import_obsidian3.Notice(`Attached: ${file.path}`);
+    }).open();
   });
-  makeButton(controls, "Clear context", () => Array.from(select.options).forEach((option) => {
-    option.selected = false;
-  }));
-  return { getPaths: () => Array.from(select.selectedOptions).map((option) => option.value) };
+  makeButton(controls, "\u{1F4C4} Attach active note", () => {
+    const active = app.workspace.getActiveFile();
+    if (!active) {
+      new import_obsidian3.Notice("No active note is currently open in Obsidian.");
+      return;
+    }
+    pathsSet.add(active.path);
+    renderChips();
+    new import_obsidian3.Notice(`Attached active note: ${active.path}`);
+  });
+  makeButton(controls, "\u{1F4C1} Attach folder...", () => {
+    new FolderPickerModal(app, (folder) => {
+      const normPath = `${folder.path}/`;
+      pathsSet.add(normPath);
+      renderChips();
+      new import_obsidian3.Notice(`Attached folder: ${normPath}`);
+    }).open();
+  });
+  makeButton(controls, "Clear all", () => {
+    pathsSet.clear();
+    renderChips();
+  });
+  return {
+    getPaths: () => Array.from(pathsSet),
+    addPath: (path) => {
+      pathsSet.add(path);
+      renderChips();
+    },
+    removePath: (path) => {
+      pathsSet.delete(path);
+      renderChips();
+    }
+  };
+}
+
+// src/ui/mentionSuggest.ts
+function attachMentionSuggest(options) {
+  const { textarea, app, onSelect } = options;
+  let popup = null;
+  let selectedIndex = 0;
+  let matches = [];
+  let queryStartIndex = -1;
+  const removePopup = () => {
+    if (popup) {
+      popup.remove();
+      popup = null;
+    }
+    matches = [];
+    selectedIndex = 0;
+    queryStartIndex = -1;
+  };
+  const getVaultFiles = (query) => {
+    const q = query.toLowerCase().trim();
+    const all = app.vault.getFiles().filter((f) => !f.path.startsWith("."));
+    if (!q) {
+      return all.slice(0, 10);
+    }
+    const filtered = all.filter(
+      (f) => f.basename.toLowerCase().includes(q) || f.path.toLowerCase().includes(q)
+    );
+    filtered.sort((a, b) => {
+      const aBase = a.basename.toLowerCase();
+      const bBase = b.basename.toLowerCase();
+      if (aBase === q) return -1;
+      if (bBase === q) return 1;
+      if (aBase.startsWith(q) && !bBase.startsWith(q)) return -1;
+      if (!aBase.startsWith(q) && bBase.startsWith(q)) return 1;
+      return a.path.localeCompare(b.path);
+    });
+    return filtered.slice(0, 10);
+  };
+  const insertSelection = (file) => {
+    if (queryStartIndex < 0) return;
+    const text = textarea.value;
+    const cursor = textarea.selectionStart;
+    const before = text.slice(0, queryStartIndex);
+    const after = text.slice(cursor);
+    const mentionText = `[[${file.basename}]]`;
+    textarea.value = `${before}${mentionText} ${after}`;
+    const nextCursor = before.length + mentionText.length + 1;
+    textarea.setSelectionRange(nextCursor, nextCursor);
+    textarea.focus();
+    removePopup();
+    if (onSelect) {
+      onSelect(file);
+    }
+  };
+  const renderPopup = () => {
+    if (!matches.length) {
+      removePopup();
+      return;
+    }
+    if (!popup) {
+      popup = document.createElement("div");
+      popup.className = "ai-scheduler-mention-popup";
+      const parent = textarea.parentElement || document.body;
+      if (window.getComputedStyle(parent).position === "static") {
+        parent.style.position = "relative";
+      }
+      parent.appendChild(popup);
+    }
+    popup.empty();
+    const header = popup.createDiv({ cls: "ai-scheduler-mention-header" });
+    header.createSpan({ text: "\u{1F4C4} Vault files (press Enter to attach)" });
+    const list = popup.createDiv({ cls: "ai-scheduler-mention-list" });
+    matches.forEach((file, index) => {
+      const item = list.createDiv({
+        cls: `ai-scheduler-mention-item ${index === selectedIndex ? "is-selected" : ""}`
+      });
+      item.createSpan({ cls: "ai-scheduler-mention-icon", text: "\u{1F4C4}" });
+      const info = item.createDiv({ cls: "ai-scheduler-mention-info" });
+      info.createDiv({ cls: "ai-scheduler-mention-name", text: file.basename });
+      if (file.parent && file.parent.path && file.parent.path !== "/") {
+        info.createDiv({ cls: "ai-scheduler-mention-path", text: file.parent.path });
+      }
+      item.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        insertSelection(file);
+      });
+    });
+    const selectedEl = list.children[selectedIndex];
+    if (selectedEl) {
+      selectedEl.scrollIntoView({ block: "nearest" });
+    }
+  };
+  const onInput = () => {
+    const cursor = textarea.selectionStart;
+    const text = textarea.value.slice(0, cursor);
+    const atMatch = text.match(/@([^\s@]*)$/);
+    if (atMatch && atMatch.index !== void 0) {
+      queryStartIndex = atMatch.index;
+      const query = atMatch[1];
+      matches = getVaultFiles(query);
+      selectedIndex = 0;
+      renderPopup();
+    } else {
+      removePopup();
+    }
+  };
+  const onKeyDown = (e) => {
+    if (!popup || !matches.length) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      selectedIndex = (selectedIndex + 1) % matches.length;
+      renderPopup();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      selectedIndex = (selectedIndex - 1 + matches.length) % matches.length;
+      renderPopup();
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      if (matches[selectedIndex]) {
+        e.preventDefault();
+        insertSelection(matches[selectedIndex]);
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      removePopup();
+    }
+  };
+  const onBlur = () => {
+    window.setTimeout(() => {
+      removePopup();
+    }, 200);
+  };
+  textarea.addEventListener("input", onInput);
+  textarea.addEventListener("keydown", onKeyDown);
+  textarea.addEventListener("blur", onBlur);
+  return () => {
+    textarea.removeEventListener("input", onInput);
+    textarea.removeEventListener("keydown", onKeyDown);
+    textarea.removeEventListener("blur", onBlur);
+    removePopup();
+  };
 }
 
 // src/ui/JobModal.ts
@@ -1454,20 +1678,29 @@ var JobModal = class extends import_obsidian4.Modal {
     this.modalEl.addClass("ai-scheduler-modal-sm");
     contentEl.addClass("ai-scheduler-content");
     contentEl.empty();
-    const shell = contentEl.createDiv("ai-scheduler-shell ai-scheduler-shell-tight");
+    const shell = contentEl.createDiv({ cls: "ai-scheduler-shell ai-scheduler-shell-tight" });
+    const navBar = shell.createDiv({ cls: "ai-scheduler-modal-nav" });
+    const backBtn = navBar.createEl("button", {
+      cls: "ai-scheduler-back-btn",
+      text: "\u2190 Back to dashboard"
+    });
+    backBtn.onclick = () => {
+      this.close();
+      window.setTimeout(() => {
+        new AssistantModal(this.app, this.plugin).open();
+      }, 50);
+    };
     shell.createEl("h2", { text: "Edit scheduled task" });
-    shell.createEl("p", { text: "Adjust the schedule directly, or describe a change in plain language and let AI rewrite it." }).addClass("ai-scheduler-subtitle");
+    shell.createEl("p", { text: "Adjust the schedule directly, or describe a change in plain language and let AI rewrite it.", cls: "ai-scheduler-subtitle" });
     const current = makeCard(shell, "ai-scheduler-card-tight", "ai-scheduler-card-flush");
-    current.createDiv({ text: this.job.title }).addClass("ai-scheduler-task-title");
-    current.createDiv({ text: describeSchedule(this.job) }).addClass("ai-scheduler-task-meta");
-    current.createDiv({ text: this.job.prompt }).addClass("ai-scheduler-task-prompt");
+    current.createDiv({ text: this.job.title, cls: "ai-scheduler-task-title" });
+    current.createDiv({ text: describeSchedule(this.job), cls: "ai-scheduler-task-meta" });
+    current.createDiv({ text: this.job.prompt, cls: "ai-scheduler-task-prompt" });
     this.renderScheduleEditor(shell);
     const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), this.job.contextPaths || [], this.app);
-    shell.createDiv("ai-scheduler-form-label").setText("Result folder for this task (optional)");
-    const resultFolder = shell.createEl("input", { type: "text", value: this.job.output && this.job.output.folder || "", placeholder: "Optional result folder, e.g. Projects/News" });
-    resultFolder.addClass("ai-scheduler-input");
-    resultFolder.addClass("ai-scheduler-form-gap");
-    const footer = shell.createDiv("ai-scheduler-footer-wrap");
+    shell.createDiv({ cls: "ai-scheduler-form-label", text: "Result folder for this task (optional)" });
+    const resultFolder = shell.createEl("input", { type: "text", value: this.job.output && this.job.output.folder || "", placeholder: "Optional result folder, e.g. Projects/News", cls: "ai-scheduler-input ai-scheduler-form-gap" });
+    const footer = shell.createDiv({ cls: "ai-scheduler-footer-wrap" });
     makeButton(footer, "Cancel", () => this.close());
     makeButton(footer, "Save schedule changes", async () => {
       try {
@@ -1505,7 +1738,15 @@ var JobModal = class extends import_obsidian4.Modal {
         }, 50);
       };
     }
-    const request = aiSection.createEl("textarea", { placeholder: "Example: Change this to run every 30 minutes for 8 iterations, and save each result in Projects/News.", cls: "ai-scheduler-textarea ai-scheduler-textarea-ai" });
+    const request = aiSection.createEl("textarea", { placeholder: "Example: Change this to run every 30 minutes for 8 iterations, and save each result in Projects/News (type @ to attach files)...", cls: "ai-scheduler-textarea ai-scheduler-textarea-ai" });
+    attachMentionSuggest({
+      textarea: request,
+      app: this.app,
+      onSelect: (file) => {
+        contextPicker.addPath(file.path);
+        new import_obsidian4.Notice(`Attached to context: ${file.path}`);
+      }
+    });
     makeButton(aiSection, "Update task with AI", async (button) => {
       const change = request.value.trim();
       if (!change) {
@@ -1776,6 +2017,17 @@ var PlannerModal = class extends import_obsidian5.Modal {
     contentEl.addClass("ai-scheduler-content");
     contentEl.empty();
     const shell = contentEl.createDiv({ cls: "ai-scheduler-shell ai-scheduler-shell-md" });
+    const navBar = shell.createDiv({ cls: "ai-scheduler-modal-nav" });
+    const backBtn = navBar.createEl("button", {
+      cls: "ai-scheduler-back-btn",
+      text: "\u2190 Back to dashboard"
+    });
+    backBtn.onclick = () => {
+      this.close();
+      window.setTimeout(() => {
+        new AssistantModal(this.app, this.plugin).open();
+      }, 50);
+    };
     shell.createDiv({ cls: "ai-scheduler-eyebrow", text: "AI Planner" });
     shell.createEl("h1", { text: "Plan scheduled work", cls: "ai-scheduler-title ai-scheduler-title-sm" });
     shell.createEl("p", { text: "Describe your goal in plain english. Your active AI backend will design and configure the scheduled jobs.", cls: "ai-scheduler-subtitle" });
@@ -1797,11 +2049,19 @@ var PlannerModal = class extends import_obsidian5.Modal {
     }
     shell.createDiv({ cls: "ai-scheduler-form-label", text: "What would you like AI Scheduler to do?" });
     const textarea = shell.createEl("textarea", { cls: "ai-scheduler-textarea ai-scheduler-textarea-tall" });
-    textarea.placeholder = "E.g. Every weekday at 9:00 am, review notes modified in the last 24 hours, extract action items, and create an executive summary in AI reviews/";
-    shell.createDiv({ cls: "ai-scheduler-hint ai-scheduler-hint-gap", text: 'Examples: "Review notes every evening at 10 pm", "run every 30 minutes for 8 iterations", "check for open tasks in projects/ every sunday at 6 pm"' });
+    textarea.placeholder = "E.g. Every weekday at 9:00 am, review notes modified in the last 24 hours, extract action items, and create an executive summary in AI Reviews (type @ to attach files)...";
+    shell.createDiv({ cls: "ai-scheduler-hint ai-scheduler-hint-gap", text: "Tip: Type @ in the box above to quickly search and attach vault notes/files." });
     shell.createDiv({ cls: "ai-scheduler-form-label", text: "Default result folder (optional)" });
     const resultFolder = shell.createEl("input", { type: "text", cls: "ai-scheduler-input ai-scheduler-form-gap", placeholder: "Optional result folder, e.g. AI Reviews or Projects/Notes" });
     const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), [], this.app);
+    attachMentionSuggest({
+      textarea,
+      app: this.app,
+      onSelect: (file) => {
+        contextPicker.addPath(file.path);
+        new import_obsidian5.Notice(`Attached to context: ${file.path}`);
+      }
+    });
     const footer = shell.createDiv({ cls: "ai-scheduler-footer" });
     makeButton(footer, "Cancel", () => this.close());
     makeButton(footer, "\u2728 Create AI plan", async (button) => {
@@ -2116,6 +2376,35 @@ var import_obsidian7 = require("obsidian");
 
 // src/changelog.ts
 var CHANGELOG_DATA = [
+  {
+    version: "2.1.7.4",
+    date: "2026-10-02",
+    title: "Prompt @ Mentions, Modern Context Chips, Back Navigation & Task Directory Structure",
+    highlights: [
+      'Prompt @ Mentions Autocomplete: Type "@" in any planning or editing prompt to quickly search and attach vault notes directly.',
+      "Modern Context & Attachments UI: Replaced legacy multi-select with interactive visual tag chips and native fuzzy file/folder attachment modals.",
+      'Seamless Modal Navigation: Added "\u2190 Back to dashboard" navigation buttons inside AI Planner and Task Editor modals.',
+      "Self-Contained Task Directories: Each schedule note is organized with dedicated task folders and attachment directories."
+    ],
+    added: [
+      'Interactive "@" mention autocomplete dropdown for vault files in prompt textareas.',
+      "Native FuzzySuggest modals for attaching individual files, active notes, and vault folders.",
+      "Top header back button to easily navigate between Planner/Editor and the Dashboard.",
+      "Dedicated attachments folder structure for scheduled tasks."
+    ],
+    changed: [
+      'Removed "Recommended" tag from Claudian backend dropdown for neutral backend selection.',
+      "Eliminated multi-select box hover selection bugs with modern tag chips."
+    ],
+    contributors: [
+      {
+        name: "Rachit Asthana",
+        username: "racstan",
+        url: "https://github.com/racstan",
+        role: "Maintainer"
+      }
+    ]
+  },
   {
     version: "2.1.7.3",
     date: "2026-10-02",
@@ -2691,7 +2980,7 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
       text: "Choose which AI plugin AI Scheduler uses to execute tasks, plan schedules, and generate reviews.",
       cls: "ai-scheduler-subtitle"
     });
-    new import_obsidian8.Setting(containerEl).setName("AI backend").setDesc("Select Claudian (for Claude and custom providers) or Obsidian Copilot (for OpenAI, Gemini, Ollama, etc.).").addDropdown((dropdown) => dropdown.addOption("none", "Select an AI backend...").addOption("claudian", "Claudian (Recommended)").addOption("copilot", "Obsidian Copilot").setValue(this.plugin.settings.backendMode || "none").onChange((value) => {
+    new import_obsidian8.Setting(containerEl).setName("AI backend").setDesc("Select Claudian (for Claude and custom providers) or Obsidian Copilot (for OpenAI, Gemini, Ollama, etc.).").addDropdown((dropdown) => dropdown.addOption("none", "Select an AI backend...").addOption("claudian", "Claudian").addOption("copilot", "Obsidian Copilot").setValue(this.plugin.settings.backendMode || "none").onChange((value) => {
       void (async () => {
         this.plugin.settings.backendMode = value;
         await this.plugin.saveState();

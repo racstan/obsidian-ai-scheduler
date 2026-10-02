@@ -6,6 +6,8 @@ import { DAY_SHORT_NAMES, describeSchedule, formatMultiRules, getScheduleNextRun
 import { validateCron } from '../cron';
 import { createContextPicker } from './contextPicker';
 import { makeButton, makeCard } from './dom';
+import { AssistantModal } from './AssistantModal';
+import { attachMentionSuggest } from './mentionSuggest';
 
 const KIND_LABELS: Record<ScheduleKind, string> = {
 	once: 'Once at a specific time',
@@ -48,24 +50,35 @@ export class JobModal extends Modal {
 		this.modalEl.addClass('ai-scheduler-modal-sm');
 		contentEl.addClass('ai-scheduler-content');
 		contentEl.empty();
-		const shell = contentEl.createDiv('ai-scheduler-shell ai-scheduler-shell-tight');
+		const shell = contentEl.createDiv({ cls: 'ai-scheduler-shell ai-scheduler-shell-tight' });
+
+		const navBar = shell.createDiv({ cls: 'ai-scheduler-modal-nav' });
+		const backBtn = navBar.createEl('button', {
+			cls: 'ai-scheduler-back-btn',
+			text: '← Back to dashboard',
+		});
+		backBtn.onclick = () => {
+			this.close();
+			window.setTimeout(() => {
+				new AssistantModal(this.app, this.plugin).open();
+			}, 50);
+		};
+
 		shell.createEl('h2', { text: 'Edit scheduled task' });
-		shell.createEl('p', { text: 'Adjust the schedule directly, or describe a change in plain language and let AI rewrite it.' }).addClass('ai-scheduler-subtitle');
+		shell.createEl('p', { text: 'Adjust the schedule directly, or describe a change in plain language and let AI rewrite it.', cls: 'ai-scheduler-subtitle' });
 
 		const current = makeCard(shell, 'ai-scheduler-card-tight', 'ai-scheduler-card-flush');
-		current.createDiv({ text: this.job.title }).addClass('ai-scheduler-task-title');
-		current.createDiv({ text: describeSchedule(this.job) }).addClass('ai-scheduler-task-meta');
-		current.createDiv({ text: this.job.prompt }).addClass('ai-scheduler-task-prompt');
+		current.createDiv({ text: this.job.title, cls: 'ai-scheduler-task-title' });
+		current.createDiv({ text: describeSchedule(this.job), cls: 'ai-scheduler-task-meta' });
+		current.createDiv({ text: this.job.prompt, cls: 'ai-scheduler-task-prompt' });
 
 		this.renderScheduleEditor(shell);
 
 		const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), this.job.contextPaths || [], this.app);
-		shell.createDiv('ai-scheduler-form-label').setText('Result folder for this task (optional)');
-		const resultFolder = shell.createEl('input', { type: 'text', value: this.job.output && this.job.output.folder || '', placeholder: 'Optional result folder, e.g. Projects/News' });
-		resultFolder.addClass('ai-scheduler-input');
-		resultFolder.addClass('ai-scheduler-form-gap');
+		shell.createDiv({ cls: 'ai-scheduler-form-label', text: 'Result folder for this task (optional)' });
+		const resultFolder = shell.createEl('input', { type: 'text', value: this.job.output && this.job.output.folder || '', placeholder: 'Optional result folder, e.g. Projects/News', cls: 'ai-scheduler-input ai-scheduler-form-gap' });
 
-		const footer = shell.createDiv('ai-scheduler-footer-wrap');
+		const footer = shell.createDiv({ cls: 'ai-scheduler-footer-wrap' });
 		makeButton(footer, 'Cancel', () => this.close());
 		makeButton(footer, 'Save schedule changes', async () => {
 			try {
@@ -101,7 +114,16 @@ export class JobModal extends Modal {
 				}, 50);
 			};
 		}
-		const request = aiSection.createEl('textarea', { placeholder: 'Example: Change this to run every 30 minutes for 8 iterations, and save each result in Projects/News.', cls: 'ai-scheduler-textarea ai-scheduler-textarea-ai' });
+		const request = aiSection.createEl('textarea', { placeholder: 'Example: Change this to run every 30 minutes for 8 iterations, and save each result in Projects/News (type @ to attach files)...', cls: 'ai-scheduler-textarea ai-scheduler-textarea-ai' });
+		attachMentionSuggest({
+			textarea: request,
+			app: this.app,
+			onSelect: file => {
+				contextPicker.addPath(file.path);
+				new Notice(`Attached to context: ${file.path}`);
+			},
+		});
+
 		makeButton(aiSection, 'Update task with AI', async button => {
 			const change = request.value.trim();
 			if (!change) { new Notice('Describe the task change first.'); return; }

@@ -52,9 +52,16 @@ class Notice { constructor(text) { Notice.last = String(text); } }
 class TFile { constructor() { this.stat = { mtime: 0 }; } }
 class TFolder { constructor() { this.children = []; } }
 class TAbstractFile {}
+class FuzzySuggestModal extends Modal {
+	setPlaceholder() {}
+	getItems() { return []; }
+	getItemText() { return ''; }
+	onChooseItem() {}
+}
 const normalizePath = (p) => String(p || '').replace(/\\\\/g, '/');
 module.exports = {
 	Plugin, Modal, PluginSettingTab, Notice, TFile, TFolder, TAbstractFile,
+	FuzzySuggestModal,
 	normalizePath,
 	parseYaml: (text) => {
 		try { return JSON.parse(text); } catch { return {}; }

@@ -23,6 +23,35 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.7.4',
+		date: '2026-10-02',
+		title: 'Prompt @ Mentions, Modern Context Chips, Back Navigation & Task Directory Structure',
+		highlights: [
+			'Prompt @ Mentions Autocomplete: Type "@" in any planning or editing prompt to quickly search and attach vault notes directly.',
+			'Modern Context & Attachments UI: Replaced legacy multi-select with interactive visual tag chips and native fuzzy file/folder attachment modals.',
+			'Seamless Modal Navigation: Added "← Back to dashboard" navigation buttons inside AI Planner and Task Editor modals.',
+			'Self-Contained Task Directories: Each schedule note is organized with dedicated task folders and attachment directories.',
+		],
+		added: [
+			'Interactive "@" mention autocomplete dropdown for vault files in prompt textareas.',
+			'Native FuzzySuggest modals for attaching individual files, active notes, and vault folders.',
+			'Top header back button to easily navigate between Planner/Editor and the Dashboard.',
+			'Dedicated attachments folder structure for scheduled tasks.',
+		],
+		changed: [
+			'Removed "Recommended" tag from Claudian backend dropdown for neutral backend selection.',
+			'Eliminated multi-select box hover selection bugs with modern tag chips.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Maintainer',
+			},
+		],
+	},
+	{
 		version: '2.1.7.3',
 		date: '2026-10-02',
 		title: 'Changelog Lifecycle Polish, Zero-Task Edge Cases & Conditional Review Settings',
