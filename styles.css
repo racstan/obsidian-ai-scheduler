@@ -390,6 +390,25 @@
 	flex-wrap: wrap;
 }
 
+.ai-scheduler-task-id-badge {
+	font-family: var(--font-monospace, monospace);
+	font-size: 11px;
+	color: var(--text-faint);
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	padding: 1px 6px;
+	border-radius: 4px;
+	cursor: pointer;
+	user-select: all;
+	transition: all 0.15s ease;
+}
+
+.ai-scheduler-task-id-badge:hover {
+	color: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+}
+
 .ai-scheduler-status-badge {
 	display: inline-flex;
 	align-items: center;

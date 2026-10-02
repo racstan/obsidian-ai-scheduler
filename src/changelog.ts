@@ -23,6 +23,34 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.7.8',
+		date: '2026-10-02',
+		title: 'Task ID Badges, Execution Confirmations & Smart Timeout Protection',
+		highlights: [
+			'Task ID Display & Copy: Every task card and modal displays a clean ID badge (e.g. ID: job-xxx) that copies to clipboard on click.',
+			'Action Confirmations: Added clear confirmation prompts when clicking "Run again", "Run now", or "Reset / Stop" to prevent accidental triggers.',
+			'Smart Timeout Protection: Reduced background AI agent timeout to 10 minutes with immediate Claudian tab error detection.',
+			'Live Elapsed Duration: Running task status displays real-time elapsed execution timer.',
+		],
+		added: [
+			'Interactive Task ID badges with one-click clipboard copying.',
+			'Confirmation dialog on "Run again" for missed/past tasks.',
+			'Confirmation dialog on "▶️ Run now" and "⏹️ Reset / Stop".',
+			'Real-time elapsed execution duration timer on active tasks.',
+		],
+		fixed: [
+			'Prevented background execution from hanging indefinitely by enforcing 10-minute timeout and live tab error inspection.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author & Lead Maintainer',
+			},
+		],
+	},
+	{
 		version: '2.1.7.7',
 		date: '2026-10-02',
 		title: 'Zero-Scroll Changelog Dialog with Always-Visible Action Buttons',

@@ -6,6 +6,28 @@ import { closeExistingSchedulerModals, makeButton, makeCard } from './dom';
 import { JobModal } from './JobModal';
 import { PlannerModal } from './PlannerModal';
 
+function formatDuration(isoString: string): string {
+	const ms = Date.now() - new Date(isoString).getTime();
+	if (ms < 0) return '0s';
+	const sec = Math.floor(ms / 1000);
+	if (sec < 60) return `${sec}s`;
+	const min = Math.floor(sec / 60);
+	const remSec = sec % 60;
+	return `${min}m ${remSec}s`;
+}
+
+function appendTaskIdBadge(container: HTMLElement, id: string): void {
+	const idBadge = container.createSpan({ cls: 'ai-scheduler-task-id-badge', text: `ID: ${id}` });
+	idBadge.setAttribute('title', 'Click to copy Task ID');
+	idBadge.onclick = (e) => {
+		e.stopPropagation();
+		if (typeof navigator !== 'undefined' && navigator.clipboard) {
+			navigator.clipboard.writeText(id);
+			new Notice(`Copied Task ID: ${id}`);
+		}
+	};
+}
+
 export class ConfirmModal extends Modal {
 	constructor(app: App, public message: string, public onConfirm: () => void) {
 		super(app);
@@ -178,6 +200,7 @@ export class AssistantModal extends Modal {
 			const copy = card.createDiv();
 			const titleRow = copy.createDiv({ cls: 'ai-scheduler-task-header' });
 			titleRow.createDiv({ cls: 'ai-scheduler-task-title', text: `#${job.taskNumber} · ${job.title}` });
+			appendTaskIdBadge(titleRow, job.id);
 
 			if (isRunning) {
 				const badge = titleRow.createSpan({ cls: 'ai-scheduler-status-badge ai-scheduler-status-running' });
@@ -189,7 +212,8 @@ export class AssistantModal extends Modal {
 
 			if (isRunning) {
 				const runInfo = copy.createDiv({ cls: 'ai-scheduler-task-next ai-scheduler-text-running' });
-				runInfo.setText(`⚡ Started execution at ${formatDate(job.lastRunAt || job.nextRunAt || new Date().toISOString())} · AI is generating results`);
+				const startTime = job.lastRunAt || job.nextRunAt || new Date().toISOString();
+				runInfo.setText(`⚡ Started execution at ${formatDate(startTime)} (${formatDuration(startTime)} elapsed) · AI is generating results`);
 			} else {
 				const nextText = job.nextRunAt ? `Next run: ${formatDate(job.nextRunAt)}` : (job.schedule.kind === 'event' ? '⚡ Trigger: On vault note modification' : '⏰ Next run: Not scheduled');
 				copy.createDiv({ cls: 'ai-scheduler-task-next', text: `⏰ ${nextText}` });
@@ -198,16 +222,28 @@ export class AssistantModal extends Modal {
 			const controls = card.createDiv({ cls: 'ai-scheduler-task-actions' });
 
 			if (isRunning) {
-				makeButton(controls, '⏹️ Reset / Stop', async () => {
-					await this.plugin.resetRunningJob(job);
-					new Notice(`Reset task #${job.taskNumber}.`);
-					this.render();
+				makeButton(controls, '⏹️ Reset / Stop', () => {
+					new ConfirmModal(
+						this.app,
+						`Reset and stop running task #${job.taskNumber} (${job.title})? If the AI backend is currently processing, it will be marked as cancelled/failed.`,
+						async () => {
+							await this.plugin.resetRunningJob(job);
+							new Notice(`Reset task #${job.taskNumber}.`);
+							this.render();
+						}
+					).open();
 				}, false, true);
 			} else {
-				makeButton(controls, '▶️ Run now', async () => {
-					new Notice(`Starting task #${job.taskNumber} now...`);
-					await this.plugin.runJobNow(job);
-					this.render();
+				makeButton(controls, '▶️ Run now', () => {
+					new ConfirmModal(
+						this.app,
+						`Run task #${job.taskNumber} (${job.title}) immediately? This will trigger background execution right now without waiting for its scheduled time slot.`,
+						async () => {
+							new Notice(`Starting task #${job.taskNumber} now...`);
+							await this.plugin.runJobNow(job);
+							this.render();
+						}
+					).open();
 				});
 			}
 
@@ -248,7 +284,10 @@ export class AssistantModal extends Modal {
 			for (const job of disabled) {
 				const card = makeCard(disabledList, 'ai-scheduler-task-card');
 				const copy = card.createDiv();
-				copy.createDiv({ cls: 'ai-scheduler-task-title', text: `#${job.taskNumber} · ${job.title}` });
+				const titleRow = copy.createDiv({ cls: 'ai-scheduler-task-header' });
+				titleRow.createDiv({ cls: 'ai-scheduler-task-title', text: `#${job.taskNumber} · ${job.title}` });
+				appendTaskIdBadge(titleRow, job.id);
+
 				copy.createDiv({ cls: 'ai-scheduler-task-meta', text: `${describeBinding(job)} · ${describeSchedule(job)}` });
 				copy.createDiv({ cls: 'ai-scheduler-task-paused', text: '⏸️ Paused (click Enable to schedule next run)' });
 				const controls = card.createDiv({ cls: 'ai-scheduler-task-actions' });
@@ -282,7 +321,10 @@ export class AssistantModal extends Modal {
 			for (const job of past) {
 				const card = makeCard(pastList, 'ai-scheduler-task-card');
 				const copy = card.createDiv();
-				copy.createDiv({ cls: 'ai-scheduler-task-title', text: `#${job.taskNumber} · ${job.title}` });
+				const titleRow = copy.createDiv({ cls: 'ai-scheduler-task-header' });
+				titleRow.createDiv({ cls: 'ai-scheduler-task-title', text: `#${job.taskNumber} · ${job.title}` });
+				appendTaskIdBadge(titleRow, job.id);
+
 				copy.createDiv({ cls: 'ai-scheduler-task-meta', text: `${describeBinding(job)} · ${job.lastStatus || job.status || 'completed'}${job.runCount ? ` · ${job.runCount} run${job.runCount === 1 ? '' : 's'}` : ''}` });
 				if (job.lastRunAt) {
 					copy.createDiv({ cls: 'ai-scheduler-task-paused', text: `Last ran: ${formatDate(job.lastRunAt)}` });
@@ -296,7 +338,17 @@ export class AssistantModal extends Modal {
 						}).open();
 					}, 50);
 				});
-				makeButton(controls, 'Run again', async () => { await this.plugin.retryJob(job); this.render(); });
+				makeButton(controls, 'Run again', () => {
+					new ConfirmModal(
+						this.app,
+						`Run task #${job.taskNumber} (${job.title}) immediately? It will execute right now in the background and will no longer be marked as past/missed.`,
+						async () => {
+							new Notice(`Starting task #${job.taskNumber} now...`);
+							await this.plugin.retryJob(job);
+							this.render();
+						}
+					).open();
+				});
 				makeButton(controls, 'Delete', () => {
 					new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
 						void (async () => {

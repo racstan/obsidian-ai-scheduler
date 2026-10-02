@@ -14,6 +14,18 @@ import { Job } from '../types';
 import { attachMentionSuggest } from './mentionSuggest';
 import { JobModal } from './JobModal';
 
+function appendTaskIdBadge(container: HTMLElement, id: string): void {
+	const idBadge = container.createSpan({ cls: 'ai-scheduler-task-id-badge', text: `ID: ${id}` });
+	idBadge.setAttribute('title', 'Click to copy Task ID');
+	idBadge.onclick = (e) => {
+		e.stopPropagation();
+		if (typeof navigator !== 'undefined' && navigator.clipboard) {
+			navigator.clipboard.writeText(id);
+			new Notice(`Copied Task ID: ${id}`);
+		}
+	};
+}
+
 export class PlannerModal extends Modal {
 	plugin: AISchedulerPlugin;
 	private plannedJobs: Job[] | null = null;
@@ -167,7 +179,9 @@ export class PlannerModal extends Modal {
 		for (const job of currentJobs) {
 			const card = shell.createDiv({ cls: 'ai-scheduler-planned-card' });
 			const top = card.createDiv({ cls: 'ai-scheduler-planned-header' });
-			top.createDiv({ cls: 'ai-scheduler-task-title', text: `#${job.taskNumber} · ${job.title}` });
+			const titleRow = top.createDiv({ cls: 'ai-scheduler-task-header' });
+			titleRow.createDiv({ cls: 'ai-scheduler-task-title', text: `#${job.taskNumber} · ${job.title}` });
+			appendTaskIdBadge(titleRow, job.id);
 
 			const actions = top.createDiv({ cls: 'ai-scheduler-planned-actions' });
 			makeButton(actions, '✏️ Edit', () => {

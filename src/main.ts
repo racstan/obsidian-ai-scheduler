@@ -558,8 +558,24 @@ export class AISchedulerPlugin extends Plugin {
 				suffix += 1;
 			}
 		}
-		if (existing instanceof TFile) await this.app.vault.modify(existing, content);
-		else await this.app.vault.create(path, content);
+		if (existing instanceof TFile) {
+			await this.app.vault.modify(existing, content);
+		} else {
+			try {
+				await this.app.vault.create(path, content);
+			} catch (err) {
+				const retryFile = this.app.vault.getAbstractFileByPath(path);
+				if (retryFile instanceof TFile) {
+					await this.app.vault.modify(retryFile, content);
+				} else if (String(err || '').includes('already exists')) {
+					try {
+						await this.app.vault.adapter.write(path, content);
+					} catch { /* ignore if already written */ }
+				} else {
+					throw err;
+				}
+			}
+		}
 		return path;
 	}
 

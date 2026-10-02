@@ -10,7 +10,7 @@ import { App, Notice, TFile, TFolder } from 'obsidian';
 import { AISettings, BACKEND_INFO, Job } from './types';
 import { contentFromMessage, sendSystemNotification, sleep, withTimeout } from './util';
 
-export const AGENT_TIMEOUT_MS = 30 * 60 * 1000;
+export const AGENT_TIMEOUT_MS = 10 * 60 * 1000;
 
 export interface ModelOption {
 	value: string;
@@ -54,8 +54,11 @@ export interface ClaudianTab {
 	id: string;
 	conversationId?: string;
 	isStreaming?: boolean;
+	error?: unknown;
 	state?: {
 		isStreaming?: boolean;
+		error?: unknown;
+		lastError?: unknown;
 		messages?: unknown[];
 	};
 	controllers?: {
@@ -218,8 +221,16 @@ export function tabIsBusy(view: ClaudianView | null, tab: ClaudianTab | null): b
 export async function waitForTabIdle(view: ClaudianView | null, tab: ClaudianTab | null): Promise<void> {
 	const started = Date.now();
 	while (tabIsBusy(view, tab)) {
-		if (Date.now() - started > AGENT_TIMEOUT_MS) throw new Error('Claudian chat stayed busy for 30 minutes');
+		if (tab?.state?.error) {
+			throw new Error(`Claudian reported an error: ${tab.state.error}`);
+		}
+		if (Date.now() - started > AGENT_TIMEOUT_MS) {
+			throw new Error(`AI task timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes. The AI backend did not finish or may be waiting for tool execution/confirmation in Claudian.`);
+		}
 		await sleep(1000);
+	}
+	if (tab?.state?.error) {
+		throw new Error(`Claudian reported an error: ${tab.state.error}`);
 	}
 }
 
@@ -281,7 +292,7 @@ export async function sendToClaudian(
 		turnRequest.externalContextPaths = context.externalContextPaths;
 	}
 	const send = controller.sendMessage({ content: prompt, turnRequestOverride: turnRequest });
-	await withTimeout(send, AGENT_TIMEOUT_MS, 'AI task timed out after 30 minutes');
+	await withTimeout(send, AGENT_TIMEOUT_MS, `AI task timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes`);
 	await waitForTabIdle(view, active);
 	await sleep(300);
 	return lastAssistantReply(host, view, active, beforeCount);

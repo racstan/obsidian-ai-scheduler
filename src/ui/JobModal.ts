@@ -71,7 +71,17 @@ export class JobModal extends Modal {
 		shell.createEl('p', { text: 'Adjust the schedule directly, or describe a change in plain language and let AI rewrite it.', cls: 'ai-scheduler-subtitle' });
 
 		const detailsCard = makeCard(shell, 'ai-scheduler-card-tight', 'ai-scheduler-card-flush');
-		detailsCard.createDiv({ cls: 'ai-scheduler-lead ai-scheduler-gap-8', text: 'Task Details' });
+		const detailsHeader = detailsCard.createDiv({ cls: 'ai-scheduler-task-header ai-scheduler-gap-8' });
+		detailsHeader.createDiv({ cls: 'ai-scheduler-lead', text: `Task #${this.job.taskNumber} Details` });
+		const idBadge = detailsHeader.createSpan({ cls: 'ai-scheduler-task-id-badge', text: `ID: ${this.job.id}` });
+		idBadge.setAttribute('title', 'Click to copy Task ID');
+		idBadge.onclick = (e) => {
+			e.stopPropagation();
+			if (typeof navigator !== 'undefined' && navigator.clipboard) {
+				navigator.clipboard.writeText(this.job.id);
+				new Notice(`Copied Task ID: ${this.job.id}`);
+			}
+		};
 
 		detailsCard.createDiv({ cls: 'ai-scheduler-form-label', text: 'Task title' });
 		const titleInput = detailsCard.createEl('input', {

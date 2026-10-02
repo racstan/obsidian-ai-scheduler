@@ -1008,7 +1008,7 @@ function getPathsContext(app, paths) {
 
 // src/backends.ts
 var import_obsidian2 = require("obsidian");
-var AGENT_TIMEOUT_MS = 30 * 60 * 1e3;
+var AGENT_TIMEOUT_MS = 10 * 60 * 1e3;
 function pluginRegistry(host) {
   var _a;
   const app = host.app;
@@ -1068,10 +1068,19 @@ function tabIsBusy(view, tab) {
   return Boolean(working || ((_a = tab.state) == null ? void 0 : _a.isStreaming) || tab.isStreaming || (item == null ? void 0 : item.isWorking) || (item == null ? void 0 : item.isStreaming));
 }
 async function waitForTabIdle(view, tab) {
+  var _a, _b;
   const started = Date.now();
   while (tabIsBusy(view, tab)) {
-    if (Date.now() - started > AGENT_TIMEOUT_MS) throw new Error("Claudian chat stayed busy for 30 minutes");
+    if ((_a = tab == null ? void 0 : tab.state) == null ? void 0 : _a.error) {
+      throw new Error(`Claudian reported an error: ${tab.state.error}`);
+    }
+    if (Date.now() - started > AGENT_TIMEOUT_MS) {
+      throw new Error(`AI task timed out after ${Math.round(AGENT_TIMEOUT_MS / 6e4)} minutes. The AI backend did not finish or may be waiting for tool execution/confirmation in Claudian.`);
+    }
     await sleep(1e3);
+  }
+  if ((_b = tab == null ? void 0 : tab.state) == null ? void 0 : _b.error) {
+    throw new Error(`Claudian reported an error: ${tab.state.error}`);
   }
 }
 function getTabMessages(host, view, tab) {
@@ -1124,7 +1133,7 @@ async function sendToClaudian(host, prompt, tabNumber = host.settings.assistantT
     turnRequest.externalContextPaths = context.externalContextPaths;
   }
   const send = controller.sendMessage({ content: prompt, turnRequestOverride: turnRequest });
-  await withTimeout(send, AGENT_TIMEOUT_MS, "AI task timed out after 30 minutes");
+  await withTimeout(send, AGENT_TIMEOUT_MS, `AI task timed out after ${Math.round(AGENT_TIMEOUT_MS / 6e4)} minutes`);
   await waitForTabIdle(view, active);
   await sleep(300);
   return lastAssistantReply(host, view, active, beforeCount);
@@ -1717,7 +1726,17 @@ var JobModal = class extends import_obsidian4.Modal {
     shell.createEl("h2", { text: "Edit scheduled task" });
     shell.createEl("p", { text: "Adjust the schedule directly, or describe a change in plain language and let AI rewrite it.", cls: "ai-scheduler-subtitle" });
     const detailsCard = makeCard(shell, "ai-scheduler-card-tight", "ai-scheduler-card-flush");
-    detailsCard.createDiv({ cls: "ai-scheduler-lead ai-scheduler-gap-8", text: "Task Details" });
+    const detailsHeader = detailsCard.createDiv({ cls: "ai-scheduler-task-header ai-scheduler-gap-8" });
+    detailsHeader.createDiv({ cls: "ai-scheduler-lead", text: `Task #${this.job.taskNumber} Details` });
+    const idBadge = detailsHeader.createSpan({ cls: "ai-scheduler-task-id-badge", text: `ID: ${this.job.id}` });
+    idBadge.setAttribute("title", "Click to copy Task ID");
+    idBadge.onclick = (e) => {
+      e.stopPropagation();
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        navigator.clipboard.writeText(this.job.id);
+        new import_obsidian4.Notice(`Copied Task ID: ${this.job.id}`);
+      }
+    };
     detailsCard.createDiv({ cls: "ai-scheduler-form-label", text: "Task title" });
     const titleInput = detailsCard.createEl("input", {
       type: "text",
@@ -2051,6 +2070,17 @@ var JobModal = class extends import_obsidian4.Modal {
 
 // src/ui/PlannerModal.ts
 var import_obsidian5 = require("obsidian");
+function appendTaskIdBadge(container, id2) {
+  const idBadge = container.createSpan({ cls: "ai-scheduler-task-id-badge", text: `ID: ${id2}` });
+  idBadge.setAttribute("title", "Click to copy Task ID");
+  idBadge.onclick = (e) => {
+    e.stopPropagation();
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(id2);
+      new import_obsidian5.Notice(`Copied Task ID: ${id2}`);
+    }
+  };
+}
 var PlannerModal = class _PlannerModal extends import_obsidian5.Modal {
   constructor(app, plugin, plannedJobs = null) {
     super(app);
@@ -2186,7 +2216,9 @@ var PlannerModal = class _PlannerModal extends import_obsidian5.Modal {
     for (const job of currentJobs) {
       const card = shell.createDiv({ cls: "ai-scheduler-planned-card" });
       const top = card.createDiv({ cls: "ai-scheduler-planned-header" });
-      top.createDiv({ cls: "ai-scheduler-task-title", text: `#${job.taskNumber} \xB7 ${job.title}` });
+      const titleRow = top.createDiv({ cls: "ai-scheduler-task-header" });
+      titleRow.createDiv({ cls: "ai-scheduler-task-title", text: `#${job.taskNumber} \xB7 ${job.title}` });
+      appendTaskIdBadge(titleRow, job.id);
       const actions = top.createDiv({ cls: "ai-scheduler-planned-actions" });
       makeButton(actions, "\u270F\uFE0F Edit", () => {
         this.close();
@@ -2243,6 +2275,26 @@ var PlannerModal = class _PlannerModal extends import_obsidian5.Modal {
 };
 
 // src/ui/AssistantModal.ts
+function formatDuration(isoString) {
+  const ms = Date.now() - new Date(isoString).getTime();
+  if (ms < 0) return "0s";
+  const sec = Math.floor(ms / 1e3);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  const remSec = sec % 60;
+  return `${min}m ${remSec}s`;
+}
+function appendTaskIdBadge2(container, id2) {
+  const idBadge = container.createSpan({ cls: "ai-scheduler-task-id-badge", text: `ID: ${id2}` });
+  idBadge.setAttribute("title", "Click to copy Task ID");
+  idBadge.onclick = (e) => {
+    e.stopPropagation();
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(id2);
+      new import_obsidian6.Notice(`Copied Task ID: ${id2}`);
+    }
+  };
+}
 var ConfirmModal = class extends import_obsidian6.Modal {
   constructor(app, message, onConfirm) {
     super(app);
@@ -2394,6 +2446,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
       const copy = card.createDiv();
       const titleRow = copy.createDiv({ cls: "ai-scheduler-task-header" });
       titleRow.createDiv({ cls: "ai-scheduler-task-title", text: `#${job.taskNumber} \xB7 ${job.title}` });
+      appendTaskIdBadge2(titleRow, job.id);
       if (isRunning) {
         const badge = titleRow.createSpan({ cls: "ai-scheduler-status-badge ai-scheduler-status-running" });
         badge.createSpan({ cls: "ai-scheduler-spinner-tiny" });
@@ -2402,23 +2455,36 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
       copy.createDiv({ cls: "ai-scheduler-task-meta", text: `${describeBinding(job)} \xB7 ${describeSchedule(job)}${job.runCount ? ` \xB7 ${job.runCount} run${job.runCount === 1 ? "" : "s"}` : ""}` });
       if (isRunning) {
         const runInfo = copy.createDiv({ cls: "ai-scheduler-task-next ai-scheduler-text-running" });
-        runInfo.setText(`\u26A1 Started execution at ${formatDate(job.lastRunAt || job.nextRunAt || (/* @__PURE__ */ new Date()).toISOString())} \xB7 AI is generating results`);
+        const startTime = job.lastRunAt || job.nextRunAt || (/* @__PURE__ */ new Date()).toISOString();
+        runInfo.setText(`\u26A1 Started execution at ${formatDate(startTime)} (${formatDuration(startTime)} elapsed) \xB7 AI is generating results`);
       } else {
         const nextText = job.nextRunAt ? `Next run: ${formatDate(job.nextRunAt)}` : job.schedule.kind === "event" ? "\u26A1 Trigger: On vault note modification" : "\u23F0 Next run: Not scheduled";
         copy.createDiv({ cls: "ai-scheduler-task-next", text: `\u23F0 ${nextText}` });
       }
       const controls = card.createDiv({ cls: "ai-scheduler-task-actions" });
       if (isRunning) {
-        makeButton(controls, "\u23F9\uFE0F Reset / Stop", async () => {
-          await this.plugin.resetRunningJob(job);
-          new import_obsidian6.Notice(`Reset task #${job.taskNumber}.`);
-          this.render();
+        makeButton(controls, "\u23F9\uFE0F Reset / Stop", () => {
+          new ConfirmModal(
+            this.app,
+            `Reset and stop running task #${job.taskNumber} (${job.title})? If the AI backend is currently processing, it will be marked as cancelled/failed.`,
+            async () => {
+              await this.plugin.resetRunningJob(job);
+              new import_obsidian6.Notice(`Reset task #${job.taskNumber}.`);
+              this.render();
+            }
+          ).open();
         }, false, true);
       } else {
-        makeButton(controls, "\u25B6\uFE0F Run now", async () => {
-          new import_obsidian6.Notice(`Starting task #${job.taskNumber} now...`);
-          await this.plugin.runJobNow(job);
-          this.render();
+        makeButton(controls, "\u25B6\uFE0F Run now", () => {
+          new ConfirmModal(
+            this.app,
+            `Run task #${job.taskNumber} (${job.title}) immediately? This will trigger background execution right now without waiting for its scheduled time slot.`,
+            async () => {
+              new import_obsidian6.Notice(`Starting task #${job.taskNumber} now...`);
+              await this.plugin.runJobNow(job);
+              this.render();
+            }
+          ).open();
         });
       }
       makeButton(controls, "Edit", () => {
@@ -2455,7 +2521,9 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
       for (const job of disabled) {
         const card = makeCard(disabledList, "ai-scheduler-task-card");
         const copy = card.createDiv();
-        copy.createDiv({ cls: "ai-scheduler-task-title", text: `#${job.taskNumber} \xB7 ${job.title}` });
+        const titleRow = copy.createDiv({ cls: "ai-scheduler-task-header" });
+        titleRow.createDiv({ cls: "ai-scheduler-task-title", text: `#${job.taskNumber} \xB7 ${job.title}` });
+        appendTaskIdBadge2(titleRow, job.id);
         copy.createDiv({ cls: "ai-scheduler-task-meta", text: `${describeBinding(job)} \xB7 ${describeSchedule(job)}` });
         copy.createDiv({ cls: "ai-scheduler-task-paused", text: "\u23F8\uFE0F Paused (click Enable to schedule next run)" });
         const controls = card.createDiv({ cls: "ai-scheduler-task-actions" });
@@ -2488,7 +2556,9 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
       for (const job of past) {
         const card = makeCard(pastList, "ai-scheduler-task-card");
         const copy = card.createDiv();
-        copy.createDiv({ cls: "ai-scheduler-task-title", text: `#${job.taskNumber} \xB7 ${job.title}` });
+        const titleRow = copy.createDiv({ cls: "ai-scheduler-task-header" });
+        titleRow.createDiv({ cls: "ai-scheduler-task-title", text: `#${job.taskNumber} \xB7 ${job.title}` });
+        appendTaskIdBadge2(titleRow, job.id);
         copy.createDiv({ cls: "ai-scheduler-task-meta", text: `${describeBinding(job)} \xB7 ${job.lastStatus || job.status || "completed"}${job.runCount ? ` \xB7 ${job.runCount} run${job.runCount === 1 ? "" : "s"}` : ""}` });
         if (job.lastRunAt) {
           copy.createDiv({ cls: "ai-scheduler-task-paused", text: `Last ran: ${formatDate(job.lastRunAt)}` });
@@ -2502,9 +2572,16 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
             }).open();
           }, 50);
         });
-        makeButton(controls, "Run again", async () => {
-          await this.plugin.retryJob(job);
-          this.render();
+        makeButton(controls, "Run again", () => {
+          new ConfirmModal(
+            this.app,
+            `Run task #${job.taskNumber} (${job.title}) immediately? It will execute right now in the background and will no longer be marked as past/missed.`,
+            async () => {
+              new import_obsidian6.Notice(`Starting task #${job.taskNumber} now...`);
+              await this.plugin.retryJob(job);
+              this.render();
+            }
+          ).open();
         });
         makeButton(controls, "Delete", () => {
           new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
@@ -2581,6 +2658,34 @@ var import_obsidian7 = require("obsidian");
 
 // src/changelog.ts
 var CHANGELOG_DATA = [
+  {
+    version: "2.1.7.8",
+    date: "2026-10-02",
+    title: "Task ID Badges, Execution Confirmations & Smart Timeout Protection",
+    highlights: [
+      "Task ID Display & Copy: Every task card and modal displays a clean ID badge (e.g. ID: job-xxx) that copies to clipboard on click.",
+      'Action Confirmations: Added clear confirmation prompts when clicking "Run again", "Run now", or "Reset / Stop" to prevent accidental triggers.',
+      "Smart Timeout Protection: Reduced background AI agent timeout to 10 minutes with immediate Claudian tab error detection.",
+      "Live Elapsed Duration: Running task status displays real-time elapsed execution timer."
+    ],
+    added: [
+      "Interactive Task ID badges with one-click clipboard copying.",
+      'Confirmation dialog on "Run again" for missed/past tasks.',
+      'Confirmation dialog on "\u25B6\uFE0F Run now" and "\u23F9\uFE0F Reset / Stop".',
+      "Real-time elapsed execution duration timer on active tasks."
+    ],
+    fixed: [
+      "Prevented background execution from hanging indefinitely by enforcing 10-minute timeout and live tab error inspection."
+    ],
+    contributors: [
+      {
+        name: "Rachit Asthana",
+        username: "racstan",
+        url: "https://github.com/racstan",
+        role: "Author & Lead Maintainer"
+      }
+    ]
+  },
   {
     version: "2.1.7.7",
     date: "2026-10-02",
@@ -4226,8 +4331,25 @@ ${report}`);
         suffix += 1;
       }
     }
-    if (existing instanceof import_obsidian10.TFile) await this.app.vault.modify(existing, content);
-    else await this.app.vault.create(path, content);
+    if (existing instanceof import_obsidian10.TFile) {
+      await this.app.vault.modify(existing, content);
+    } else {
+      try {
+        await this.app.vault.create(path, content);
+      } catch (err) {
+        const retryFile = this.app.vault.getAbstractFileByPath(path);
+        if (retryFile instanceof import_obsidian10.TFile) {
+          await this.app.vault.modify(retryFile, content);
+        } else if (String(err || "").includes("already exists")) {
+          try {
+            await this.app.vault.adapter.write(path, content);
+          } catch (e) {
+          }
+        } else {
+          throw err;
+        }
+      }
+    }
     return path;
   }
   async ensureFolder(folder) {

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.7.8] - 2026-10-02
+
+### Highlights
+- **Task ID Badges & One-Click Copy**: Every scheduled, running, disabled, and past task card now includes an explicit Task ID badge (`ID: job-xxx`) with instant click-to-copy support.
+- **Action Confirmations**: Added confirmation dialogs when clicking "Run again", "▶️ Run now", and "⏹️ Reset / Stop" to give clear visibility and control before executing.
+- **Smart Timeout & Error Inspection**: Reduced background AI execution timeout to 10 minutes (down from 30m) with live Claudian error state detection.
+- **Live Elapsed Time**: Running tasks display the exact elapsed duration (`Xm Ys elapsed`) next to the execution start time.
+
+### Added
+- Interactive Task ID badges with clipboard copy feedback.
+- Confirmation dialogs for "Run again", "▶️ Run now", and "⏹️ Reset / Stop".
+- Live running duration counter.
+
+### Fixed
+- Prevented long background stalls by shortening agent execution timeout and inspecting tab errors.
+
+### Contributors
+- [@racstan](https://github.com/racstan) (Rachit Asthana)
+
+---
+
 ## [2.1.7.7] - 2026-10-02
 
 ### Highlights
