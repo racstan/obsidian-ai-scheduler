@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.7.1] - 2026-10-02
+
+### Highlights
+- **Dynamic AI Backend Configuration**: Unconfigured/None mode with clear guidance and conditional model visibility.
+- **Categorized Settings**: Clean visual sections for AI Backend, Execution & Reliability, Reviews, and Markdown Sync.
+- **Per-Task Next Run Visibility**: Explicit next run timestamps displayed on each task card.
+- **Theme & Modal Fixes**: Seamless dark/light theme styling and modal stability fixes.
+
+### Added
+- Default unselected placeholder in AI backend dropdown ("Select an AI backend...").
+- Per-task next run indicator in dashboard cards and scheduled task list.
+- Categorized settings layout with intuitive section headers and descriptions.
+
+### Changed
+- Backend model pickers dynamically show or hide based on the active backend.
+- Refined dark and light mode contrast across all modal views.
+
+### Fixed
+- Fixed DOM class token parsing exceptions in Planner and Job modals.
+- Fixed ambiguous dashboard next run stat clarity.
+
+### Contributors
+- [@racstan](https://github.com/racstan) (Rachit Asthana)
+
+---
+
 ## [2.1.7] - 2026-09-30
 
 ### Highlights

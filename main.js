@@ -2074,6 +2074,38 @@ var import_obsidian7 = require("obsidian");
 // src/changelog.ts
 var CHANGELOG_DATA = [
   {
+    version: "2.1.7.1",
+    date: "2026-10-02",
+    title: "Dynamic AI Backend Configuration, Categorized Settings & UI Polish",
+    highlights: [
+      "Dynamic AI Backend Configuration: Unconfigured/None mode with clear guidance and conditional model visibility.",
+      "Categorized Settings: Clean visual sections for AI Backend, Execution & Reliability, Reviews, and Markdown Sync.",
+      "Per-Task Next Run Visibility: Explicit next run timestamps displayed on each task card.",
+      "Theme & Modal Fixes: Seamless dark/light theme styling and modal stability fixes."
+    ],
+    added: [
+      'Default unselected placeholder in AI backend dropdown ("Select an AI backend...").',
+      "Per-task next run indicator in dashboard cards and scheduled task list.",
+      "Categorized settings layout with intuitive section headers and descriptions."
+    ],
+    changed: [
+      "Backend model pickers dynamically show or hide based on the active backend.",
+      "Refined dark and light mode contrast across all modal views."
+    ],
+    fixed: [
+      "Fixed DOM class token parsing exceptions in Planner and Job modals.",
+      "Fixed ambiguous dashboard next run stat clarity."
+    ],
+    contributors: [
+      {
+        name: "Rachit Asthana",
+        username: "racstan",
+        url: "https://github.com/racstan",
+        role: "Maintainer"
+      }
+    ]
+  },
+  {
     version: "2.1.7",
     date: "2026-09-30",
     title: "Planner UI Overhaul, Backend Readiness Alerts & Settings Shortcuts",
