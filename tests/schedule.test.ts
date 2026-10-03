@@ -187,3 +187,18 @@ test('extended cadences calculate correct next runs and descriptions', () => {
 	assert.equal(nextRun, at(2026, 10, 3, 14, 0).toISOString());
 });
 
+test('parseStoredData preserves and normalizes deletedJobs', () => {
+	const stored = {
+		version: 6,
+		jobs: [{ id: 'active-1', title: 'Active Task', prompt: 'hello', schedule: { kind: 'daily', time: '10:00' } }],
+		deletedJobs: [{ id: 'deleted-1', title: 'Deleted Task', prompt: 'bye', schedule: { kind: 'once', at: '2026-10-04T12:00:00.000Z' }, enabled: false }],
+		activity: [],
+	};
+	const parsed = parseStoredData(stored);
+	assert.equal(parsed.jobs.length, 1);
+	assert.equal(parsed.jobs[0].id, 'active-1');
+	assert.equal(parsed.deletedJobs.length, 1);
+	assert.equal(parsed.deletedJobs[0].id, 'deleted-1');
+	assert.equal(parsed.deletedJobs[0].title, 'Deleted Task');
+});
+

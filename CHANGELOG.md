@@ -5,6 +5,30 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.7.15] - 2026-10-03
+
+### Highlights
+- **Task Trash & Restoration**: Deleted tasks are now safely moved to a Deleted Tasks trash section and can be restored back to your schedule with a single click.
+- **Bulk Trash Management**: Added "Restore all" and "Empty trash" controls to restore or permanently purge multiple deleted tasks.
+- **Restore Command Palette Support**: Added "AI Scheduler: Restore last deleted task" command for fast keyboard-driven undo.
+- **Interactive Task Inspection**: Deleted tasks can be inspected in the task detail viewer, restored, or permanently deleted directly.
+
+### Added
+- Added Deleted Tasks section with Restore and Delete forever actions in the dashboard.
+- Added "Restore all" and "Empty trash" bulk action controls in the trash section.
+- Added "AI Scheduler: Restore last deleted task" command.
+- Added task restoration and permanent deletion support in the Task Details modal.
+- Added RESTORED activity logging and badge styling.
+
+### Changed
+- Updated delete confirmation dialogs and notices to inform users that deleted tasks can be restored from trash.
+- Improved Activity feed ID click handling to find and inspect deleted tasks seamlessly.
+
+### Contributors
+- [@racstan](https://github.com/racstan) (Rachit Asthana)
+
+---
+
 ## [2.1.7.14] - 2026-10-03
 
 ### Highlights

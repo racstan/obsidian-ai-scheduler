@@ -992,8 +992,9 @@ function parseStoredData(data) {
     schedule: { kind: "once", at: task.sendAt },
     enabled: task.status === "pending"
   })) : [];
+  const deletedJobs = Array.isArray(stored.deletedJobs) ? stored.deletedJobs.map((job) => normalizeJob(job)) : [];
   const activity = Array.isArray(stored.activity) ? stored.activity.slice(-50) : [];
-  return { settings, jobs, activity };
+  return { settings, jobs, deletedJobs, activity };
 }
 
 // src/engine.ts
@@ -2977,34 +2978,60 @@ var TaskViewModal = class extends import_obsidian6.Modal {
     }
     const footer = shell.createDiv({ cls: "ai-scheduler-footer" });
     makeButton(footer, "Close", () => this.close());
-    makeButton(footer, "Run again", () => {
-      new ConfirmModal(
-        this.app,
-        `Run task #${this.job.taskNumber} (${this.job.title}) immediately? It will execute in the background now.`,
-        () => {
-          void (async () => {
-            new import_obsidian6.Notice(`Starting task #${this.job.taskNumber} now...`);
-            await this.plugin.retryJob(this.job);
-            this.close();
-            if (this.onBack) this.onBack();
-          })();
-        }
-      ).open();
-    });
-    makeButton(footer, "Delete task", () => {
-      new ConfirmModal(
-        this.app,
-        `Delete task #${this.job.taskNumber}? This cannot be undone.`,
-        () => {
-          void (async () => {
-            await this.plugin.deleteJob(this.job);
-            new import_obsidian6.Notice(`Deleted task #${this.job.taskNumber}.`);
-            this.close();
-            if (this.onBack) this.onBack();
-          })();
-        }
-      ).open();
-    }, false, true);
+    const isDeleted = this.plugin.deletedJobs.some((j) => j.id === this.job.id);
+    if (isDeleted) {
+      makeButton(footer, "Restore task", () => {
+        void (async () => {
+          await this.plugin.restoreJob(this.job);
+          new import_obsidian6.Notice(`Restored task #${this.job.taskNumber}: ${this.job.title}`);
+          this.close();
+          if (this.onBack) this.onBack();
+        })();
+      });
+      makeButton(footer, "Delete forever", () => {
+        new ConfirmModal(
+          this.app,
+          `Permanently delete task #${this.job.taskNumber} (${this.job.title})? This cannot be undone.`,
+          () => {
+            void (async () => {
+              await this.plugin.permanentlyDeleteJob(this.job);
+              new import_obsidian6.Notice(`Permanently deleted task #${this.job.taskNumber}.`);
+              this.close();
+              if (this.onBack) this.onBack();
+            })();
+          }
+        ).open();
+      }, false, true);
+    } else {
+      makeButton(footer, "Run again", () => {
+        new ConfirmModal(
+          this.app,
+          `Run task #${this.job.taskNumber} (${this.job.title}) immediately? It will execute in the background now.`,
+          () => {
+            void (async () => {
+              new import_obsidian6.Notice(`Starting task #${this.job.taskNumber} now...`);
+              await this.plugin.retryJob(this.job);
+              this.close();
+              if (this.onBack) this.onBack();
+            })();
+          }
+        ).open();
+      });
+      makeButton(footer, "Delete task", () => {
+        new ConfirmModal(
+          this.app,
+          `Delete task #${this.job.taskNumber}? It will be moved to Deleted tasks and can be restored.`,
+          () => {
+            void (async () => {
+              await this.plugin.deleteJob(this.job);
+              new import_obsidian6.Notice(`Deleted task #${this.job.taskNumber}. You can restore it from Deleted tasks.`);
+              this.close();
+              if (this.onBack) this.onBack();
+            })();
+          }
+        ).open();
+      }, false, true);
+    }
   }
   onClose() {
     this.contentEl.empty();
@@ -3217,11 +3244,11 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
       makeButton(bulkActions, "Delete all", () => {
         new ConfirmModal(
           this.app,
-          `Delete all ${userJobs.length} tasks? This cannot be undone.`,
+          `Delete all ${userJobs.length} tasks? They will be moved to Deleted tasks and can be restored.`,
           () => {
             void (async () => {
               const count = await this.plugin.deleteAllJobs();
-              new import_obsidian7.Notice(`Deleted ${count} tasks`);
+              new import_obsidian7.Notice(`Deleted ${count} tasks. You can restore them from Deleted tasks.`);
               this.render();
             })();
           }
@@ -3311,9 +3338,10 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
         }, false, false);
       }
       makeButton(controls, "Delete", () => {
-        new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
+        new ConfirmModal(this.app, `Delete task #${job.taskNumber}? It will be moved to Deleted tasks and can be restored.`, () => {
           void (async () => {
             await this.plugin.deleteJob(job);
+            new import_obsidian7.Notice(`Deleted task #${job.taskNumber}. You can restore it from Deleted tasks.`);
             this.render();
           })();
         }).open();
@@ -3352,9 +3380,10 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
           this.render();
         });
         makeButton(controls, "Delete", () => {
-          new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
+          new ConfirmModal(this.app, `Delete task #${job.taskNumber}? It will be moved to Deleted tasks and can be restored.`, () => {
             void (async () => {
               await this.plugin.deleteJob(job);
+              new import_obsidian7.Notice(`Deleted task #${job.taskNumber}. You can restore it from Deleted tasks.`);
               this.render();
             })();
           }).open();
@@ -3398,12 +3427,79 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
           ).open();
         });
         makeButton(controls, "Delete", () => {
-          new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
+          new ConfirmModal(this.app, `Delete task #${job.taskNumber}? It will be moved to Deleted tasks and can be restored.`, () => {
             void (async () => {
               await this.plugin.deleteJob(job);
+              new import_obsidian7.Notice(`Deleted task #${job.taskNumber}. You can restore it from Deleted tasks.`);
               this.render();
             })();
           }).open();
+        }, false, true);
+      }
+    }
+    if (this.plugin.deletedJobs.length > 0) {
+      const deletedHeading = this.renderSection(shell, "Deleted tasks", "Tasks in trash \xB7 Click Restore to recover");
+      const deletedBadge = deletedHeading.createSpan({ cls: "ai-scheduler-count-badge ai-scheduler-badge-count", text: String(this.plugin.deletedJobs.length) });
+      const trashActions = shell.createDiv({ cls: "ai-scheduler-row-actions" });
+      makeButton(trashActions, "Restore all", () => {
+        new ConfirmModal(
+          this.app,
+          `Restore all ${this.plugin.deletedJobs.length} deleted tasks?`,
+          () => {
+            void (async () => {
+              const count = await this.plugin.restoreAllJobs();
+              new import_obsidian7.Notice(`Restored ${count} tasks.`);
+              this.render();
+            })();
+          }
+        ).open();
+      });
+      makeButton(trashActions, "Empty trash", () => {
+        new ConfirmModal(
+          this.app,
+          `Permanently delete all ${this.plugin.deletedJobs.length} tasks in trash? This cannot be undone.`,
+          () => {
+            void (async () => {
+              const count = await this.plugin.emptyTrash();
+              new import_obsidian7.Notice(`Permanently deleted ${count} tasks.`);
+              this.render();
+            })();
+          }
+        ).open();
+      }, false, true);
+      const deletedList = shell.createDiv({ cls: "ai-scheduler-deleted-tasks-scroll" });
+      for (const job of this.plugin.deletedJobs) {
+        const card = makeCard(deletedList, "ai-scheduler-task-card");
+        const copy = card.createDiv();
+        const titleRow = copy.createDiv({ cls: "ai-scheduler-task-header" });
+        titleRow.createDiv({ cls: "ai-scheduler-task-title", text: `#${job.taskNumber} \xB7 ${job.title}` });
+        appendTaskIdBadge2(titleRow, job.id);
+        titleRow.createSpan({ cls: "ai-scheduler-act-badge ai-scheduler-act-deleted", text: "TRASH" });
+        copy.createDiv({ cls: "ai-scheduler-task-meta", text: `${describeBinding(job)} \xB7 ${describeSchedule(job)}` });
+        if (job.prompt) {
+          const promptSnippet = job.prompt.length > 100 ? `${job.prompt.slice(0, 100)}...` : job.prompt;
+          copy.createDiv({ cls: "ai-scheduler-task-prompt", text: promptSnippet });
+        }
+        const controls = card.createDiv({ cls: "ai-scheduler-task-actions" });
+        makeButton(controls, "Restore", () => {
+          void (async () => {
+            await this.plugin.restoreJob(job);
+            new import_obsidian7.Notice(`Restored task #${job.taskNumber}: ${job.title}`);
+            this.render();
+          })();
+        });
+        makeButton(controls, "Delete forever", () => {
+          new ConfirmModal(
+            this.app,
+            `Permanently delete task #${job.taskNumber} (${job.title})? This cannot be undone.`,
+            () => {
+              void (async () => {
+                await this.plugin.permanentlyDeleteJob(job);
+                new import_obsidian7.Notice(`Permanently deleted task #${job.taskNumber}.`);
+                this.render();
+              })();
+            }
+          ).open();
         }, false, true);
       }
     }
@@ -3430,7 +3526,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
           idBadge.setAttribute("title", "Click to view task details and files");
           idBadge.onclick = (e) => {
             e.stopPropagation();
-            const target = this.plugin.jobs.find((j) => j.id === event.jobId);
+            const target = this.plugin.jobs.find((j) => j.id === event.jobId) || this.plugin.deletedJobs.find((j) => j.id === event.jobId);
             if (target) {
               this.close();
               window.setTimeout(() => {
@@ -3439,7 +3535,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
                 }).open();
               }, 50);
             } else {
-              new import_obsidian7.Notice(`Task ${event.jobId} is no longer in the schedule.`);
+              new import_obsidian7.Notice(`Task ${event.jobId} is no longer available.`);
             }
           };
         }
@@ -3461,6 +3557,8 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
         return "RESET";
       case "deleted":
         return "DELETED";
+      case "restored":
+        return "RESTORED";
       case "status":
         return "STATUS";
       default:
@@ -3490,6 +3588,36 @@ var import_obsidian8 = require("obsidian");
 
 // src/changelog.ts
 var CHANGELOG_DATA = [
+  {
+    version: "2.1.7.15",
+    date: "2026-10-03",
+    title: "Task Trash & Restoration, Quick Undo & Trash Management",
+    highlights: [
+      "Task Trash & Restoration: Deleted tasks are now safely moved to a Deleted Tasks trash section and can be restored back to your schedule with a single click.",
+      'Bulk Trash Management: Added "Restore all" and "Empty trash" controls to restore or permanently purge multiple deleted tasks.',
+      'Restore Command Palette Support: Added "AI Scheduler: Restore last deleted task" command for fast keyboard-driven undo.',
+      "Interactive Task Inspection: Deleted tasks can be inspected in the task detail viewer, restored, or permanently deleted directly."
+    ],
+    added: [
+      "Added Deleted Tasks section with Restore and Delete forever actions in the dashboard.",
+      'Added "Restore all" and "Empty trash" bulk action controls in the trash section.',
+      'Added "AI Scheduler: Restore last deleted task" command.',
+      "Added task restoration and permanent deletion support in the Task Details modal.",
+      "Added RESTORED activity logging and badge styling."
+    ],
+    changed: [
+      "Updated delete confirmation dialogs and notices to inform users that deleted tasks can be restored from trash.",
+      "Improved Activity feed ID click handling to find and inspect deleted tasks seamlessly."
+    ],
+    contributors: [
+      {
+        name: "Rachit Asthana",
+        username: "racstan",
+        url: "https://github.com/racstan",
+        role: "Author & Lead Maintainer"
+      }
+    ]
+  },
   {
     version: "2.1.7.14",
     date: "2026-10-03",
@@ -4872,6 +5000,7 @@ var AISchedulerPlugin = class extends import_obsidian11.Plugin {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
     this.jobs = [];
+    this.deletedJobs = [];
     this.activity = [];
     this.running = false;
     this.reviewRunning = false;
@@ -4897,6 +5026,7 @@ var AISchedulerPlugin = class extends import_obsidian11.Plugin {
     const parsed = parseStoredData(data);
     this.settings = parsed.settings;
     this.jobs = parsed.jobs;
+    this.deletedJobs = parsed.deletedJobs;
     this.activity = parsed.activity;
     recoverInterruptedRuns(this.jobs);
     this.assignTaskNumbers();
@@ -4987,6 +5117,18 @@ var AISchedulerPlugin = class extends import_obsidian11.Plugin {
       }
     });
     this.addCommand({
+      id: "restore-last-deleted-task",
+      name: "Restore last deleted task",
+      callback: async () => {
+        const restored = await this.restoreLastDeletedJob();
+        if (restored) {
+          new import_obsidian11.Notice(`Restored task #${restored.taskNumber}: ${restored.title}`);
+        } else {
+          new import_obsidian11.Notice("No deleted tasks to restore.");
+        }
+      }
+    });
+    this.addCommand({
       id: "sync-schedule-notes",
       name: "Sync schedule notes now",
       callback: async () => {
@@ -5056,7 +5198,13 @@ var AISchedulerPlugin = class extends import_obsidian11.Plugin {
   }
   async saveState() {
     try {
-      await this.saveData({ version: 6, settings: this.settings, jobs: this.jobs, activity: this.activity.slice(-50) });
+      await this.saveData({
+        version: 6,
+        settings: this.settings,
+        jobs: this.jobs,
+        deletedJobs: this.deletedJobs.slice(0, 100),
+        activity: this.activity.slice(-50)
+      });
     } catch (error) {
       console.error("[ai-scheduler] Failed to save state:", error);
     }
@@ -5610,6 +5758,7 @@ ${report}`);
   }
   async deleteJob(job) {
     this.jobs = this.jobs.filter((candidate) => candidate.id !== job.id);
+    this.deletedJobs = [job, ...this.deletedJobs.filter((candidate) => candidate.id !== job.id)].slice(0, 100);
     if (job.notePath) {
       const file = this.app.vault.getAbstractFileByPath(job.notePath);
       if (file instanceof import_obsidian11.TFile) {
@@ -5621,8 +5770,76 @@ ${report}`);
       }
       this.notesSync.forgetPath(job.notePath);
     }
-    this.logActivity("deleted", `Deleted ${job.title}`, job.id);
+    this.logActivity("deleted", `Deleted task #${job.taskNumber}: ${job.title}`, job.id);
     await this.saveState();
+  }
+  async restoreJob(job) {
+    this.deletedJobs = this.deletedJobs.filter((candidate) => candidate.id !== job.id);
+    if (!this.jobs.some((j) => j.id === job.id)) {
+      job.notePath = null;
+      job.lastError = null;
+      if (job.enabled) {
+        job.status = "scheduled";
+        job.lastStatus = null;
+        rescheduleEnabledJob(job);
+      } else {
+        job.status = "disabled";
+        job.lastStatus = "disabled";
+        job.nextRunAt = null;
+      }
+      this.jobs.push(job);
+      this.assignTaskNumbers();
+      this.logActivity("restored", `Restored task #${job.taskNumber}: ${job.title}`, job.id);
+      await this.saveState();
+    }
+  }
+  async restoreAllJobs() {
+    const toRestore = [...this.deletedJobs];
+    let count = 0;
+    for (const job of toRestore) {
+      if (!this.jobs.some((j) => j.id === job.id)) {
+        job.notePath = null;
+        job.lastError = null;
+        if (job.enabled) {
+          job.status = "scheduled";
+          job.lastStatus = null;
+          rescheduleEnabledJob(job);
+        } else {
+          job.status = "disabled";
+          job.lastStatus = "disabled";
+          job.nextRunAt = null;
+        }
+        this.jobs.push(job);
+        count++;
+      }
+    }
+    this.deletedJobs = [];
+    if (count > 0) {
+      this.assignTaskNumbers();
+      this.logActivity("restored", `Restored ${count} task(s) from trash`);
+      await this.saveState();
+    }
+    return count;
+  }
+  async permanentlyDeleteJob(job) {
+    this.deletedJobs = this.deletedJobs.filter((candidate) => candidate.id !== job.id);
+    this.logActivity("deleted", `Permanently removed task #${job.taskNumber}: ${job.title}`, job.id);
+    await this.saveState();
+  }
+  async emptyTrash() {
+    const count = this.deletedJobs.length;
+    this.deletedJobs = [];
+    if (count > 0) {
+      this.logActivity("deleted", `Emptied trash (${count} task(s) permanently removed)`);
+      await this.saveState();
+    }
+    return count;
+  }
+  async restoreLastDeletedJob() {
+    if (this.deletedJobs.length === 0) return null;
+    const job = this.deletedJobs[0];
+    await this.restoreJob(job);
+    return job;
   }
   async disableAllJobs() {
     let count = 0;
@@ -5680,6 +5897,7 @@ ${report}`);
     }
     this.jobs = this.jobs.filter((job) => isNightlyReviewJob(job));
     if (toDelete.length > 0) {
+      this.deletedJobs = [...toDelete.slice().reverse(), ...this.deletedJobs].slice(0, 100);
       this.logActivity("deleted", `Deleted ${toDelete.length} scheduled task(s)`);
       await this.saveState();
     }

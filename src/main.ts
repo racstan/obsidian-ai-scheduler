@@ -46,6 +46,7 @@ export { AISchedulerPlugin as default };
 export class AISchedulerPlugin extends Plugin {
 	settings: AISettings = DEFAULT_SETTINGS;
 	jobs: Job[] = [];
+	deletedJobs: Job[] = [];
 	activity: ActivityEntry[] = [];
 	running = false;
 	reviewRunning = false;
@@ -72,6 +73,7 @@ export class AISchedulerPlugin extends Plugin {
 		const parsed = parseStoredData(data);
 		this.settings = parsed.settings;
 		this.jobs = parsed.jobs;
+		this.deletedJobs = parsed.deletedJobs;
 		this.activity = parsed.activity;
 		recoverInterruptedRuns(this.jobs);
 
@@ -165,6 +167,18 @@ export class AISchedulerPlugin extends Plugin {
 			},
 		});
 		this.addCommand({
+			id: 'restore-last-deleted-task',
+			name: 'Restore last deleted task',
+			callback: async () => {
+				const restored = await this.restoreLastDeletedJob();
+				if (restored) {
+					new Notice(`Restored task #${restored.taskNumber}: ${restored.title}`);
+				} else {
+					new Notice('No deleted tasks to restore.');
+				}
+			},
+		});
+		this.addCommand({
 			id: 'sync-schedule-notes',
 			name: 'Sync schedule notes now',
 			callback: async () => {
@@ -239,7 +253,13 @@ export class AISchedulerPlugin extends Plugin {
 
 	async saveState(): Promise<void> {
 		try {
-			await this.saveData({ version: 6, settings: this.settings, jobs: this.jobs, activity: this.activity.slice(-50) });
+			await this.saveData({
+				version: 6,
+				settings: this.settings,
+				jobs: this.jobs,
+				deletedJobs: this.deletedJobs.slice(0, 100),
+				activity: this.activity.slice(-50),
+			});
 		} catch (error) {
 			console.error('[ai-scheduler] Failed to save state:', error);
 		}
@@ -854,6 +874,7 @@ export class AISchedulerPlugin extends Plugin {
 
 	async deleteJob(job: Job): Promise<void> {
 		this.jobs = this.jobs.filter(candidate => candidate.id !== job.id);
+		this.deletedJobs = [job, ...this.deletedJobs.filter(candidate => candidate.id !== job.id)].slice(0, 100);
 		if (job.notePath) {
 			const file = this.app.vault.getAbstractFileByPath(job.notePath);
 			if (file instanceof TFile) {
@@ -865,8 +886,81 @@ export class AISchedulerPlugin extends Plugin {
 			}
 			this.notesSync.forgetPath(job.notePath);
 		}
-		this.logActivity('deleted', `Deleted ${job.title}`, job.id);
+		this.logActivity('deleted', `Deleted task #${job.taskNumber}: ${job.title}`, job.id);
 		await this.saveState();
+	}
+
+	async restoreJob(job: Job): Promise<void> {
+		this.deletedJobs = this.deletedJobs.filter(candidate => candidate.id !== job.id);
+		if (!this.jobs.some(j => j.id === job.id)) {
+			job.notePath = null;
+			job.lastError = null;
+			if (job.enabled) {
+				job.status = 'scheduled';
+				job.lastStatus = null;
+				rescheduleEnabledJob(job);
+			} else {
+				job.status = 'disabled';
+				job.lastStatus = 'disabled';
+				job.nextRunAt = null;
+			}
+			this.jobs.push(job);
+			this.assignTaskNumbers();
+			this.logActivity('restored', `Restored task #${job.taskNumber}: ${job.title}`, job.id);
+			await this.saveState();
+		}
+	}
+
+	async restoreAllJobs(): Promise<number> {
+		const toRestore = [...this.deletedJobs];
+		let count = 0;
+		for (const job of toRestore) {
+			if (!this.jobs.some(j => j.id === job.id)) {
+				job.notePath = null;
+				job.lastError = null;
+				if (job.enabled) {
+					job.status = 'scheduled';
+					job.lastStatus = null;
+					rescheduleEnabledJob(job);
+				} else {
+					job.status = 'disabled';
+					job.lastStatus = 'disabled';
+					job.nextRunAt = null;
+				}
+				this.jobs.push(job);
+				count++;
+			}
+		}
+		this.deletedJobs = [];
+		if (count > 0) {
+			this.assignTaskNumbers();
+			this.logActivity('restored', `Restored ${count} task(s) from trash`);
+			await this.saveState();
+		}
+		return count;
+	}
+
+	async permanentlyDeleteJob(job: Job): Promise<void> {
+		this.deletedJobs = this.deletedJobs.filter(candidate => candidate.id !== job.id);
+		this.logActivity('deleted', `Permanently removed task #${job.taskNumber}: ${job.title}`, job.id);
+		await this.saveState();
+	}
+
+	async emptyTrash(): Promise<number> {
+		const count = this.deletedJobs.length;
+		this.deletedJobs = [];
+		if (count > 0) {
+			this.logActivity('deleted', `Emptied trash (${count} task(s) permanently removed)`);
+			await this.saveState();
+		}
+		return count;
+	}
+
+	async restoreLastDeletedJob(): Promise<Job | null> {
+		if (this.deletedJobs.length === 0) return null;
+		const job = this.deletedJobs[0];
+		await this.restoreJob(job);
+		return job;
 	}
 
 	async disableAllJobs(): Promise<number> {
@@ -928,6 +1022,7 @@ export class AISchedulerPlugin extends Plugin {
 		}
 		this.jobs = this.jobs.filter(job => isNightlyReviewJob(job));
 		if (toDelete.length > 0) {
+			this.deletedJobs = [...toDelete.slice().reverse(), ...this.deletedJobs].slice(0, 100);
 			this.logActivity('deleted', `Deleted ${toDelete.length} scheduled task(s)`);
 			await this.saveState();
 		}

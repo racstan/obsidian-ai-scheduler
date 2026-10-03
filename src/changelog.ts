@@ -23,6 +23,36 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.7.15',
+		date: '2026-10-03',
+		title: 'Task Trash & Restoration, Quick Undo & Trash Management',
+		highlights: [
+			'Task Trash & Restoration: Deleted tasks are now safely moved to a Deleted Tasks trash section and can be restored back to your schedule with a single click.',
+			'Bulk Trash Management: Added "Restore all" and "Empty trash" controls to restore or permanently purge multiple deleted tasks.',
+			'Restore Command Palette Support: Added "AI Scheduler: Restore last deleted task" command for fast keyboard-driven undo.',
+			'Interactive Task Inspection: Deleted tasks can be inspected in the task detail viewer, restored, or permanently deleted directly.',
+		],
+		added: [
+			'Added Deleted Tasks section with Restore and Delete forever actions in the dashboard.',
+			'Added "Restore all" and "Empty trash" bulk action controls in the trash section.',
+			'Added "AI Scheduler: Restore last deleted task" command.',
+			'Added task restoration and permanent deletion support in the Task Details modal.',
+			'Added RESTORED activity logging and badge styling.',
+		],
+		changed: [
+			'Updated delete confirmation dialogs and notices to inform users that deleted tasks can be restored from trash.',
+			'Improved Activity feed ID click handling to find and inspect deleted tasks seamlessly.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author & Lead Maintainer',
+			},
+		],
+	},
+	{
 		version: '2.1.7.14',
 		date: '2026-10-03',
 		title: 'Rich Cadences (Every N Days/Weeks/Months/Years), Initial Time Anchors & Red Asterisk Highlights',

@@ -246,11 +246,11 @@ export class AssistantModal extends Modal {
 			makeButton(bulkActions, 'Delete all', () => {
 				new ConfirmModal(
 					this.app,
-					`Delete all ${userJobs.length} tasks? This cannot be undone.`,
+					`Delete all ${userJobs.length} tasks? They will be moved to Deleted tasks and can be restored.`,
 					() => {
 						void (async () => {
 							const count = await this.plugin.deleteAllJobs();
-							new Notice(`Deleted ${count} tasks`);
+							new Notice(`Deleted ${count} tasks. You can restore them from Deleted tasks.`);
 							this.render();
 						})();
 					}
@@ -349,9 +349,10 @@ export class AssistantModal extends Modal {
 			}
 
 			makeButton(controls, 'Delete', () => {
-				new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
+				new ConfirmModal(this.app, `Delete task #${job.taskNumber}? It will be moved to Deleted tasks and can be restored.`, () => {
 					void (async () => {
 						await this.plugin.deleteJob(job);
+						new Notice(`Deleted task #${job.taskNumber}. You can restore it from Deleted tasks.`);
 						this.render();
 					})();
 				}).open();
@@ -392,9 +393,10 @@ export class AssistantModal extends Modal {
 					this.render();
 				});
 				makeButton(controls, 'Delete', () => {
-					new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
+					new ConfirmModal(this.app, `Delete task #${job.taskNumber}? It will be moved to Deleted tasks and can be restored.`, () => {
 						void (async () => {
 							await this.plugin.deleteJob(job);
+							new Notice(`Deleted task #${job.taskNumber}. You can restore it from Deleted tasks.`);
 							this.render();
 						})();
 					}).open();
@@ -440,12 +442,84 @@ export class AssistantModal extends Modal {
 					).open();
 				});
 				makeButton(controls, 'Delete', () => {
-					new ConfirmModal(this.app, `Delete task #${job.taskNumber}? This cannot be undone.`, () => {
+					new ConfirmModal(this.app, `Delete task #${job.taskNumber}? It will be moved to Deleted tasks and can be restored.`, () => {
 						void (async () => {
 							await this.plugin.deleteJob(job);
+							new Notice(`Deleted task #${job.taskNumber}. You can restore it from Deleted tasks.`);
 							this.render();
 						})();
 					}).open();
+				}, false, true);
+			}
+		}
+
+		if (this.plugin.deletedJobs.length > 0) {
+			const deletedHeading = this.renderSection(shell, 'Deleted tasks', 'Tasks in trash · Click Restore to recover');
+			const deletedBadge = deletedHeading.createSpan({ cls: 'ai-scheduler-count-badge ai-scheduler-badge-count', text: String(this.plugin.deletedJobs.length) });
+
+			const trashActions = shell.createDiv({ cls: 'ai-scheduler-row-actions' });
+			makeButton(trashActions, 'Restore all', () => {
+				new ConfirmModal(
+					this.app,
+					`Restore all ${this.plugin.deletedJobs.length} deleted tasks?`,
+					() => {
+						void (async () => {
+							const count = await this.plugin.restoreAllJobs();
+							new Notice(`Restored ${count} tasks.`);
+							this.render();
+						})();
+					}
+				).open();
+			});
+			makeButton(trashActions, 'Empty trash', () => {
+				new ConfirmModal(
+					this.app,
+					`Permanently delete all ${this.plugin.deletedJobs.length} tasks in trash? This cannot be undone.`,
+					() => {
+						void (async () => {
+							const count = await this.plugin.emptyTrash();
+							new Notice(`Permanently deleted ${count} tasks.`);
+							this.render();
+						})();
+					}
+				).open();
+			}, false, true);
+
+			const deletedList = shell.createDiv({ cls: 'ai-scheduler-deleted-tasks-scroll' });
+			for (const job of this.plugin.deletedJobs) {
+				const card = makeCard(deletedList, 'ai-scheduler-task-card');
+				const copy = card.createDiv();
+				const titleRow = copy.createDiv({ cls: 'ai-scheduler-task-header' });
+				titleRow.createDiv({ cls: 'ai-scheduler-task-title', text: `#${job.taskNumber} · ${job.title}` });
+				appendTaskIdBadge(titleRow, job.id);
+				titleRow.createSpan({ cls: 'ai-scheduler-act-badge ai-scheduler-act-deleted', text: 'TRASH' });
+
+				copy.createDiv({ cls: 'ai-scheduler-task-meta', text: `${describeBinding(job)} · ${describeSchedule(job)}` });
+				if (job.prompt) {
+					const promptSnippet = job.prompt.length > 100 ? `${job.prompt.slice(0, 100)}...` : job.prompt;
+					copy.createDiv({ cls: 'ai-scheduler-task-prompt', text: promptSnippet });
+				}
+
+				const controls = card.createDiv({ cls: 'ai-scheduler-task-actions' });
+				makeButton(controls, 'Restore', () => {
+					void (async () => {
+						await this.plugin.restoreJob(job);
+						new Notice(`Restored task #${job.taskNumber}: ${job.title}`);
+						this.render();
+					})();
+				});
+				makeButton(controls, 'Delete forever', () => {
+					new ConfirmModal(
+						this.app,
+						`Permanently delete task #${job.taskNumber} (${job.title})? This cannot be undone.`,
+						() => {
+							void (async () => {
+								await this.plugin.permanentlyDeleteJob(job);
+								new Notice(`Permanently deleted task #${job.taskNumber}.`);
+								this.render();
+							})();
+						}
+					).open();
 				}, false, true);
 			}
 		}
@@ -473,7 +547,7 @@ export class AssistantModal extends Modal {
 					idBadge.setAttribute('title', 'Click to view task details and files');
 					idBadge.onclick = (e) => {
 						e.stopPropagation();
-						const target = this.plugin.jobs.find(j => j.id === event.jobId);
+						const target = this.plugin.jobs.find(j => j.id === event.jobId) || this.plugin.deletedJobs.find(j => j.id === event.jobId);
 						if (target) {
 							this.close();
 							window.setTimeout(() => {
@@ -482,7 +556,7 @@ export class AssistantModal extends Modal {
 								}).open();
 							}, 50);
 						} else {
-							new Notice(`Task ${event.jobId} is no longer in the schedule.`);
+							new Notice(`Task ${event.jobId} is no longer available.`);
 						}
 					};
 				}
@@ -499,6 +573,7 @@ export class AssistantModal extends Modal {
 			case 'planned': return 'PLANNED';
 			case 'cancelled': return 'RESET';
 			case 'deleted': return 'DELETED';
+			case 'restored': return 'RESTORED';
 			case 'status': return 'STATUS';
 			default: return 'LOG';
 		}

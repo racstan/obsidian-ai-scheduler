@@ -120,6 +120,7 @@ function normalizeMaxIterationsField(value: unknown): number | null {
 export function parseStoredData(data: Record<string, unknown> | null | undefined): {
 	settings: AISettings;
 	jobs: Job[];
+	deletedJobs: Job[];
 	activity: ActivityEntry[];
 } {
 	const stored = data || {};
@@ -164,6 +165,9 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 				enabled: task.status === 'pending',
 			}))
 			: []);
+	const deletedJobs = Array.isArray(stored.deletedJobs)
+		? (stored.deletedJobs as Array<Record<string, unknown>>).map(job => normalizeJob(job))
+		: [];
 	const activity = Array.isArray(stored.activity) ? (stored.activity as ActivityEntry[]).slice(-50) : [];
-	return { settings, jobs, activity };
+	return { settings, jobs, deletedJobs, activity };
 }

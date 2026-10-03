@@ -1639,3 +1639,23 @@ button.ai-scheduler-coffee-btn:hover {
 	border: 1px solid rgba(224, 62, 62, 0.3);
 	margin-left: 6px;
 }
+
+/* ---- Restored Activity Badge & Deleted Tasks Scroll ------------------- */
+.ai-scheduler-act-restored {
+	background: rgba(16, 185, 129, 0.15);
+	color: #10b981;
+	border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.ai-scheduler-deleted-tasks-scroll {
+	max-height: 280px;
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding-right: 6px;
+	margin-bottom: 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m, 8px);
+	padding: 8px;
+	background: var(--background-secondary-alt);
+}
+

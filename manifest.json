@@ -1,7 +1,7 @@
 {
   "id": "ai-scheduler",
   "name": "AI Scheduler",
-  "version": "2.1.7.14",
+  "version": "2.1.7.15",
   "minAppVersion": "1.6.6",
   "description": "Autonomous background scheduling and proactive AI workflows. Run recurring tasks, cron cadences, nightly reviews, and event triggers via Claudian or Copilot.",
   "author": "Rachit Asthana",

@@ -128,6 +128,7 @@ export interface PluginData {
 	version: number;
 	settings: AISettings;
 	jobs: Job[];
+	deletedJobs?: Job[];
 	activity: ActivityEntry[];
 }
 

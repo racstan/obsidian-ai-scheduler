@@ -290,34 +290,60 @@ export class TaskViewModal extends Modal {
 		// Footer
 		const footer = shell.createDiv({ cls: 'ai-scheduler-footer' });
 		makeButton(footer, 'Close', () => this.close());
-		makeButton(footer, 'Run again', () => {
-			new ConfirmModal(
-				this.app,
-				`Run task #${this.job.taskNumber} (${this.job.title}) immediately? It will execute in the background now.`,
-				() => {
-					void (async () => {
-						new Notice(`Starting task #${this.job.taskNumber} now...`);
-						await this.plugin.retryJob(this.job);
-						this.close();
-						if (this.onBack) this.onBack();
-					})();
-				}
-			).open();
-		});
-		makeButton(footer, 'Delete task', () => {
-			new ConfirmModal(
-				this.app,
-				`Delete task #${this.job.taskNumber}? This cannot be undone.`,
-				() => {
-					void (async () => {
-						await this.plugin.deleteJob(this.job);
-						new Notice(`Deleted task #${this.job.taskNumber}.`);
-						this.close();
-						if (this.onBack) this.onBack();
-					})();
-				}
-			).open();
-		}, false, true);
+		const isDeleted = this.plugin.deletedJobs.some(j => j.id === this.job.id);
+		if (isDeleted) {
+			makeButton(footer, 'Restore task', () => {
+				void (async () => {
+					await this.plugin.restoreJob(this.job);
+					new Notice(`Restored task #${this.job.taskNumber}: ${this.job.title}`);
+					this.close();
+					if (this.onBack) this.onBack();
+				})();
+			});
+			makeButton(footer, 'Delete forever', () => {
+				new ConfirmModal(
+					this.app,
+					`Permanently delete task #${this.job.taskNumber} (${this.job.title})? This cannot be undone.`,
+					() => {
+						void (async () => {
+							await this.plugin.permanentlyDeleteJob(this.job);
+							new Notice(`Permanently deleted task #${this.job.taskNumber}.`);
+							this.close();
+							if (this.onBack) this.onBack();
+						})();
+					}
+				).open();
+			}, false, true);
+		} else {
+			makeButton(footer, 'Run again', () => {
+				new ConfirmModal(
+					this.app,
+					`Run task #${this.job.taskNumber} (${this.job.title}) immediately? It will execute in the background now.`,
+					() => {
+						void (async () => {
+							new Notice(`Starting task #${this.job.taskNumber} now...`);
+							await this.plugin.retryJob(this.job);
+							this.close();
+							if (this.onBack) this.onBack();
+						})();
+					}
+				).open();
+			});
+			makeButton(footer, 'Delete task', () => {
+				new ConfirmModal(
+					this.app,
+					`Delete task #${this.job.taskNumber}? It will be moved to Deleted tasks and can be restored.`,
+					() => {
+						void (async () => {
+							await this.plugin.deleteJob(this.job);
+							new Notice(`Deleted task #${this.job.taskNumber}. You can restore it from Deleted tasks.`);
+							this.close();
+							if (this.onBack) this.onBack();
+						})();
+					}
+				).open();
+			}, false, true);
+		}
 	}
 
 	onClose(): void {
