@@ -1,6 +1,6 @@
 {
   "name": "obsidian-ai-scheduler",
-  "version": "2.1.7.10",
+  "version": "2.1.7.11",
   "description": "The autonomous background scheduling and proactive intelligence engine. Automate recurring tasks, cron cadences, nightly vault reviews, and event-driven AI workflows via Claudian or Copilot.",
   "main": "main.js",
   "scripts": {

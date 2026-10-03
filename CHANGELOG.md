@@ -5,6 +5,24 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.7.11] - 2026-10-03
+
+### Highlights
+- **Past Tasks Inspection View**: Replaced the "Edit" action with a comprehensive "View" modal for completed and past scheduled jobs.
+- **Interactive Vault File Navigation**: Instantly view and click to open any file created, modified, synced, or referenced by the task.
+- **Artifact & Output Tracking**: Automatically tracks primary output files and generated markdown paths with existence and modification checks.
+- **Full Execution Logs & Response Viewer**: Complete prompt preview and AI response inspector with 1-click clipboard copying.
+
+### Added
+- Added `TaskViewModal` with file metadata (size, timestamps, badges) and 1-click vault navigation.
+- Added `lastOutputPath` and `lastOutputFiles` tracking to `Job` interface and settings persistence.
+
+### Changed
+- Replaced `Edit` button on past task cards with `View` button in `AssistantModal`.
+
+### Contributors
+- [@racstan](https://github.com/racstan) (Rachit Asthana)
+
 ---
 
 ## [2.1.7.10] - 2026-10-03

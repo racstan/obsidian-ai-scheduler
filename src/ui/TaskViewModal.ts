@@ -7,7 +7,7 @@
 import { App, Modal, Notice, TFile, TFolder, normalizePath } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
 import { Job } from '../types';
-import { describeBinding, errorText, formatDate, formatDuration } from '../util';
+import { describeBinding, formatDate } from '../util';
 import { describeSchedule } from '../schedule';
 import { closeExistingSchedulerModals, makeButton, makeCard } from './dom';
 import { AssistantModal, ConfirmModal } from './AssistantModal';

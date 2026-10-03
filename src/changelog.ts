@@ -23,6 +23,32 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.7.11',
+		date: '2026-10-03',
+		title: 'Past Task View Modal & Vault File Navigation',
+		highlights: [
+			'Past Tasks Inspection View: Replaced the "Edit" action with a comprehensive "View" modal for completed and past scheduled jobs.',
+			'Interactive Vault File Navigation: Instantly view and click to open any file created, modified, synced, or referenced by the task.',
+			'Artifact & Output Tracking: Automatically tracks primary output files and generated markdown paths with existence and modification checks.',
+			'Full Execution Logs & Response Viewer: Complete prompt preview and AI response inspector with 1-click clipboard copying.',
+		],
+		added: [
+			'Added TaskViewModal with file metadata (size, timestamps, badges) and 1-click vault navigation.',
+			'Added lastOutputPath and lastOutputFiles tracking to Job interface and settings persistence.',
+		],
+		changed: [
+			'Replaced Edit button on past task cards with View button in AssistantModal.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author & Lead Maintainer',
+			},
+		],
+	},
+	{
 		version: '2.1.7.10',
 		date: '2026-10-03',
 		title: 'Obsidian Review Compliance & Release Attestations',
