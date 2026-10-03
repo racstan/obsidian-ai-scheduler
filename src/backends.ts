@@ -8,7 +8,7 @@
  */
 import { App, Notice, TFile, TFolder } from 'obsidian';
 import { AISettings, BACKEND_INFO, Job } from './types';
-import { contentFromMessage, sendSystemNotification, sleep, withTimeout } from './util';
+import { contentFromMessage, errorText, sendSystemNotification, sleep, withTimeout } from './util';
 
 export const AGENT_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -222,7 +222,7 @@ export async function waitForTabIdle(view: ClaudianView | null, tab: ClaudianTab
 	const started = Date.now();
 	while (tabIsBusy(view, tab)) {
 		if (tab?.state?.error) {
-			throw new Error(`Claudian reported an error: ${tab.state.error}`);
+			throw new Error(`Claudian reported an error: ${errorText(tab.state.error)}`);
 		}
 		if (Date.now() - started > AGENT_TIMEOUT_MS) {
 			throw new Error(`AI task timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes. The AI backend did not finish or may be waiting for tool execution/confirmation in Claudian.`);
@@ -230,7 +230,7 @@ export async function waitForTabIdle(view: ClaudianView | null, tab: ClaudianTab
 		await sleep(1000);
 	}
 	if (tab?.state?.error) {
-		throw new Error(`Claudian reported an error: ${tab.state.error}`);
+		throw new Error(`Claudian reported an error: ${errorText(tab.state.error)}`);
 	}
 }
 

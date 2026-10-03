@@ -23,6 +23,34 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.8',
+		date: '2026-10-03',
+		title: 'Obsidian Review Compliance, SemVer 2.1.8 & Release Attestations',
+		highlights: [
+			'Obsidian Community Review Compliance: Resolved all automated validation errors, warnings, and guidelines for official Obsidian plugin distribution.',
+			'Strict Semantic Versioning: Standardized plugin and manifest versions on 3-part SemVer (2.1.8).',
+			'Cryptographic Release Attestations: Added automated GitHub Actions build provenance attestations for main.js, manifest.json, and styles.css.',
+			'UI & CSS Standards: Replaced all !important CSS rules with specific selectors, adapted UI sentence casing, and standardized setting headers.',
+		],
+		changed: [
+			'Replaced direct element.style modifications and document.createElement in @ mention suggest with Obsidian DOM helpers and dedicated CSS classes.',
+			'Updated release workflows with build provenance generation via actions/attest-build-provenance@v2.',
+		],
+		fixed: [
+			'Fixed unhandled floating promises on Task ID clipboard copy buttons across all modal dialogues.',
+			'Fixed async callback returns in confirmation dialogs.',
+			'Fixed stringification type warnings across backend error handlers.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author & Lead Maintainer',
+			},
+		],
+	},
+	{
 		version: '2.1.7.9',
 		date: '2026-10-02',
 		title: 'About AI Scheduler & Creator Support (Buy Me a Coffee)',

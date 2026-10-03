@@ -438,17 +438,17 @@
 }
 
 .ai-scheduler-text-running {
-	color: #38bdf8 !important;
+	color: #38bdf8;
 	font-weight: 500;
 }
 
 .ai-scheduler-stat-running {
-	border-color: rgba(168, 85, 247, 0.5) !important;
-	background: linear-gradient(135deg, rgba(168, 85, 247, 0.12) 0%, rgba(56, 189, 248, 0.08) 100%), var(--background-secondary) !important;
+	border-color: rgba(168, 85, 247, 0.5);
+	background: linear-gradient(135deg, rgba(168, 85, 247, 0.12) 0%, rgba(56, 189, 248, 0.08) 100%), var(--background-secondary);
 }
 
 .ai-scheduler-text-glow {
-	color: #c084fc !important;
+	color: #c084fc;
 	text-shadow: 0 0 12px rgba(192, 132, 252, 0.6);
 }
 
@@ -1225,11 +1225,11 @@
 	border-color: var(--interactive-accent);
 }
 
-.ai-scheduler-coffee-btn {
-	background: linear-gradient(135deg, #FFDD00 0%, #FFC700 100%) !important;
-	color: #000000 !important;
-	font-weight: 600 !important;
-	border: 1px solid #E5B800 !important;
+button.ai-scheduler-coffee-btn {
+	background: linear-gradient(135deg, #FFDD00 0%, #FFC700 100%);
+	color: #000000;
+	font-weight: 600;
+	border: 1px solid #E5B800;
 	cursor: pointer;
 	font-size: 13px;
 	padding: 6px 14px;
@@ -1241,8 +1241,8 @@
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
-.ai-scheduler-coffee-btn:hover {
-	background: linear-gradient(135deg, #FFE433 0%, #FFD21A 100%) !important;
+button.ai-scheduler-coffee-btn:hover {
+	background: linear-gradient(135deg, #FFE433 0%, #FFD21A 100%);
 	box-shadow: 0 2px 8px rgba(255, 221, 0, 0.4);
 	transform: translateY(-1px);
 }
@@ -1270,9 +1270,9 @@
 	flex-wrap: wrap;
 }
 
-.ai-scheduler-about-title {
-	margin: 0 !important;
-	font-size: 16px !important;
+.ai-scheduler-about-card .ai-scheduler-about-title {
+	margin: 0;
+	font-size: 16px;
 	font-weight: 600;
 	color: var(--text-normal);
 }
@@ -1301,4 +1301,9 @@
 .ai-scheduler-about-meta a:hover {
 	text-decoration: underline;
 }
+
+.ai-scheduler-mention-container {
+	position: relative;
+}
+
 

@@ -122,7 +122,7 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 	const stored = data || {};
 	const oldSettings = (stored.settings || {}) as Record<string, unknown>;
 	const settings = Object.assign({}, DEFAULT_SETTINGS, oldSettings as Partial<AISettings>);
-	const rawBackend = String(oldSettings.backendMode ?? '');
+	const rawBackend = typeof oldSettings.backendMode === 'string' ? oldSettings.backendMode : '';
 	settings.backendMode = rawBackend === 'copilot' ? 'copilot' : rawBackend === 'claudian' ? 'claudian' : (rawBackend === 'none' ? 'none' : DEFAULT_SETTINGS.backendMode);
 	// Migrate the old profile names to explicit models for each action. The
 	// values are still Claudian model references, but users no longer need to

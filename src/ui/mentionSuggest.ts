@@ -71,13 +71,11 @@ export function attachMentionSuggest(options: MentionSuggestOptions): () => void
 			return;
 		}
 		if (!popup) {
-			popup = document.createElement('div');
-			popup.className = 'ai-scheduler-mention-popup';
 			const parent = textarea.parentElement || document.body;
 			if (window.getComputedStyle(parent).position === 'static') {
-				parent.style.position = 'relative';
+				parent.addClass('ai-scheduler-mention-container');
 			}
-			parent.appendChild(popup);
+			popup = parent.createDiv({ cls: 'ai-scheduler-mention-popup' });
 		}
 		popup.empty();
 

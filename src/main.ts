@@ -567,7 +567,7 @@ export class AISchedulerPlugin extends Plugin {
 				const retryFile = this.app.vault.getAbstractFileByPath(path);
 				if (retryFile instanceof TFile) {
 					await this.app.vault.modify(retryFile, content);
-				} else if (String(err || '').includes('already exists')) {
+				} else if (errorText(err).includes('already exists')) {
 					try {
 						await this.app.vault.adapter.write(path, content);
 					} catch { /* ignore if already written */ }
@@ -776,7 +776,7 @@ export class AISchedulerPlugin extends Plugin {
 		new Notice('AI Scheduler notifications are working.');
 		const sentSystem = sendSystemNotification('AI Scheduler', 'AI Scheduler desktop notifications are working.');
 		if (!sentSystem && typeof window !== 'undefined' && typeof window.Notification !== 'undefined' && window.Notification.permission === 'denied') {
-			new Notice('System desktop notifications are blocked by Windows/Obsidian permissions.', 6000);
+			new Notice('System desktop notifications are blocked by windows/Obsidian permissions.', 6000);
 		}
 		this.logActivity('notification', 'Test notification sent');
 		void this.saveState();

@@ -18,12 +18,13 @@ function formatDuration(isoString: string): string {
 
 function appendTaskIdBadge(container: HTMLElement, id: string): void {
 	const idBadge = container.createSpan({ cls: 'ai-scheduler-task-id-badge', text: `ID: ${id}` });
-	idBadge.setAttribute('title', 'Click to copy Task ID');
+	idBadge.setAttribute('title', 'Click to copy task ID');
 	idBadge.onclick = (e) => {
 		e.stopPropagation();
 		if (typeof navigator !== 'undefined' && navigator.clipboard) {
-			navigator.clipboard.writeText(id);
-			new Notice(`Copied Task ID: ${id}`);
+			void navigator.clipboard.writeText(id).then(() => {
+				new Notice(`Copied Task ID: ${id}`);
+			});
 		}
 	};
 }
@@ -226,10 +227,12 @@ export class AssistantModal extends Modal {
 					new ConfirmModal(
 						this.app,
 						`Reset and stop running task #${job.taskNumber} (${job.title})? If the AI backend is currently processing, it will be marked as cancelled/failed.`,
-						async () => {
-							await this.plugin.resetRunningJob(job);
-							new Notice(`Reset task #${job.taskNumber}.`);
-							this.render();
+						() => {
+							void (async () => {
+								await this.plugin.resetRunningJob(job);
+								new Notice(`Reset task #${job.taskNumber}.`);
+								this.render();
+							})();
 						}
 					).open();
 				}, false, true);
@@ -238,10 +241,12 @@ export class AssistantModal extends Modal {
 					new ConfirmModal(
 						this.app,
 						`Run task #${job.taskNumber} (${job.title}) immediately? This will trigger background execution right now without waiting for its scheduled time slot.`,
-						async () => {
-							new Notice(`Starting task #${job.taskNumber} now...`);
-							await this.plugin.runJobNow(job);
-							this.render();
+						() => {
+							void (async () => {
+								new Notice(`Starting task #${job.taskNumber} now...`);
+								await this.plugin.runJobNow(job);
+								this.render();
+							})();
 						}
 					).open();
 				});
@@ -342,10 +347,12 @@ export class AssistantModal extends Modal {
 					new ConfirmModal(
 						this.app,
 						`Run task #${job.taskNumber} (${job.title}) immediately? It will execute right now in the background and will no longer be marked as past/missed.`,
-						async () => {
-							new Notice(`Starting task #${job.taskNumber} now...`);
-							await this.plugin.retryJob(job);
-							this.render();
+						() => {
+							void (async () => {
+								new Notice(`Starting task #${job.taskNumber} now...`);
+								await this.plugin.retryJob(job);
+								this.render();
+							})();
 						}
 					).open();
 				});

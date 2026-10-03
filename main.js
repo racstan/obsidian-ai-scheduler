@@ -813,11 +813,10 @@ function normalizeMaxIterationsField(value) {
   return Number.isInteger(number) && number > 0 ? number : null;
 }
 function parseStoredData(data) {
-  var _a;
   const stored = data || {};
   const oldSettings = stored.settings || {};
   const settings = Object.assign({}, DEFAULT_SETTINGS, oldSettings);
-  const rawBackend = String((_a = oldSettings.backendMode) != null ? _a : "");
+  const rawBackend = typeof oldSettings.backendMode === "string" ? oldSettings.backendMode : "";
   settings.backendMode = rawBackend === "copilot" ? "copilot" : rawBackend === "claudian" ? "claudian" : rawBackend === "none" ? "none" : DEFAULT_SETTINGS.backendMode;
   const oldDefault = oldSettings.defaultProfile || oldSettings.planningProfile || "";
   settings.planningModel = settings.planningModel || oldSettings.planningProfile || oldDefault;
@@ -1072,7 +1071,7 @@ async function waitForTabIdle(view, tab) {
   const started = Date.now();
   while (tabIsBusy(view, tab)) {
     if ((_a = tab == null ? void 0 : tab.state) == null ? void 0 : _a.error) {
-      throw new Error(`Claudian reported an error: ${tab.state.error}`);
+      throw new Error(`Claudian reported an error: ${errorText(tab.state.error)}`);
     }
     if (Date.now() - started > AGENT_TIMEOUT_MS) {
       throw new Error(`AI task timed out after ${Math.round(AGENT_TIMEOUT_MS / 6e4)} minutes. The AI backend did not finish or may be waiting for tool execution/confirmation in Claudian.`);
@@ -1080,7 +1079,7 @@ async function waitForTabIdle(view, tab) {
     await sleep(1e3);
   }
   if ((_b = tab == null ? void 0 : tab.state) == null ? void 0 : _b.error) {
-    throw new Error(`Claudian reported an error: ${tab.state.error}`);
+    throw new Error(`Claudian reported an error: ${errorText(tab.state.error)}`);
   }
 }
 function getTabMessages(host, view, tab) {
@@ -1596,13 +1595,11 @@ function attachMentionSuggest(options) {
       return;
     }
     if (!popup) {
-      popup = document.createElement("div");
-      popup.className = "ai-scheduler-mention-popup";
       const parent = textarea.parentElement || document.body;
       if (window.getComputedStyle(parent).position === "static") {
-        parent.style.position = "relative";
+        parent.addClass("ai-scheduler-mention-container");
       }
-      parent.appendChild(popup);
+      popup = parent.createDiv({ cls: "ai-scheduler-mention-popup" });
     }
     popup.empty();
     const header = popup.createDiv({ cls: "ai-scheduler-mention-header" });
@@ -1713,7 +1710,7 @@ var JobModal = class extends import_obsidian4.Modal {
     const navBar = shell.createDiv({ cls: "ai-scheduler-modal-nav" });
     const backBtn = navBar.createEl("button", {
       cls: "ai-scheduler-back-btn",
-      text: "\u2190 Back to dashboard"
+      text: "\u2190 back to dashboard"
     });
     backBtn.onclick = () => {
       this.close();
@@ -1729,12 +1726,13 @@ var JobModal = class extends import_obsidian4.Modal {
     const detailsHeader = detailsCard.createDiv({ cls: "ai-scheduler-task-header ai-scheduler-gap-8" });
     detailsHeader.createDiv({ cls: "ai-scheduler-lead", text: `Task #${this.job.taskNumber} Details` });
     const idBadge = detailsHeader.createSpan({ cls: "ai-scheduler-task-id-badge", text: `ID: ${this.job.id}` });
-    idBadge.setAttribute("title", "Click to copy Task ID");
+    idBadge.setAttribute("title", "Click to copy task ID");
     idBadge.onclick = (e) => {
       e.stopPropagation();
       if (typeof navigator !== "undefined" && navigator.clipboard) {
-        navigator.clipboard.writeText(this.job.id);
-        new import_obsidian4.Notice(`Copied Task ID: ${this.job.id}`);
+        void navigator.clipboard.writeText(this.job.id).then(() => {
+          new import_obsidian4.Notice(`Copied Task ID: ${this.job.id}`);
+        });
       }
     };
     detailsCard.createDiv({ cls: "ai-scheduler-form-label", text: "Task title" });
@@ -2072,12 +2070,13 @@ var JobModal = class extends import_obsidian4.Modal {
 var import_obsidian5 = require("obsidian");
 function appendTaskIdBadge(container, id2) {
   const idBadge = container.createSpan({ cls: "ai-scheduler-task-id-badge", text: `ID: ${id2}` });
-  idBadge.setAttribute("title", "Click to copy Task ID");
+  idBadge.setAttribute("title", "Click to copy task ID");
   idBadge.onclick = (e) => {
     e.stopPropagation();
     if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(id2);
-      new import_obsidian5.Notice(`Copied Task ID: ${id2}`);
+      void navigator.clipboard.writeText(id2).then(() => {
+        new import_obsidian5.Notice(`Copied Task ID: ${id2}`);
+      });
     }
   };
 }
@@ -2103,7 +2102,7 @@ var PlannerModal = class _PlannerModal extends import_obsidian5.Modal {
     const navBar = shell.createDiv({ cls: "ai-scheduler-modal-nav" });
     const backBtn = navBar.createEl("button", {
       cls: "ai-scheduler-back-btn",
-      text: "\u2190 Back to dashboard"
+      text: "\u2190 back to dashboard"
     });
     backBtn.onclick = () => {
       this.close();
@@ -2132,7 +2131,7 @@ var PlannerModal = class _PlannerModal extends import_obsidian5.Modal {
     }
     shell.createDiv({ cls: "ai-scheduler-form-label", text: "What would you like AI Scheduler to do?" });
     const textarea = shell.createEl("textarea", { cls: "ai-scheduler-textarea ai-scheduler-textarea-tall" });
-    textarea.placeholder = "E.g. Every weekday at 9:00 am, review notes modified in the last 24 hours, extract action items, and create an executive summary in AI Reviews (type @ to attach files)...";
+    textarea.placeholder = "E.g. Every weekday at 9:00 am, review notes modified in the last 24 hours, extract action items, and create an executive summary in AI reviews (type @ to attach files)...";
     shell.createDiv({ cls: "ai-scheduler-hint ai-scheduler-hint-gap", text: "Tip: Type @ in the box above to quickly search and attach vault notes/files." });
     shell.createDiv({ cls: "ai-scheduler-form-label", text: "Default result folder (optional)" });
     const resultFolder = shell.createEl("input", { type: "text", cls: "ai-scheduler-input ai-scheduler-form-gap", placeholder: "Optional result folder, e.g. AI Reviews or Projects/Notes" });
@@ -2189,7 +2188,7 @@ var PlannerModal = class _PlannerModal extends import_obsidian5.Modal {
     const navBar = shell.createDiv({ cls: "ai-scheduler-modal-nav" });
     const backBtn = navBar.createEl("button", {
       cls: "ai-scheduler-back-btn",
-      text: "\u2190 Back to dashboard"
+      text: "\u2190 back to dashboard"
     });
     backBtn.onclick = () => {
       this.close();
@@ -2286,12 +2285,13 @@ function formatDuration(isoString) {
 }
 function appendTaskIdBadge2(container, id2) {
   const idBadge = container.createSpan({ cls: "ai-scheduler-task-id-badge", text: `ID: ${id2}` });
-  idBadge.setAttribute("title", "Click to copy Task ID");
+  idBadge.setAttribute("title", "Click to copy task ID");
   idBadge.onclick = (e) => {
     e.stopPropagation();
     if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(id2);
-      new import_obsidian6.Notice(`Copied Task ID: ${id2}`);
+      void navigator.clipboard.writeText(id2).then(() => {
+        new import_obsidian6.Notice(`Copied Task ID: ${id2}`);
+      });
     }
   };
 }
@@ -2467,10 +2467,12 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
           new ConfirmModal(
             this.app,
             `Reset and stop running task #${job.taskNumber} (${job.title})? If the AI backend is currently processing, it will be marked as cancelled/failed.`,
-            async () => {
-              await this.plugin.resetRunningJob(job);
-              new import_obsidian6.Notice(`Reset task #${job.taskNumber}.`);
-              this.render();
+            () => {
+              void (async () => {
+                await this.plugin.resetRunningJob(job);
+                new import_obsidian6.Notice(`Reset task #${job.taskNumber}.`);
+                this.render();
+              })();
             }
           ).open();
         }, false, true);
@@ -2479,10 +2481,12 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
           new ConfirmModal(
             this.app,
             `Run task #${job.taskNumber} (${job.title}) immediately? This will trigger background execution right now without waiting for its scheduled time slot.`,
-            async () => {
-              new import_obsidian6.Notice(`Starting task #${job.taskNumber} now...`);
-              await this.plugin.runJobNow(job);
-              this.render();
+            () => {
+              void (async () => {
+                new import_obsidian6.Notice(`Starting task #${job.taskNumber} now...`);
+                await this.plugin.runJobNow(job);
+                this.render();
+              })();
             }
           ).open();
         });
@@ -2576,10 +2580,12 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
           new ConfirmModal(
             this.app,
             `Run task #${job.taskNumber} (${job.title}) immediately? It will execute right now in the background and will no longer be marked as past/missed.`,
-            async () => {
-              new import_obsidian6.Notice(`Starting task #${job.taskNumber} now...`);
-              await this.plugin.retryJob(job);
-              this.render();
+            () => {
+              void (async () => {
+                new import_obsidian6.Notice(`Starting task #${job.taskNumber} now...`);
+                await this.plugin.retryJob(job);
+                this.render();
+              })();
             }
           ).open();
         });
@@ -2658,6 +2664,34 @@ var import_obsidian7 = require("obsidian");
 
 // src/changelog.ts
 var CHANGELOG_DATA = [
+  {
+    version: "2.1.8",
+    date: "2026-10-03",
+    title: "Obsidian Review Compliance, SemVer 2.1.8 & Release Attestations",
+    highlights: [
+      "Obsidian Community Review Compliance: Resolved all automated validation errors, warnings, and guidelines for official Obsidian plugin distribution.",
+      "Strict Semantic Versioning: Standardized plugin and manifest versions on 3-part SemVer (2.1.8).",
+      "Cryptographic Release Attestations: Added automated GitHub Actions build provenance attestations for main.js, manifest.json, and styles.css.",
+      "UI & CSS Standards: Replaced all !important CSS rules with specific selectors, adapted UI sentence casing, and standardized setting headers."
+    ],
+    changed: [
+      "Replaced direct element.style modifications and document.createElement in @ mention suggest with Obsidian DOM helpers and dedicated CSS classes.",
+      "Updated release workflows with build provenance generation via actions/attest-build-provenance@v2."
+    ],
+    fixed: [
+      "Fixed unhandled floating promises on Task ID clipboard copy buttons across all modal dialogues.",
+      "Fixed async callback returns in confirmation dialogs.",
+      "Fixed stringification type warnings across backend error handlers."
+    ],
+    contributors: [
+      {
+        name: "Rachit Asthana",
+        username: "racstan",
+        url: "https://github.com/racstan",
+        role: "Author & Lead Maintainer"
+      }
+    ]
+  },
   {
     version: "2.1.7.9",
     date: "2026-10-02",
@@ -3401,7 +3435,7 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
       text: "Choose which AI plugin AI Scheduler uses to execute tasks, plan schedules, and generate reviews.",
       cls: "ai-scheduler-subtitle"
     });
-    new import_obsidian8.Setting(containerEl).setName("AI backend").setDesc("Select Claudian (for Claude and custom providers) or Obsidian Copilot (for OpenAI, Gemini, Ollama, etc.).").addDropdown((dropdown) => dropdown.addOption("none", "Select an AI backend...").addOption("claudian", "Claudian").addOption("copilot", "Obsidian Copilot").setValue(this.plugin.settings.backendMode || "none").onChange((value) => {
+    new import_obsidian8.Setting(containerEl).setName("AI backend").setDesc("Select Claudian (for claude and custom providers) or Obsidian Copilot (for OpenAI, gemini, ollama, etc.).").addDropdown((dropdown) => dropdown.addOption("none", "Select an AI backend...").addOption("claudian", "Claudian").addOption("copilot", "Obsidian Copilot").setValue(this.plugin.settings.backendMode || "none").onChange((value) => {
       void (async () => {
         this.plugin.settings.backendMode = value;
         await this.plugin.saveState();
@@ -3462,7 +3496,7 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
     if (mode && mode !== "none") {
       new import_obsidian8.Setting(containerEl).setName("Daily & nightly reviews").setHeading();
       containerEl.createEl("p", {
-        text: "Autonomous vault intelligence: Synthesizes notes created or modified during the day and saves timestamped markdown reports in your review folder.",
+        text: "Autonomous vault intelligence: Synthesizes notes created or modified during the day and saves timestamped Markdown reports in your review folder.",
         cls: "ai-scheduler-subtitle"
       });
       new import_obsidian8.Setting(containerEl).setName("Review context").setDesc("Files the daily and nightly reviews may inspect through the active backend's vault tools.").addDropdown((dropdown) => dropdown.addOption("modified-today", "Markdown files modified today").addOption("all-markdown", "All Markdown files").addOption("no-files", "No automatic files").setValue(this.plugin.settings.reviewContextMode).onChange((value) => {
@@ -3471,7 +3505,7 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
           await this.plugin.saveState();
         })();
       }));
-      new import_obsidian8.Setting(containerEl).setName("Review report folder").setDesc("Vault folder where daily and nightly review summaries are saved (default: AI Reviews). Each review creates a timestamped markdown file (e.g. YYYY-MM-DD-HHmmss.md) so past summaries are permanently preserved.").addText((text) => text.setValue(this.plugin.settings.reportFolder).onChange((value) => {
+      new import_obsidian8.Setting(containerEl).setName("Review report folder").setDesc("Vault folder where daily and nightly review summaries are saved (default: AI reviews). Each review creates a timestamped Markdown file (e.g. YYYY-MM-DD-HHmmss.md) so past summaries are permanently preserved.").addText((text) => text.setValue(this.plugin.settings.reportFolder).onChange((value) => {
         void (async () => {
           this.plugin.settings.reportFolder = value.trim() || "AI Reviews";
           await this.plugin.saveState();
@@ -3516,7 +3550,7 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
         await this.plugin.saveState();
       })();
     }));
-    new import_obsidian8.Setting(containerEl).setName("System desktop notifications").setDesc("Send native OS desktop notifications (Windows / macOS / Linux) when tasks finish or fail.").addToggle((toggle) => toggle.setValue(this.plugin.settings.systemNotifications).onChange((value) => {
+    new import_obsidian8.Setting(containerEl).setName("System desktop notifications").setDesc("Send native os desktop notifications (windows / macOS / linux) when tasks finish or fail.").addToggle((toggle) => toggle.setValue(this.plugin.settings.systemNotifications).onChange((value) => {
       void (async () => {
         this.plugin.settings.systemNotifications = value;
         await this.plugin.saveState();
@@ -3591,7 +3625,7 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
     new import_obsidian8.Setting(containerEl).setName("About & support").setHeading();
     const aboutCard = containerEl.createDiv({ cls: "ai-scheduler-about-card" });
     const aboutHeader = aboutCard.createDiv({ cls: "ai-scheduler-about-header" });
-    aboutHeader.createEl("h3", { text: "\u26A1 AI Scheduler for Obsidian", cls: "ai-scheduler-about-title" });
+    aboutHeader.createDiv({ text: "\u26A1 AI Scheduler for Obsidian", cls: "ai-scheduler-about-title" });
     aboutHeader.createSpan({ text: `v${this.plugin.manifest.version}`, cls: "ai-scheduler-version-badge is-latest" });
     aboutCard.createEl("p", {
       text: "The autonomous background scheduling and proactive intelligence engine for Obsidian. Turn your vault into an active thinking partner that plans, reviews, executes, and synthesizes your knowledge in the background.",
@@ -3602,7 +3636,7 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
     metaRow.createSpan({ text: " \xB7 " });
     metaRow.createSpan({ text: "License: GNU GPL-3.0" });
     metaRow.createSpan({ text: " \xB7 " });
-    const ghLink = metaRow.createEl("a", { text: "GitHub Repository", href: "https://github.com/racstan/obsidian-ai-scheduler" });
+    const ghLink = metaRow.createEl("a", { text: "GitHub repository", href: "https://github.com/racstan/obsidian-ai-scheduler" });
     ghLink.target = "_blank";
     new import_obsidian8.Setting(containerEl).setName("Buy me a coffee \u2615").setDesc("AI Scheduler is free and open-source. If it saves you time and brings intelligence to your vault, consider buying me a coffee to support continued development!").addButton((button) => {
       button.setButtonText("\u2615 Buy me a coffee").setClass("ai-scheduler-coffee-btn").onClick(() => {
@@ -4395,7 +4429,7 @@ ${report}`);
         const retryFile = this.app.vault.getAbstractFileByPath(path);
         if (retryFile instanceof import_obsidian10.TFile) {
           await this.app.vault.modify(retryFile, content);
-        } else if (String(err || "").includes("already exists")) {
+        } else if (errorText(err).includes("already exists")) {
           try {
             await this.app.vault.adapter.write(path, content);
           } catch (e) {
@@ -4578,7 +4612,7 @@ ${report}`);
     new import_obsidian10.Notice("AI Scheduler notifications are working.");
     const sentSystem = sendSystemNotification("AI Scheduler", "AI Scheduler desktop notifications are working.");
     if (!sentSystem && typeof window !== "undefined" && typeof window.Notification !== "undefined" && window.Notification.permission === "denied") {
-      new import_obsidian10.Notice("System desktop notifications are blocked by Windows/Obsidian permissions.", 6e3);
+      new import_obsidian10.Notice("System desktop notifications are blocked by windows/Obsidian permissions.", 6e3);
     }
     this.logActivity("notification", "Test notification sent");
     void this.saveState();

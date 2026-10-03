@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.8] - 2026-10-03
+
+### Highlights
+- **Obsidian Community Review Compliance**: Resolved all automated validation errors, warnings, and guidelines for official Obsidian plugin distribution.
+- **Strict Semantic Versioning**: Standardized plugin and manifest versions on 3-part SemVer (`2.1.8`).
+- **Cryptographic Release Attestations**: Added automated GitHub Actions build provenance attestations for `main.js`, `manifest.json`, and `styles.css`.
+- **UI & CSS Standards**: Replaced all `!important` CSS rules with specific selectors, adapted UI sentence casing, and standardized setting headers.
+
+### Changed
+- Replaced direct `element.style` modifications and `document.createElement` in `@` mention suggest with Obsidian DOM helpers and dedicated CSS classes.
+- Updated release workflows with build provenance generation via `actions/attest-build-provenance@v2`.
+
+### Fixed
+- Fixed unhandled floating promises on Task ID clipboard copy buttons across all modal dialogues.
+- Fixed async callback returns in confirmation dialogs.
+- Fixed stringification type warnings across backend error handlers.
+
+### Contributors
+- [@racstan](https://github.com/racstan) (Rachit Asthana)
+
+---
+
 ## [2.1.7.9] - 2026-10-02
 
 ### Highlights

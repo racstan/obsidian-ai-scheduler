@@ -67,7 +67,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('AI backend')
-			.setDesc('Select Claudian (for Claude and custom providers) or Obsidian Copilot (for OpenAI, Gemini, Ollama, etc.).')
+			.setDesc('Select Claudian (for claude and custom providers) or Obsidian Copilot (for OpenAI, gemini, ollama, etc.).')
 			.addDropdown(dropdown => dropdown
 				.addOption('none', 'Select an AI backend...')
 				.addOption('claudian', 'Claudian')
@@ -148,7 +148,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 		if (mode && mode !== 'none') {
 			new Setting(containerEl).setName('Daily & nightly reviews').setHeading();
 			containerEl.createEl('p', {
-				text: 'Autonomous vault intelligence: Synthesizes notes created or modified during the day and saves timestamped markdown reports in your review folder.',
+				text: 'Autonomous vault intelligence: Synthesizes notes created or modified during the day and saves timestamped Markdown reports in your review folder.',
 				cls: 'ai-scheduler-subtitle',
 			});
 
@@ -169,7 +169,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 
 			new Setting(containerEl)
 				.setName('Review report folder')
-				.setDesc('Vault folder where daily and nightly review summaries are saved (default: AI Reviews). Each review creates a timestamped markdown file (e.g. YYYY-MM-DD-HHmmss.md) so past summaries are permanently preserved.')
+				.setDesc('Vault folder where daily and nightly review summaries are saved (default: AI reviews). Each review creates a timestamped Markdown file (e.g. YYYY-MM-DD-HHmmss.md) so past summaries are permanently preserved.')
 				.addText(text => text.setValue(this.plugin.settings.reportFolder).onChange(value => {
 					void (async () => {
 						this.plugin.settings.reportFolder = value.trim() || 'AI Reviews';
@@ -242,7 +242,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('System desktop notifications')
-			.setDesc('Send native OS desktop notifications (Windows / macOS / Linux) when tasks finish or fail.')
+			.setDesc('Send native os desktop notifications (windows / macOS / linux) when tasks finish or fail.')
 			.addToggle(toggle => toggle.setValue(this.plugin.settings.systemNotifications).onChange(value => {
 				void (async () => {
 					this.plugin.settings.systemNotifications = value;
@@ -367,7 +367,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 
 		const aboutCard = containerEl.createDiv({ cls: 'ai-scheduler-about-card' });
 		const aboutHeader = aboutCard.createDiv({ cls: 'ai-scheduler-about-header' });
-		aboutHeader.createEl('h3', { text: '⚡ AI Scheduler for Obsidian', cls: 'ai-scheduler-about-title' });
+		aboutHeader.createDiv({ text: '⚡ AI Scheduler for Obsidian', cls: 'ai-scheduler-about-title' });
 		aboutHeader.createSpan({ text: `v${this.plugin.manifest.version}`, cls: 'ai-scheduler-version-badge is-latest' });
 
 		aboutCard.createEl('p', {
@@ -380,7 +380,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 		metaRow.createSpan({ text: ' · ' });
 		metaRow.createSpan({ text: 'License: GNU GPL-3.0' });
 		metaRow.createSpan({ text: ' · ' });
-		const ghLink = metaRow.createEl('a', { text: 'GitHub Repository', href: 'https://github.com/racstan/obsidian-ai-scheduler' });
+		const ghLink = metaRow.createEl('a', { text: 'GitHub repository', href: 'https://github.com/racstan/obsidian-ai-scheduler' });
 		ghLink.target = '_blank';
 
 		new Setting(containerEl)

@@ -2,7 +2,7 @@ import { Modal, Notice } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
 import { errorText } from '../util';
 import { SCHEDULE_KINDS, ScheduleKind, TaskSchedule } from '../types';
-import { DAY_SHORT_NAMES, describeSchedule, formatMultiRules, getScheduleNextRun, parseMultiRulesText, previewSchedule, validClock } from '../schedule';
+import { DAY_SHORT_NAMES, formatMultiRules, getScheduleNextRun, parseMultiRulesText, previewSchedule, validClock } from '../schedule';
 import { validateCron } from '../cron';
 import { createContextPicker } from './contextPicker';
 import { closeExistingSchedulerModals, makeButton, makeCard } from './dom';
@@ -56,7 +56,7 @@ export class JobModal extends Modal {
 		const navBar = shell.createDiv({ cls: 'ai-scheduler-modal-nav' });
 		const backBtn = navBar.createEl('button', {
 			cls: 'ai-scheduler-back-btn',
-			text: '← Back to dashboard',
+			text: '← back to dashboard',
 		});
 		backBtn.onclick = () => {
 			this.close();
@@ -74,12 +74,13 @@ export class JobModal extends Modal {
 		const detailsHeader = detailsCard.createDiv({ cls: 'ai-scheduler-task-header ai-scheduler-gap-8' });
 		detailsHeader.createDiv({ cls: 'ai-scheduler-lead', text: `Task #${this.job.taskNumber} Details` });
 		const idBadge = detailsHeader.createSpan({ cls: 'ai-scheduler-task-id-badge', text: `ID: ${this.job.id}` });
-		idBadge.setAttribute('title', 'Click to copy Task ID');
+		idBadge.setAttribute('title', 'Click to copy task ID');
 		idBadge.onclick = (e) => {
 			e.stopPropagation();
 			if (typeof navigator !== 'undefined' && navigator.clipboard) {
-				navigator.clipboard.writeText(this.job.id);
-				new Notice(`Copied Task ID: ${this.job.id}`);
+				void navigator.clipboard.writeText(this.job.id).then(() => {
+					new Notice(`Copied Task ID: ${this.job.id}`);
+				});
 			}
 		};
 
