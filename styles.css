@@ -1622,9 +1622,14 @@ button.ai-scheduler-coffee-btn:hover {
 	line-height: 1;
 }
 
-.ai-scheduler-input-highlight {
-	border-color: var(--text-error, #e03e3e) !important;
-	background-color: rgba(224, 62, 62, 0.04) !important;
+input.ai-scheduler-input.ai-scheduler-input-highlight,
+select.ai-scheduler-select.ai-scheduler-input-highlight,
+textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
+.ai-scheduler-shell input.ai-scheduler-input-highlight,
+.ai-scheduler-shell textarea.ai-scheduler-input-highlight,
+.ai-scheduler-modal .ai-scheduler-input-highlight {
+	border-color: var(--text-error, #e03e3e);
+	background-color: rgba(224, 62, 62, 0.04);
 }
 
 .ai-scheduler-doubt-badge {

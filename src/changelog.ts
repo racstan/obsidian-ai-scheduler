@@ -23,7 +23,7 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
-		version: '2.1.7.15',
+		version: '2.1.16',
 		date: '2026-10-03',
 		title: 'Task Trash & Restoration, Quick Undo & Trash Management',
 		highlights: [

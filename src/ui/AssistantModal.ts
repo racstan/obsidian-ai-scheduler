@@ -455,7 +455,7 @@ export class AssistantModal extends Modal {
 
 		if (this.plugin.deletedJobs.length > 0) {
 			const deletedHeading = this.renderSection(shell, 'Deleted tasks', 'Tasks in trash · Click Restore to recover');
-			const deletedBadge = deletedHeading.createSpan({ cls: 'ai-scheduler-count-badge ai-scheduler-badge-count', text: String(this.plugin.deletedJobs.length) });
+			deletedHeading.createSpan({ cls: 'ai-scheduler-count-badge ai-scheduler-badge-count', text: String(this.plugin.deletedJobs.length) });
 
 			const trashActions = shell.createDiv({ cls: 'ai-scheduler-row-actions' });
 			makeButton(trashActions, 'Restore all', () => {

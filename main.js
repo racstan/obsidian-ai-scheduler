@@ -3439,7 +3439,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
     }
     if (this.plugin.deletedJobs.length > 0) {
       const deletedHeading = this.renderSection(shell, "Deleted tasks", "Tasks in trash \xB7 Click Restore to recover");
-      const deletedBadge = deletedHeading.createSpan({ cls: "ai-scheduler-count-badge ai-scheduler-badge-count", text: String(this.plugin.deletedJobs.length) });
+      deletedHeading.createSpan({ cls: "ai-scheduler-count-badge ai-scheduler-badge-count", text: String(this.plugin.deletedJobs.length) });
       const trashActions = shell.createDiv({ cls: "ai-scheduler-row-actions" });
       makeButton(trashActions, "Restore all", () => {
         new ConfirmModal(
@@ -3589,7 +3589,7 @@ var import_obsidian8 = require("obsidian");
 // src/changelog.ts
 var CHANGELOG_DATA = [
   {
-    version: "2.1.7.15",
+    version: "2.1.16",
     date: "2026-10-03",
     title: "Task Trash & Restoration, Quick Undo & Trash Management",
     highlights: [
