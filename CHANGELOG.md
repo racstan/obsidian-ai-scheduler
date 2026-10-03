@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [2.1.8] - 2026-10-03
+## [2.1.7.10] - 2026-10-03
 
 ### Highlights
 - **Obsidian Community Review Compliance**: Resolved all automated validation errors, warnings, and guidelines for official Obsidian plugin distribution.

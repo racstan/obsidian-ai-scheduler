@@ -2665,9 +2665,9 @@ var import_obsidian7 = require("obsidian");
 // src/changelog.ts
 var CHANGELOG_DATA = [
   {
-    version: "2.1.8",
+    version: "2.1.7.10",
     date: "2026-10-03",
-    title: "Obsidian Review Compliance, SemVer 2.1.8 & Release Attestations",
+    title: "Obsidian Review Compliance & Release Attestations",
     highlights: [
       "Obsidian Community Review Compliance: Resolved all automated validation errors, warnings, and guidelines for official Obsidian plugin distribution.",
       "Strict Semantic Versioning: Standardized plugin and manifest versions on 3-part SemVer (2.1.8).",
