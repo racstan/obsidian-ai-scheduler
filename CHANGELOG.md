@@ -5,6 +5,28 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.7.14] - 2026-10-03
+
+### Highlights
+- **Rich Scheduling Cadences**: Added native support for "every N days", "every N weeks", "every N months", and "yearly / every year".
+- **Bounded Execution (For N Times)**: Added "Stop after N runs" across all recurring, interval, and cron schedules so tasks finish automatically after N executions.
+- **Initial Starting Time & Date**: Configurable starting time (HH:MM) and starting date (YYYY-MM-DD) for interval and recurring cadences.
+- **Red Asterisk & Unspecified Detail Highlights**: Added red asterisk markers (*) on mandatory/unspecified fields and AI doubt callout banners.
+
+### Added
+- Added support for every N days, every N weeks, monthly/every N months, and yearly schedules.
+- Added initial starting date/time settings for interval and recurring schedules.
+- Added red asterisk (*) styling on required form labels and doubt badges for unspecified parameters.
+
+### Changed
+- Expanded `JobModal` schedule editor with dedicated cadence controls and validation.
+- Enhanced AI Planning Note cards to highlight unmentioned prompt parameters with default values.
+
+### Contributors
+- [@racstan](https://github.com/racstan) (Rachit Asthana)
+
+---
+
 ## [2.1.7.13] - 2026-10-03
 
 ### Highlights

@@ -1,16 +1,20 @@
 /*
- * Schedule math ported from the original main.js, extended with the cron
- * schedule kind. All kinds resolve to a concrete next-run timestamp so the
- * 15s dispatcher can treat every job uniformly.
+ * Schedule math ported and extended with every N days/weeks/months/years,
+ * initial starting time anchors, and run-for-N-times limits.
  */
 import { cronNext, cronUpcoming, describeCron, formatLocalRun, validateCron } from './cron';
 import { MultiRule, TaskSchedule } from './types';
 import { formatDate } from './util';
 
+export const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+export const DAY_SHORT_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+export const MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+export const MONTH_SHORT_NAMES = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 export function parseClock(value: unknown): { hour: number; minute: number } {
 	const str = typeof value === 'string' ? value.trim() : typeof value === 'number' ? String(value) : '';
 	const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(str);
-	return match ? { hour: Number(match[1]), minute: Number(match[2]) } : { hour: 22, minute: 0 };
+	return match ? { hour: Number(match[1]), minute: Number(match[2]) } : { hour: 9, minute: 0 };
 }
 
 export function validClock(value: unknown): boolean {
@@ -18,24 +22,116 @@ export function validClock(value: unknown): boolean {
 	return /^([01]?\d|2[0-3]):[0-5]\d$/.test(str);
 }
 
-export function nextDailyRun(time: string, from: Date = new Date()): string {
+export function nextDailyRun(time: string, everyDays = 1, startAt?: string, from: Date = new Date()): string {
 	const clock = parseClock(time);
+	const step = Number.isInteger(everyDays) && everyDays > 1 ? everyDays : 1;
+
+	if (startAt) {
+		const anchor = new Date(startAt);
+		if (!Number.isNaN(anchor.getTime())) {
+			anchor.setHours(clock.hour, clock.minute, 0, 0);
+			if (anchor > from) return anchor.toISOString();
+			const diffDays = Math.floor((from.getTime() - anchor.getTime()) / 86400000);
+			const jump = Math.floor(diffDays / step) * step;
+			const candidate = new Date(anchor.getTime() + jump * 86400000);
+			while (candidate <= from) {
+				candidate.setDate(candidate.getDate() + step);
+			}
+			return candidate.toISOString();
+		}
+	}
+
 	const candidate = new Date(from);
 	candidate.setHours(clock.hour, clock.minute, 0, 0);
-	if (candidate <= from) candidate.setDate(candidate.getDate() + 1);
+	if (candidate <= from) {
+		candidate.setDate(candidate.getDate() + step);
+	}
 	return candidate.toISOString();
 }
 
-export function nextWeeklyRun(time: string, days: number[] | undefined, from: Date = new Date()): string {
+export function nextWeeklyRun(time: string, days: number[] | undefined, everyWeeks = 1, startAt?: string, from: Date = new Date()): string {
 	const clock = parseClock(time);
-	const wanted = Array.isArray(days) && days.length ? days.map(Number) : [from.getDay()];
-	for (let offset = 0; offset <= 7; offset++) {
+	const wanted = Array.isArray(days) && days.length
+		? [...new Set(days.map(Number).filter(d => d >= 0 && d <= 6))].sort((a, b) => a - b)
+		: [from.getDay()];
+	const stepWeeks = Number.isInteger(everyWeeks) && everyWeeks > 1 ? everyWeeks : 1;
+
+	for (let offset = 0; offset <= 7 * stepWeeks * 4; offset++) {
 		const candidate = new Date(from);
 		candidate.setDate(candidate.getDate() + offset);
 		candidate.setHours(clock.hour, clock.minute, 0, 0);
-		if (wanted.includes(candidate.getDay()) && candidate > from) return candidate.toISOString();
+		if (candidate <= from) continue;
+		if (wanted.includes(candidate.getDay())) {
+			if (stepWeeks > 1 && startAt) {
+				const anchor = new Date(startAt);
+				if (!Number.isNaN(anchor.getTime())) {
+					const diffWeeks = Math.floor((candidate.getTime() - anchor.getTime()) / (7 * 86400000));
+					if (diffWeeks >= 0 && diffWeeks % stepWeeks !== 0) continue;
+				}
+			}
+			return candidate.toISOString();
+		}
 	}
-	return nextDailyRun(time, from);
+	return nextDailyRun(time, 1, undefined, from);
+}
+
+export function nextMonthlyRun(time: string, dayOfMonth = 1, everyMonths = 1, startAt?: string, from: Date = new Date()): string {
+	const clock = parseClock(time);
+	const targetDay = Number.isInteger(dayOfMonth) && dayOfMonth >= 1 && dayOfMonth <= 31 ? dayOfMonth : 1;
+	const stepMonths = Number.isInteger(everyMonths) && everyMonths > 1 ? everyMonths : 1;
+
+	let year = from.getFullYear();
+	let month = from.getMonth();
+
+	for (let i = 0; i < 48; i++) {
+		const daysInMonth = new Date(year, month + 1, 0).getDate();
+		const clampedDay = Math.min(targetDay, daysInMonth);
+		const candidate = new Date(year, month, clampedDay, clock.hour, clock.minute, 0, 0);
+
+		if (candidate > from) {
+			if (stepMonths > 1 && startAt) {
+				const anchor = new Date(startAt);
+				if (!Number.isNaN(anchor.getTime())) {
+					const monthDiff = (year - anchor.getFullYear()) * 12 + (month - anchor.getMonth());
+					if (monthDiff >= 0 && monthDiff % stepMonths !== 0) {
+						month += 1;
+						if (month > 11) {
+							year += Math.floor(month / 12);
+							month = month % 12;
+						}
+						continue;
+					}
+				}
+			}
+			return candidate.toISOString();
+		}
+
+		month += 1;
+		if (month > 11) {
+			year += Math.floor(month / 12);
+			month = month % 12;
+		}
+	}
+	return nextDailyRun(time, 1, undefined, from);
+}
+
+export function nextYearlyRun(time: string, targetMonth = 1, targetDay = 1, from: Date = new Date()): string {
+	const clock = parseClock(time);
+	const monthIdx = Number.isInteger(targetMonth) && targetMonth >= 1 && targetMonth <= 12 ? targetMonth - 1 : 0;
+	const day = Number.isInteger(targetDay) && targetDay >= 1 && targetDay <= 31 ? targetDay : 1;
+
+	const currentYear = from.getFullYear();
+	const daysInMonthThisYear = new Date(currentYear, monthIdx + 1, 0).getDate();
+	const candidateThisYear = new Date(currentYear, monthIdx, Math.min(day, daysInMonthThisYear), clock.hour, clock.minute, 0, 0);
+
+	if (candidateThisYear > from) {
+		return candidateThisYear.toISOString();
+	}
+
+	const nextYear = currentYear + 1;
+	const daysInMonthNextYear = new Date(nextYear, monthIdx + 1, 0).getDate();
+	const candidateNextYear = new Date(nextYear, monthIdx, Math.min(day, daysInMonthNextYear), clock.hour, clock.minute, 0, 0);
+	return candidateNextYear.toISOString();
 }
 
 export function normalizeMaxIterations(value: unknown): number | null {
@@ -76,9 +172,6 @@ export function nextMultiRun(rules: unknown, from: Date = new Date()): string | 
 	}
 	return next ? next.toISOString() : null;
 }
-
-export const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-export const DAY_SHORT_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function parseDayToken(token: string): number[] {
 	const normalized = String(token || '').trim().toLowerCase();
@@ -140,11 +233,40 @@ export function getScheduleNextRun(schedule: TaskSchedule | null | undefined, fr
 		const date = new Date(schedule.at as string);
 		return Number.isNaN(date.getTime()) ? null : date.toISOString();
 	}
-	if (schedule.kind === 'weekly') return validClock(schedule.time) ? nextWeeklyRun(schedule.time as string, schedule.days, from) : null;
+	if (schedule.kind === 'daily') {
+		return validClock(schedule.time) ? nextDailyRun(schedule.time as string, schedule.everyDays || 1, schedule.startAt, from) : null;
+	}
+	if (schedule.kind === 'weekly') {
+		return validClock(schedule.time) ? nextWeeklyRun(schedule.time as string, schedule.days, schedule.everyWeeks || 1, schedule.startAt, from) : null;
+	}
+	if (schedule.kind === 'monthly') {
+		return validClock(schedule.time) ? nextMonthlyRun(schedule.time as string, schedule.dayOfMonth || 1, schedule.everyMonths || 1, schedule.startAt, from) : null;
+	}
+	if (schedule.kind === 'yearly') {
+		return validClock(schedule.time) ? nextYearlyRun(schedule.time as string, schedule.month || 1, schedule.dayOfMonth || 1, from) : null;
+	}
 	if (schedule.kind === 'multi') return nextMultiRun(schedule.rules, from);
 	if (schedule.kind === 'hourly' || schedule.kind === 'interval') {
 		const minutes = scheduleMinutes(schedule);
 		if (!Number.isFinite(minutes) || minutes <= 0) return null;
+		if (schedule.startAt) {
+			const anchor = new Date(schedule.startAt);
+			if (!Number.isNaN(anchor.getTime())) {
+				if (anchor > from) return anchor.toISOString();
+				const elapsed = from.getTime() - anchor.getTime();
+				const steps = Math.floor(elapsed / (minutes * 60000)) + 1;
+				return new Date(anchor.getTime() + steps * minutes * 60000).toISOString();
+			}
+		}
+		if (schedule.time && validClock(schedule.time)) {
+			const clock = parseClock(schedule.time);
+			const anchorToday = new Date(from);
+			anchorToday.setHours(clock.hour, clock.minute, 0, 0);
+			if (anchorToday > from) return anchorToday.toISOString();
+			const elapsed = from.getTime() - anchorToday.getTime();
+			const steps = Math.floor(elapsed / (minutes * 60000)) + 1;
+			return new Date(anchorToday.getTime() + steps * minutes * 60000).toISOString();
+		}
 		return new Date(from.getTime() + minutes * 60000).toISOString();
 	}
 	if (schedule.kind === 'cron') {
@@ -152,20 +274,28 @@ export function getScheduleNextRun(schedule: TaskSchedule | null | undefined, fr
 		const next = cronNext(schedule.expression, from);
 		return next ? next.toISOString() : null;
 	}
-	return validClock(schedule.time) ? nextDailyRun(schedule.time as string, from) : null;
+	return validClock(schedule.time) ? nextDailyRun(schedule.time as string, 1, undefined, from) : null;
 }
 
 /** The cron expression equivalent of a schedule, when one can express it exactly. */
 export function cronFormFor(schedule: TaskSchedule): string | null {
 	if (!schedule) return null;
 	if (schedule.kind === 'cron') return schedule.expression || null;
-	if (schedule.kind === 'daily' && validClock(schedule.time)) {
+	if (schedule.kind === 'daily' && validClock(schedule.time) && (!schedule.everyDays || schedule.everyDays === 1)) {
 		const clock = parseClock(schedule.time);
 		return `${clock.minute} ${clock.hour} * * *`;
 	}
-	if (schedule.kind === 'weekly' && validClock(schedule.time) && Array.isArray(schedule.days) && schedule.days.length) {
+	if (schedule.kind === 'weekly' && validClock(schedule.time) && (!schedule.everyWeeks || schedule.everyWeeks === 1) && Array.isArray(schedule.days) && schedule.days.length) {
 		const clock = parseClock(schedule.time);
 		return `${clock.minute} ${clock.hour} * * ${[...new Set(schedule.days.map(Number))].sort((a, b) => a - b).join(',')}`;
+	}
+	if (schedule.kind === 'monthly' && validClock(schedule.time) && (!schedule.everyMonths || schedule.everyMonths === 1)) {
+		const clock = parseClock(schedule.time);
+		return `${clock.minute} ${clock.hour} ${schedule.dayOfMonth || 1} * *`;
+	}
+	if (schedule.kind === 'yearly' && validClock(schedule.time)) {
+		const clock = parseClock(schedule.time);
+		return `${clock.minute} ${clock.hour} ${schedule.dayOfMonth || 1} ${schedule.month || 1} *`;
 	}
 	if (schedule.kind === 'multi') {
 		const rules = normalizeMultiRules(schedule.rules);
@@ -210,27 +340,49 @@ export function previewSchedule(schedule: TaskSchedule | null | undefined, count
 
 export function describeSchedule(job: { schedule?: TaskSchedule; nextRunAt?: string | null }): string {
 	const schedule = job.schedule || ({} as TaskSchedule);
-	if (schedule.kind === 'daily') return `daily at ${schedule.time}`;
-	if (schedule.kind === 'weekly') {
+	let desc = '';
+	if (schedule.kind === 'daily') {
+		if (schedule.everyDays && schedule.everyDays > 1) {
+			desc = `every ${schedule.everyDays} days at ${schedule.time || '09:00'}${schedule.startAt ? ` starting ${formatDate(schedule.startAt)}` : ''}`;
+		} else {
+			desc = `daily at ${schedule.time || '09:00'}`;
+		}
+	} else if (schedule.kind === 'weekly') {
 		const days = (schedule.days || []).map(Number).filter(day => DAY_SHORT_NAMES[day]).map(day => DAY_SHORT_NAMES[day]);
-		return `weekly ${days.join(', ') || 'at the selected days'} at ${schedule.time}`;
-	}
-	if (schedule.kind === 'multi') return formatMultiRules(schedule.rules).replace(/\n/g, ' · ') || 'multiple times';
-	if (schedule.kind === 'hourly') return `every hour${schedule.maxIterations ? ` · ${schedule.maxIterations} iterations` : ''}`;
-	if (schedule.kind === 'interval') {
+		if (schedule.everyWeeks && schedule.everyWeeks > 1) {
+			desc = `every ${schedule.everyWeeks} weeks on ${days.join(', ') || 'selected days'} at ${schedule.time || '09:00'}`;
+		} else {
+			desc = `weekly on ${days.join(', ') || 'selected days'} at ${schedule.time || '09:00'}`;
+		}
+	} else if (schedule.kind === 'monthly') {
+		const every = schedule.everyMonths && schedule.everyMonths > 1 ? `every ${schedule.everyMonths} months` : 'monthly';
+		desc = `${every} on day ${schedule.dayOfMonth || 1} at ${schedule.time || '09:00'}`;
+	} else if (schedule.kind === 'yearly') {
+		const monthName = MONTH_NAMES[schedule.month || 1] || 'January';
+		desc = `yearly on ${monthName} ${schedule.dayOfMonth || 1} at ${schedule.time || '09:00'}`;
+	} else if (schedule.kind === 'multi') {
+		desc = formatMultiRules(schedule.rules).replace(/\n/g, ' · ') || 'multiple times';
+	} else if (schedule.kind === 'hourly') {
+		desc = `every hour${schedule.time ? ` starting at ${schedule.time}` : ''}`;
+	} else if (schedule.kind === 'interval') {
 		const minutes = Number(schedule.intervalMinutes || legacyField(schedule, 'everyMinutes') || (Number(legacyField(schedule, 'everyHours') || 0) * 60) || 0);
 		const cadence = minutes % 60 === 0 ? `every ${minutes / 60} hour${minutes === 60 ? '' : 's'}` : `every ${minutes} minutes`;
-		return `${cadence}${schedule.maxIterations ? ` · ${schedule.maxIterations} iterations` : ''}`;
-	}
-	if (schedule.kind === 'event') return `when ${schedule.event || 'the vault changes'}`;
-	if (schedule.kind === 'cron') {
+		desc = `${cadence}${schedule.time ? ` starting at ${schedule.time}` : schedule.startAt ? ` starting ${formatDate(schedule.startAt)}` : ''}`;
+	} else if (schedule.kind === 'event') {
+		desc = `when ${schedule.event || 'the vault changes'}`;
+	} else if (schedule.kind === 'cron') {
 		const expression = schedule.expression || '';
 		const description = describeCron(expression);
-		return description === 'Invalid cron expression' ? `cron ${expression || '(empty)'}` : `${description} · ${expression}`;
-	}
-	if (schedule.kind === 'once') {
+		desc = description === 'Invalid cron expression' ? `cron ${expression || '(empty)'}` : `${description} · ${expression}`;
+	} else if (schedule.kind === 'once') {
 		const at = schedule.at || job.nextRunAt;
-		return at ? `once at ${formatDate(at)}` : 'once (time pending)';
+		desc = at ? `once at ${formatDate(at)}` : 'once (time pending)';
+	} else {
+		desc = job.nextRunAt ? formatDate(job.nextRunAt) : 'not scheduled';
 	}
-	return job.nextRunAt ? formatDate(job.nextRunAt) : 'not scheduled';
+
+	if (schedule.maxIterations && Number(schedule.maxIterations) > 0) {
+		desc += ` · runs for ${schedule.maxIterations} time${Number(schedule.maxIterations) === 1 ? '' : 's'} then done`;
+	}
+	return desc;
 }

@@ -23,6 +23,34 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.7.14',
+		date: '2026-10-03',
+		title: 'Rich Cadences (Every N Days/Weeks/Months/Years), Initial Time Anchors & Red Asterisk Highlights',
+		highlights: [
+			'Rich Scheduling Cadences: Added native support for "every N days", "every N weeks", "every N months", and "yearly / every year".',
+			'Bounded Execution (For N Times): Added "Stop after N runs" across all recurring, interval, and cron schedules so tasks finish automatically after N executions.',
+			'Initial Starting Time & Date: Configurable starting time (HH:MM) and starting date (YYYY-MM-DD) for interval and recurring cadences.',
+			'Red Asterisk & Unspecified Detail Highlights: Added red asterisk markers (*) on mandatory/unspecified fields and AI doubt callout banners.',
+		],
+		added: [
+			'Added support for every N days, every N weeks, monthly/every N months, and yearly schedules.',
+			'Added initial starting date/time settings for interval and recurring schedules.',
+			'Added red asterisk (*) styling on required form labels and doubt badges for unspecified parameters.',
+		],
+		changed: [
+			'Expanded JobModal schedule editor with dedicated cadence controls and validation.',
+			'Enhanced AI Planning Note cards to highlight unmentioned prompt parameters with default values.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author & Lead Maintainer',
+			},
+		],
+	},
+	{
 		version: '2.1.7.13',
 		date: '2026-10-03',
 		title: 'Dual Edit Modes (Manual / AI), Textarea Content Binding & Time Shorthand Clarifications',

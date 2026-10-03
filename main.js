@@ -46,7 +46,7 @@ var BACKEND_INFO = {
     githubUrl: "https://github.com/logancyang/obsidian-copilot"
   }
 };
-var SCHEDULE_KINDS = ["once", "daily", "weekly", "multi", "hourly", "interval", "event", "cron"];
+var SCHEDULE_KINDS = ["once", "daily", "weekly", "monthly", "yearly", "hourly", "interval", "multi", "event", "cron"];
 
 // src/cron/parse.ts
 var CronParseError = class extends Error {
@@ -526,32 +526,113 @@ function formatDuration(isoString) {
 }
 
 // src/schedule.ts
+var DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+var DAY_SHORT_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+var MONTH_NAMES2 = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 function parseClock(value) {
   const str = typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : "";
   const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(str);
-  return match ? { hour: Number(match[1]), minute: Number(match[2]) } : { hour: 22, minute: 0 };
+  return match ? { hour: Number(match[1]), minute: Number(match[2]) } : { hour: 9, minute: 0 };
 }
 function validClock(value) {
   const str = typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : "";
   return /^([01]?\d|2[0-3]):[0-5]\d$/.test(str);
 }
-function nextDailyRun(time, from = /* @__PURE__ */ new Date()) {
+function nextDailyRun(time, everyDays = 1, startAt, from = /* @__PURE__ */ new Date()) {
   const clock = parseClock(time);
+  const step = Number.isInteger(everyDays) && everyDays > 1 ? everyDays : 1;
+  if (startAt) {
+    const anchor = new Date(startAt);
+    if (!Number.isNaN(anchor.getTime())) {
+      anchor.setHours(clock.hour, clock.minute, 0, 0);
+      if (anchor > from) return anchor.toISOString();
+      const diffDays = Math.floor((from.getTime() - anchor.getTime()) / 864e5);
+      const jump = Math.floor(diffDays / step) * step;
+      const candidate2 = new Date(anchor.getTime() + jump * 864e5);
+      while (candidate2 <= from) {
+        candidate2.setDate(candidate2.getDate() + step);
+      }
+      return candidate2.toISOString();
+    }
+  }
   const candidate = new Date(from);
   candidate.setHours(clock.hour, clock.minute, 0, 0);
-  if (candidate <= from) candidate.setDate(candidate.getDate() + 1);
+  if (candidate <= from) {
+    candidate.setDate(candidate.getDate() + step);
+  }
   return candidate.toISOString();
 }
-function nextWeeklyRun(time, days, from = /* @__PURE__ */ new Date()) {
+function nextWeeklyRun(time, days, everyWeeks = 1, startAt, from = /* @__PURE__ */ new Date()) {
   const clock = parseClock(time);
-  const wanted = Array.isArray(days) && days.length ? days.map(Number) : [from.getDay()];
-  for (let offset = 0; offset <= 7; offset++) {
+  const wanted = Array.isArray(days) && days.length ? [...new Set(days.map(Number).filter((d) => d >= 0 && d <= 6))].sort((a, b) => a - b) : [from.getDay()];
+  const stepWeeks = Number.isInteger(everyWeeks) && everyWeeks > 1 ? everyWeeks : 1;
+  for (let offset = 0; offset <= 7 * stepWeeks * 4; offset++) {
     const candidate = new Date(from);
     candidate.setDate(candidate.getDate() + offset);
     candidate.setHours(clock.hour, clock.minute, 0, 0);
-    if (wanted.includes(candidate.getDay()) && candidate > from) return candidate.toISOString();
+    if (candidate <= from) continue;
+    if (wanted.includes(candidate.getDay())) {
+      if (stepWeeks > 1 && startAt) {
+        const anchor = new Date(startAt);
+        if (!Number.isNaN(anchor.getTime())) {
+          const diffWeeks = Math.floor((candidate.getTime() - anchor.getTime()) / (7 * 864e5));
+          if (diffWeeks >= 0 && diffWeeks % stepWeeks !== 0) continue;
+        }
+      }
+      return candidate.toISOString();
+    }
   }
-  return nextDailyRun(time, from);
+  return nextDailyRun(time, 1, void 0, from);
+}
+function nextMonthlyRun(time, dayOfMonth = 1, everyMonths = 1, startAt, from = /* @__PURE__ */ new Date()) {
+  const clock = parseClock(time);
+  const targetDay = Number.isInteger(dayOfMonth) && dayOfMonth >= 1 && dayOfMonth <= 31 ? dayOfMonth : 1;
+  const stepMonths = Number.isInteger(everyMonths) && everyMonths > 1 ? everyMonths : 1;
+  let year = from.getFullYear();
+  let month = from.getMonth();
+  for (let i = 0; i < 48; i++) {
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const clampedDay = Math.min(targetDay, daysInMonth);
+    const candidate = new Date(year, month, clampedDay, clock.hour, clock.minute, 0, 0);
+    if (candidate > from) {
+      if (stepMonths > 1 && startAt) {
+        const anchor = new Date(startAt);
+        if (!Number.isNaN(anchor.getTime())) {
+          const monthDiff = (year - anchor.getFullYear()) * 12 + (month - anchor.getMonth());
+          if (monthDiff >= 0 && monthDiff % stepMonths !== 0) {
+            month += 1;
+            if (month > 11) {
+              year += Math.floor(month / 12);
+              month = month % 12;
+            }
+            continue;
+          }
+        }
+      }
+      return candidate.toISOString();
+    }
+    month += 1;
+    if (month > 11) {
+      year += Math.floor(month / 12);
+      month = month % 12;
+    }
+  }
+  return nextDailyRun(time, 1, void 0, from);
+}
+function nextYearlyRun(time, targetMonth = 1, targetDay = 1, from = /* @__PURE__ */ new Date()) {
+  const clock = parseClock(time);
+  const monthIdx = Number.isInteger(targetMonth) && targetMonth >= 1 && targetMonth <= 12 ? targetMonth - 1 : 0;
+  const day = Number.isInteger(targetDay) && targetDay >= 1 && targetDay <= 31 ? targetDay : 1;
+  const currentYear = from.getFullYear();
+  const daysInMonthThisYear = new Date(currentYear, monthIdx + 1, 0).getDate();
+  const candidateThisYear = new Date(currentYear, monthIdx, Math.min(day, daysInMonthThisYear), clock.hour, clock.minute, 0, 0);
+  if (candidateThisYear > from) {
+    return candidateThisYear.toISOString();
+  }
+  const nextYear = currentYear + 1;
+  const daysInMonthNextYear = new Date(nextYear, monthIdx + 1, 0).getDate();
+  const candidateNextYear = new Date(nextYear, monthIdx, Math.min(day, daysInMonthNextYear), clock.hour, clock.minute, 0, 0);
+  return candidateNextYear.toISOString();
 }
 function normalizeMaxIterations(value) {
   const number = Number(value);
@@ -587,8 +668,6 @@ function nextMultiRun(rules, from = /* @__PURE__ */ new Date()) {
   }
   return next ? next.toISOString() : null;
 }
-var DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-var DAY_SHORT_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 function parseDayToken(token) {
   const normalized = String(token || "").trim().toLowerCase();
   const exactLong = DAY_NAMES.findIndex((name) => name.toLowerCase() === normalized);
@@ -643,11 +722,40 @@ function getScheduleNextRun(schedule, from = /* @__PURE__ */ new Date()) {
     const date = new Date(schedule.at);
     return Number.isNaN(date.getTime()) ? null : date.toISOString();
   }
-  if (schedule.kind === "weekly") return validClock(schedule.time) ? nextWeeklyRun(schedule.time, schedule.days, from) : null;
+  if (schedule.kind === "daily") {
+    return validClock(schedule.time) ? nextDailyRun(schedule.time, schedule.everyDays || 1, schedule.startAt, from) : null;
+  }
+  if (schedule.kind === "weekly") {
+    return validClock(schedule.time) ? nextWeeklyRun(schedule.time, schedule.days, schedule.everyWeeks || 1, schedule.startAt, from) : null;
+  }
+  if (schedule.kind === "monthly") {
+    return validClock(schedule.time) ? nextMonthlyRun(schedule.time, schedule.dayOfMonth || 1, schedule.everyMonths || 1, schedule.startAt, from) : null;
+  }
+  if (schedule.kind === "yearly") {
+    return validClock(schedule.time) ? nextYearlyRun(schedule.time, schedule.month || 1, schedule.dayOfMonth || 1, from) : null;
+  }
   if (schedule.kind === "multi") return nextMultiRun(schedule.rules, from);
   if (schedule.kind === "hourly" || schedule.kind === "interval") {
     const minutes = scheduleMinutes(schedule);
     if (!Number.isFinite(minutes) || minutes <= 0) return null;
+    if (schedule.startAt) {
+      const anchor = new Date(schedule.startAt);
+      if (!Number.isNaN(anchor.getTime())) {
+        if (anchor > from) return anchor.toISOString();
+        const elapsed = from.getTime() - anchor.getTime();
+        const steps = Math.floor(elapsed / (minutes * 6e4)) + 1;
+        return new Date(anchor.getTime() + steps * minutes * 6e4).toISOString();
+      }
+    }
+    if (schedule.time && validClock(schedule.time)) {
+      const clock = parseClock(schedule.time);
+      const anchorToday = new Date(from);
+      anchorToday.setHours(clock.hour, clock.minute, 0, 0);
+      if (anchorToday > from) return anchorToday.toISOString();
+      const elapsed = from.getTime() - anchorToday.getTime();
+      const steps = Math.floor(elapsed / (minutes * 6e4)) + 1;
+      return new Date(anchorToday.getTime() + steps * minutes * 6e4).toISOString();
+    }
     return new Date(from.getTime() + minutes * 6e4).toISOString();
   }
   if (schedule.kind === "cron") {
@@ -655,18 +763,26 @@ function getScheduleNextRun(schedule, from = /* @__PURE__ */ new Date()) {
     const next = cronNext(schedule.expression, from);
     return next ? next.toISOString() : null;
   }
-  return validClock(schedule.time) ? nextDailyRun(schedule.time, from) : null;
+  return validClock(schedule.time) ? nextDailyRun(schedule.time, 1, void 0, from) : null;
 }
 function cronFormFor(schedule) {
   if (!schedule) return null;
   if (schedule.kind === "cron") return schedule.expression || null;
-  if (schedule.kind === "daily" && validClock(schedule.time)) {
+  if (schedule.kind === "daily" && validClock(schedule.time) && (!schedule.everyDays || schedule.everyDays === 1)) {
     const clock = parseClock(schedule.time);
     return `${clock.minute} ${clock.hour} * * *`;
   }
-  if (schedule.kind === "weekly" && validClock(schedule.time) && Array.isArray(schedule.days) && schedule.days.length) {
+  if (schedule.kind === "weekly" && validClock(schedule.time) && (!schedule.everyWeeks || schedule.everyWeeks === 1) && Array.isArray(schedule.days) && schedule.days.length) {
     const clock = parseClock(schedule.time);
     return `${clock.minute} ${clock.hour} * * ${[...new Set(schedule.days.map(Number))].sort((a, b) => a - b).join(",")}`;
+  }
+  if (schedule.kind === "monthly" && validClock(schedule.time) && (!schedule.everyMonths || schedule.everyMonths === 1)) {
+    const clock = parseClock(schedule.time);
+    return `${clock.minute} ${clock.hour} ${schedule.dayOfMonth || 1} * *`;
+  }
+  if (schedule.kind === "yearly" && validClock(schedule.time)) {
+    const clock = parseClock(schedule.time);
+    return `${clock.minute} ${clock.hour} ${schedule.dayOfMonth || 1} ${schedule.month || 1} *`;
   }
   if (schedule.kind === "multi") {
     const rules = normalizeMultiRules(schedule.rules);
@@ -708,29 +824,50 @@ function previewSchedule(schedule, count = 3, from = /* @__PURE__ */ new Date())
 }
 function describeSchedule(job) {
   const schedule = job.schedule || {};
-  if (schedule.kind === "daily") return `daily at ${schedule.time}`;
-  if (schedule.kind === "weekly") {
+  let desc = "";
+  if (schedule.kind === "daily") {
+    if (schedule.everyDays && schedule.everyDays > 1) {
+      desc = `every ${schedule.everyDays} days at ${schedule.time || "09:00"}${schedule.startAt ? ` starting ${formatDate(schedule.startAt)}` : ""}`;
+    } else {
+      desc = `daily at ${schedule.time || "09:00"}`;
+    }
+  } else if (schedule.kind === "weekly") {
     const days = (schedule.days || []).map(Number).filter((day) => DAY_SHORT_NAMES[day]).map((day) => DAY_SHORT_NAMES[day]);
-    return `weekly ${days.join(", ") || "at the selected days"} at ${schedule.time}`;
-  }
-  if (schedule.kind === "multi") return formatMultiRules(schedule.rules).replace(/\n/g, " \xB7 ") || "multiple times";
-  if (schedule.kind === "hourly") return `every hour${schedule.maxIterations ? ` \xB7 ${schedule.maxIterations} iterations` : ""}`;
-  if (schedule.kind === "interval") {
+    if (schedule.everyWeeks && schedule.everyWeeks > 1) {
+      desc = `every ${schedule.everyWeeks} weeks on ${days.join(", ") || "selected days"} at ${schedule.time || "09:00"}`;
+    } else {
+      desc = `weekly on ${days.join(", ") || "selected days"} at ${schedule.time || "09:00"}`;
+    }
+  } else if (schedule.kind === "monthly") {
+    const every = schedule.everyMonths && schedule.everyMonths > 1 ? `every ${schedule.everyMonths} months` : "monthly";
+    desc = `${every} on day ${schedule.dayOfMonth || 1} at ${schedule.time || "09:00"}`;
+  } else if (schedule.kind === "yearly") {
+    const monthName = MONTH_NAMES2[schedule.month || 1] || "January";
+    desc = `yearly on ${monthName} ${schedule.dayOfMonth || 1} at ${schedule.time || "09:00"}`;
+  } else if (schedule.kind === "multi") {
+    desc = formatMultiRules(schedule.rules).replace(/\n/g, " \xB7 ") || "multiple times";
+  } else if (schedule.kind === "hourly") {
+    desc = `every hour${schedule.time ? ` starting at ${schedule.time}` : ""}`;
+  } else if (schedule.kind === "interval") {
     const minutes = Number(schedule.intervalMinutes || legacyField(schedule, "everyMinutes") || Number(legacyField(schedule, "everyHours") || 0) * 60 || 0);
     const cadence = minutes % 60 === 0 ? `every ${minutes / 60} hour${minutes === 60 ? "" : "s"}` : `every ${minutes} minutes`;
-    return `${cadence}${schedule.maxIterations ? ` \xB7 ${schedule.maxIterations} iterations` : ""}`;
-  }
-  if (schedule.kind === "event") return `when ${schedule.event || "the vault changes"}`;
-  if (schedule.kind === "cron") {
+    desc = `${cadence}${schedule.time ? ` starting at ${schedule.time}` : schedule.startAt ? ` starting ${formatDate(schedule.startAt)}` : ""}`;
+  } else if (schedule.kind === "event") {
+    desc = `when ${schedule.event || "the vault changes"}`;
+  } else if (schedule.kind === "cron") {
     const expression = schedule.expression || "";
     const description = describeCron(expression);
-    return description === "Invalid cron expression" ? `cron ${expression || "(empty)"}` : `${description} \xB7 ${expression}`;
-  }
-  if (schedule.kind === "once") {
+    desc = description === "Invalid cron expression" ? `cron ${expression || "(empty)"}` : `${description} \xB7 ${expression}`;
+  } else if (schedule.kind === "once") {
     const at = schedule.at || job.nextRunAt;
-    return at ? `once at ${formatDate(at)}` : "once (time pending)";
+    desc = at ? `once at ${formatDate(at)}` : "once (time pending)";
+  } else {
+    desc = job.nextRunAt ? formatDate(job.nextRunAt) : "not scheduled";
   }
-  return job.nextRunAt ? formatDate(job.nextRunAt) : "not scheduled";
+  if (schedule.maxIterations && Number(schedule.maxIterations) > 0) {
+    desc += ` \xB7 runs for ${schedule.maxIterations} time${Number(schedule.maxIterations) === 1 ? "" : "s"} then done`;
+  }
+  return desc;
 }
 
 // src/settings.ts
@@ -1700,11 +1837,13 @@ function attachMentionSuggest(options) {
 // src/ui/JobModal.ts
 var KIND_LABELS = {
   once: "Once at a specific time",
-  daily: "Every day",
-  weekly: "Weekly on selected days",
+  daily: "Daily / Every N days",
+  weekly: "Weekly / Every N weeks",
+  monthly: "Monthly / Every N months",
+  yearly: "Yearly / Every year",
   multi: "Multiple weekday/time rules",
   hourly: "Every hour",
-  interval: "Every N minutes",
+  interval: "Every N minutes / hours",
   event: "When the vault changes",
   cron: "Cron expression (advanced)"
 };
@@ -1712,10 +1851,7 @@ var JobModal = class extends import_obsidian4.Modal {
   constructor(app, plugin, job, onSaved) {
     super(app);
     this.editMode = "manual";
-    this.inputs = [];
-    this.multiArea = null;
-    this.dayChecks = [];
-    this.cronInput = null;
+    this.scheduleInputs = { dayChecks: [] };
     this.kindSelect = null;
     this.plugin = plugin;
     this.job = job;
@@ -1776,6 +1912,14 @@ var JobModal = class extends import_obsidian4.Modal {
     }
   }
   renderManualMode(shell) {
+    if (this.job.doubt) {
+      const doubtBanner = shell.createDiv({ cls: "ai-scheduler-alert-banner ai-scheduler-gap-8" });
+      const content = doubtBanner.createDiv({ cls: "ai-scheduler-alert-content" });
+      content.createSpan({ cls: "ai-scheduler-alert-icon", text: "\u{1F4A1}" });
+      const textCol = content.createDiv();
+      textCol.createDiv({ cls: "ai-scheduler-alert-title", text: "AI Planning Note & Unspecified Details" });
+      textCol.createDiv({ cls: "ai-scheduler-alert-desc", text: `${this.job.doubt} Default values were populated for any unspecified details. Please check the fields marked with * below.` });
+    }
     const detailsCard = makeCard(shell, "ai-scheduler-card-tight", "ai-scheduler-card-flush");
     const detailsHeader = detailsCard.createDiv({ cls: "ai-scheduler-task-header ai-scheduler-gap-8" });
     detailsHeader.createDiv({ cls: "ai-scheduler-lead", text: "Task Details" });
@@ -1789,14 +1933,18 @@ var JobModal = class extends import_obsidian4.Modal {
         });
       }
     };
-    detailsCard.createDiv({ cls: "ai-scheduler-form-label", text: "Task title" });
+    const titleLabel = detailsCard.createDiv({ cls: "ai-scheduler-form-label" });
+    titleLabel.createSpan({ text: "Task title" });
+    titleLabel.createSpan({ cls: "ai-scheduler-required-asterisk", text: " *" });
     const titleInput = detailsCard.createEl("input", {
       type: "text",
       placeholder: "Task title...",
       cls: "ai-scheduler-input ai-scheduler-form-gap"
     });
     titleInput.value = this.job.title || "";
-    detailsCard.createDiv({ cls: "ai-scheduler-form-label", text: "Prompt & instructions" });
+    const promptLabel = detailsCard.createDiv({ cls: "ai-scheduler-form-label" });
+    promptLabel.createSpan({ text: "Prompt & instructions" });
+    promptLabel.createSpan({ cls: "ai-scheduler-required-asterisk", text: " *" });
     const promptInput = detailsCard.createEl("textarea", {
       placeholder: "Instructions for the AI when executing this task (type @ to attach files)...",
       cls: "ai-scheduler-textarea ai-scheduler-form-gap"
@@ -1943,10 +2091,7 @@ var JobModal = class extends import_obsidian4.Modal {
     const preview = card.createDiv("ai-scheduler-preview");
     const rerenderFields = () => {
       fields.empty();
-      this.inputs = [];
-      this.multiArea = null;
-      this.dayChecks = [];
-      this.cronInput = null;
+      this.scheduleInputs = { dayChecks: [] };
       this.renderKindFields(fields, () => this.updatePreview(preview));
       this.updatePreview(preview);
     };
@@ -1981,38 +2126,72 @@ var JobModal = class extends import_obsidian4.Modal {
   renderKindFields(container, onChange) {
     var _a;
     const schedule = this.job.schedule;
-    const input = (attributes) => {
+    const createLabel = (text, required = false) => {
+      const label = container.createDiv("ai-scheduler-field-label");
+      label.createSpan({ text });
+      if (required) {
+        label.createSpan({ cls: "ai-scheduler-required-asterisk", text: " *" });
+      }
+      return label;
+    };
+    const createInput = (attributes) => {
       const element = container.createEl("input", { type: attributes.type || "text" });
       if (attributes.value !== void 0) element.value = attributes.value;
       if (attributes.min !== void 0) element.min = attributes.min;
+      if (attributes.max !== void 0) element.max = attributes.max;
       if (attributes.placeholder !== void 0) element.placeholder = attributes.placeholder;
       element.addClass("ai-scheduler-input");
       if (attributes.monospace) element.addClass("ai-scheduler-input-mono");
       element.oninput = onChange;
-      this.inputs.push(element);
       return element;
     };
-    const label = (text) => container.createDiv("ai-scheduler-field-label").setText(text);
     switch (this.kind) {
       case "once": {
-        label("Date and time");
+        createLabel("Date and time", true);
         const current = schedule.at && new Date(schedule.at).getTime() > Date.now() ? new Date(schedule.at) : new Date(Date.now() + 60 * 60 * 1e3);
         const pad2 = (value) => String(value).padStart(2, "0");
-        input({
+        this.scheduleInputs.at = createInput({
           type: "datetime-local",
           value: `${current.getFullYear()}-${pad2(current.getMonth() + 1)}-${pad2(current.getDate())}T${pad2(current.getHours())}:${pad2(current.getMinutes())}`
         });
         break;
       }
       case "daily": {
-        label("Time (HH:MM)");
-        input({ type: "time", value: schedule.time || "09:00" });
+        createLabel("Time (HH:MM)", true);
+        this.scheduleInputs.time = createInput({ type: "time", value: schedule.time || "09:00" });
+        createLabel("Repeat cadence (every N days)");
+        this.scheduleInputs.everyDays = createInput({
+          type: "number",
+          value: String(schedule.everyDays || 1),
+          min: "1",
+          placeholder: "1 (daily)"
+        });
+        createLabel("Initial starting date (optional)");
+        this.scheduleInputs.startAt = createInput({
+          type: "date",
+          value: schedule.startAt ? schedule.startAt.slice(0, 10) : "",
+          placeholder: "YYYY-MM-DD"
+        });
+        createLabel("Stop after N runs (optional)");
+        this.scheduleInputs.maxIterations = createInput({
+          type: "number",
+          value: schedule.maxIterations ? String(schedule.maxIterations) : "",
+          min: "1",
+          placeholder: "Run indefinitely"
+        });
         break;
       }
       case "weekly": {
-        label("Time (HH:MM)");
-        input({ type: "time", value: schedule.time || "09:00" });
-        label("Days");
+        createLabel("Time (HH:MM)", true);
+        this.scheduleInputs.time = createInput({ type: "time", value: schedule.time || "09:00" });
+        createLabel("Repeat cadence (every N weeks)");
+        this.scheduleInputs.everyWeeks = createInput({
+          type: "number",
+          value: String(schedule.everyWeeks || 1),
+          min: "1",
+          placeholder: "1 (every week)"
+        });
+        createLabel("Days of week", true);
         const row = container.createDiv("ai-scheduler-days");
         DAY_SHORT_NAMES.forEach((day, index) => {
           const item = row.createEl("label");
@@ -2020,104 +2199,314 @@ var JobModal = class extends import_obsidian4.Modal {
           checkbox.checked = Array.isArray(schedule.days) ? schedule.days.includes(index) : false;
           checkbox.onchange = onChange;
           item.createSpan({ text: day });
-          this.dayChecks.push(checkbox);
+          this.scheduleInputs.dayChecks.push(checkbox);
+        });
+        createLabel("Initial starting date (optional)");
+        this.scheduleInputs.startAt = createInput({
+          type: "date",
+          value: schedule.startAt ? schedule.startAt.slice(0, 10) : "",
+          placeholder: "YYYY-MM-DD"
+        });
+        createLabel("Stop after N runs (optional)");
+        this.scheduleInputs.maxIterations = createInput({
+          type: "number",
+          value: schedule.maxIterations ? String(schedule.maxIterations) : "",
+          min: "1",
+          placeholder: "Run indefinitely"
+        });
+        break;
+      }
+      case "monthly": {
+        createLabel("Time (HH:MM)", true);
+        this.scheduleInputs.time = createInput({ type: "time", value: schedule.time || "09:00" });
+        createLabel("Day of month (1-31)", true);
+        this.scheduleInputs.dayOfMonth = createInput({
+          type: "number",
+          value: String(schedule.dayOfMonth || 1),
+          min: "1",
+          max: "31",
+          placeholder: "1"
+        });
+        createLabel("Repeat cadence (every N months)");
+        this.scheduleInputs.everyMonths = createInput({
+          type: "number",
+          value: String(schedule.everyMonths || 1),
+          min: "1",
+          placeholder: "1 (every month)"
+        });
+        createLabel("Initial starting date (optional)");
+        this.scheduleInputs.startAt = createInput({
+          type: "date",
+          value: schedule.startAt ? schedule.startAt.slice(0, 10) : "",
+          placeholder: "YYYY-MM-DD"
+        });
+        createLabel("Stop after N runs (optional)");
+        this.scheduleInputs.maxIterations = createInput({
+          type: "number",
+          value: schedule.maxIterations ? String(schedule.maxIterations) : "",
+          min: "1",
+          placeholder: "Run indefinitely"
+        });
+        break;
+      }
+      case "yearly": {
+        createLabel("Time (HH:MM)", true);
+        this.scheduleInputs.time = createInput({ type: "time", value: schedule.time || "09:00" });
+        createLabel("Month", true);
+        const monthSelect = container.createEl("select");
+        monthSelect.addClass("ai-scheduler-select");
+        for (let m = 1; m <= 12; m++) {
+          const opt = monthSelect.createEl("option", { value: String(m), text: MONTH_NAMES2[m] });
+          opt.selected = m === (schedule.month || 1);
+        }
+        monthSelect.onchange = onChange;
+        this.scheduleInputs.month = monthSelect;
+        createLabel("Day of month (1-31)", true);
+        this.scheduleInputs.dayOfMonth = createInput({
+          type: "number",
+          value: String(schedule.dayOfMonth || 1),
+          min: "1",
+          max: "31",
+          placeholder: "1"
+        });
+        createLabel("Stop after N runs (optional)");
+        this.scheduleInputs.maxIterations = createInput({
+          type: "number",
+          value: schedule.maxIterations ? String(schedule.maxIterations) : "",
+          min: "1",
+          placeholder: "Run indefinitely"
+        });
+        break;
+      }
+      case "hourly": {
+        createLabel("Initial starting time (HH:MM, optional)");
+        this.scheduleInputs.time = createInput({
+          type: "time",
+          value: schedule.time || "",
+          placeholder: "09:00"
+        });
+        createLabel("Stop after N runs (optional)");
+        this.scheduleInputs.maxIterations = createInput({
+          type: "number",
+          value: schedule.maxIterations ? String(schedule.maxIterations) : "",
+          min: "1",
+          placeholder: "Run indefinitely"
+        });
+        break;
+      }
+      case "interval": {
+        createLabel("Interval in minutes", true);
+        this.scheduleInputs.intervalMinutes = createInput({
+          type: "number",
+          value: String(schedule.intervalMinutes || 30),
+          min: "1",
+          placeholder: "30"
+        });
+        createLabel("Initial starting time (HH:MM, optional)");
+        this.scheduleInputs.time = createInput({
+          type: "time",
+          value: schedule.time || "",
+          placeholder: "09:00"
+        });
+        createLabel("Initial starting date (optional)");
+        this.scheduleInputs.startAt = createInput({
+          type: "date",
+          value: schedule.startAt ? schedule.startAt.slice(0, 10) : "",
+          placeholder: "YYYY-MM-DD"
+        });
+        createLabel("Stop after N runs (optional)");
+        this.scheduleInputs.maxIterations = createInput({
+          type: "number",
+          value: schedule.maxIterations ? String(schedule.maxIterations) : "",
+          min: "1",
+          placeholder: "Run indefinitely"
         });
         break;
       }
       case "multi": {
-        label("Rules, one per line: days = HH:MM, HH:MM (e.g. Mon-Fri = 09:00)");
+        createLabel("Rules, one per line: days = HH:MM, HH:MM (e.g. Mon-Fri = 09:00)", true);
         const area = container.createEl("textarea", { text: formatMultiRules(schedule.rules) });
         area.addClass("ai-scheduler-textarea");
         area.addClass("ai-scheduler-textarea-short");
         area.oninput = onChange;
-        this.multiArea = area;
-        break;
-      }
-      case "hourly": {
-        label("Stop after this many runs (optional)");
-        input({ type: "number", value: schedule.maxIterations ? String(schedule.maxIterations) : "", min: "1", placeholder: "unlimited" });
-        break;
-      }
-      case "interval": {
-        label("Interval in minutes");
-        input({ type: "number", value: String(schedule.intervalMinutes || 30), min: "1" });
-        label("Stop after this many runs (optional)");
-        input({ type: "number", value: schedule.maxIterations ? String(schedule.maxIterations) : "", min: "1", placeholder: "unlimited" });
+        this.scheduleInputs.multiArea = area;
+        createLabel("Stop after N runs (optional)");
+        this.scheduleInputs.maxIterations = createInput({
+          type: "number",
+          value: schedule.maxIterations ? String(schedule.maxIterations) : "",
+          min: "1",
+          placeholder: "Run indefinitely"
+        });
         break;
       }
       case "event": {
-        label("Vault event");
+        createLabel("Vault event", true);
         const select = container.createEl("select");
         select.addClass("ai-scheduler-select");
         select.createEl("option", { value: "modify", text: "Any file is modified or created" });
         select.onchange = onChange;
-        label("Cooldown minutes between runs");
-        input({ type: "number", value: String((_a = this.job.cooldownMinutes) != null ? _a : 10), min: "1" });
+        createLabel("Cooldown minutes between runs", true);
+        this.scheduleInputs.cooldownMinutes = createInput({
+          type: "number",
+          value: String((_a = this.job.cooldownMinutes) != null ? _a : 10),
+          min: "1"
+        });
+        createLabel("Stop after N runs (optional)");
+        this.scheduleInputs.maxIterations = createInput({
+          type: "number",
+          value: schedule.maxIterations ? String(schedule.maxIterations) : "",
+          min: "1",
+          placeholder: "Run indefinitely"
+        });
         break;
       }
       case "cron": {
-        label("5-field cron: minute, hour, day-of-month, month, day-of-week (0 = Sunday)");
-        this.cronInput = input({
+        createLabel("5-field cron: minute, hour, day-of-month, month, day-of-week (0 = Sunday)", true);
+        this.scheduleInputs.cronInput = createInput({
           type: "text",
           value: schedule.expression || "",
           placeholder: "*/15 * * * *   or   0 9 * * 1-5",
           monospace: true
         });
         container.createDiv("ai-scheduler-example").setText("Examples: */15 * * * * every 15 minutes \xB7 0 9 * * 1-5 weekdays at 09:00 \xB7 0 22 * * * daily at 22:00");
+        createLabel("Stop after N runs (optional)");
+        this.scheduleInputs.maxIterations = createInput({
+          type: "number",
+          value: schedule.maxIterations ? String(schedule.maxIterations) : "",
+          min: "1",
+          placeholder: "Run indefinitely"
+        });
         break;
       }
     }
   }
   readEditorState() {
+    var _a;
     const previous = this.job.schedule;
-    const numbers = this.inputs.filter((input) => input.type === "number").map((input) => Number.parseInt(input.value, 10)).filter((value) => Number.isFinite(value));
-    const byKind = () => {
-      var _a;
-      switch (this.kind) {
-        case "once": {
-          const field = this.inputs.find((input) => input.type === "datetime-local");
-          const date = field && field.value ? new Date(field.value) : null;
-          return {
-            schedule: {
-              kind: "once",
-              at: date && !Number.isNaN(date.getTime()) ? date.toISOString() : previous.at
-            }
-          };
-        }
-        case "daily": {
-          const field = this.inputs.find((input) => input.type === "time");
-          return { schedule: { kind: "daily", time: field && field.value ? field.value : previous.time || "09:00" } };
-        }
-        case "weekly": {
-          const field = this.inputs.find((input) => input.type === "time");
-          const days = this.dayChecks.map((checkbox, index) => checkbox.checked ? index : -1).filter((index) => index >= 0);
-          return { schedule: { kind: "weekly", time: field && field.value ? field.value : previous.time || "09:00", days } };
-        }
-        case "multi": {
-          const rules = this.multiArea ? parseMultiRulesText(this.multiArea.value) : previous.rules || [];
-          return { schedule: { kind: "multi", rules } };
-        }
-        case "hourly": {
-          const max = numbers.length && numbers[0] > 0 ? numbers[0] : null;
-          return { schedule: { kind: "hourly", maxIterations: max } };
-        }
-        case "interval": {
-          const minutes = numbers.length && numbers[0] > 0 ? numbers[0] : Number(previous.intervalMinutes || 30);
-          const max = numbers.length > 1 && numbers[1] > 0 ? numbers[1] : null;
-          return { schedule: { kind: "interval", intervalMinutes: minutes, maxIterations: max } };
-        }
-        case "event": {
-          return {
-            schedule: { kind: "event", event: "modify" },
-            cooldownMinutes: numbers.length && numbers[0] > 0 ? numbers[0] : (_a = this.job.cooldownMinutes) != null ? _a : 10
-          };
-        }
-        case "cron": {
-          return { schedule: { kind: "cron", expression: this.cronInput ? this.cronInput.value.trim() : previous.expression || "" } };
-        }
+    const s = this.scheduleInputs;
+    const maxIterations = s.maxIterations && s.maxIterations.value.trim() ? normalizeMaxIterations(s.maxIterations.value) : null;
+    const startAtDate = s.startAt && s.startAt.value.trim() ? s.startAt.value.trim() : void 0;
+    switch (this.kind) {
+      case "once": {
+        const date = s.at && s.at.value ? new Date(s.at.value) : null;
+        return {
+          schedule: {
+            kind: "once",
+            at: date && !Number.isNaN(date.getTime()) ? date.toISOString() : previous.at
+          }
+        };
       }
-    };
-    return byKind();
+      case "daily": {
+        const time = s.time && s.time.value ? s.time.value : previous.time || "09:00";
+        const everyDays = s.everyDays && Number(s.everyDays.value) > 0 ? Number(s.everyDays.value) : 1;
+        return {
+          schedule: {
+            kind: "daily",
+            time,
+            everyDays,
+            startAt: startAtDate,
+            maxIterations
+          }
+        };
+      }
+      case "weekly": {
+        const time = s.time && s.time.value ? s.time.value : previous.time || "09:00";
+        const everyWeeks = s.everyWeeks && Number(s.everyWeeks.value) > 0 ? Number(s.everyWeeks.value) : 1;
+        const days = s.dayChecks.map((checkbox, index) => checkbox.checked ? index : -1).filter((index) => index >= 0);
+        return {
+          schedule: {
+            kind: "weekly",
+            time,
+            days,
+            everyWeeks,
+            startAt: startAtDate,
+            maxIterations
+          }
+        };
+      }
+      case "monthly": {
+        const time = s.time && s.time.value ? s.time.value : previous.time || "09:00";
+        const dayOfMonth = s.dayOfMonth && Number(s.dayOfMonth.value) >= 1 && Number(s.dayOfMonth.value) <= 31 ? Number(s.dayOfMonth.value) : 1;
+        const everyMonths = s.everyMonths && Number(s.everyMonths.value) > 0 ? Number(s.everyMonths.value) : 1;
+        return {
+          schedule: {
+            kind: "monthly",
+            time,
+            dayOfMonth,
+            everyMonths,
+            startAt: startAtDate,
+            maxIterations
+          }
+        };
+      }
+      case "yearly": {
+        const time = s.time && s.time.value ? s.time.value : previous.time || "09:00";
+        const month = s.month && Number(s.month.value) >= 1 && Number(s.month.value) <= 12 ? Number(s.month.value) : 1;
+        const dayOfMonth = s.dayOfMonth && Number(s.dayOfMonth.value) >= 1 && Number(s.dayOfMonth.value) <= 31 ? Number(s.dayOfMonth.value) : 1;
+        return {
+          schedule: {
+            kind: "yearly",
+            time,
+            month,
+            dayOfMonth,
+            maxIterations
+          }
+        };
+      }
+      case "multi": {
+        const rules = s.multiArea ? parseMultiRulesText(s.multiArea.value) : previous.rules || [];
+        return {
+          schedule: {
+            kind: "multi",
+            rules,
+            maxIterations
+          }
+        };
+      }
+      case "hourly": {
+        const time = s.time && s.time.value ? s.time.value : void 0;
+        return {
+          schedule: {
+            kind: "hourly",
+            time,
+            maxIterations
+          }
+        };
+      }
+      case "interval": {
+        const minutes = s.intervalMinutes && Number(s.intervalMinutes.value) > 0 ? Number(s.intervalMinutes.value) : Number(previous.intervalMinutes || 30);
+        const time = s.time && s.time.value ? s.time.value : void 0;
+        return {
+          schedule: {
+            kind: "interval",
+            intervalMinutes: minutes,
+            time,
+            startAt: startAtDate,
+            maxIterations
+          }
+        };
+      }
+      case "event": {
+        const cooldown = s.cooldownMinutes && Number(s.cooldownMinutes.value) > 0 ? Number(s.cooldownMinutes.value) : (_a = this.job.cooldownMinutes) != null ? _a : 10;
+        return {
+          schedule: {
+            kind: "event",
+            event: "modify",
+            maxIterations
+          },
+          cooldownMinutes: cooldown
+        };
+      }
+      case "cron": {
+        return {
+          schedule: {
+            kind: "cron",
+            expression: s.cronInput ? s.cronInput.value.trim() : previous.expression || "",
+            maxIterations
+          }
+        };
+      }
+    }
   }
   validateState(state) {
     const schedule = state.schedule;
@@ -2134,6 +2523,8 @@ var JobModal = class extends import_obsidian4.Modal {
     }
     if (schedule.kind === "daily" && !validClock(schedule.time)) return "Enter a time as HH:MM.";
     if (schedule.kind === "weekly" && (!validClock(schedule.time) || !(schedule.days || []).length)) return "Choose at least one weekday and a valid time.";
+    if (schedule.kind === "monthly" && (!validClock(schedule.time) || !schedule.dayOfMonth || schedule.dayOfMonth < 1 || schedule.dayOfMonth > 31)) return "Enter a valid day of month (1-31) and time.";
+    if (schedule.kind === "yearly" && (!validClock(schedule.time) || !schedule.month || !schedule.dayOfMonth || schedule.dayOfMonth < 1 || schedule.dayOfMonth > 31)) return "Enter a valid month, day of month, and time.";
     if (schedule.kind === "multi" && !(schedule.rules || []).length) return "Add at least one valid rule, e.g. Mon = 09:00.";
     if (schedule.kind === "hourly" || schedule.kind === "interval") {
       const minutes = schedule.kind === "hourly" ? 60 : Number(schedule.intervalMinutes || 0);
@@ -2146,10 +2537,7 @@ var JobModal = class extends import_obsidian4.Modal {
   }
   onClose() {
     this.contentEl.empty();
-    this.inputs = [];
-    this.multiArea = null;
-    this.dayChecks = [];
-    this.cronInput = null;
+    this.scheduleInputs = { dayChecks: [] };
     this.kindSelect = null;
   }
 };
@@ -2306,6 +2694,9 @@ var PlannerModal = class _PlannerModal extends import_obsidian5.Modal {
       const titleRow = top.createDiv({ cls: "ai-scheduler-task-header" });
       titleRow.createDiv({ cls: "ai-scheduler-task-title", text: `#${job.taskNumber} \xB7 ${job.title}` });
       appendTaskIdBadge(titleRow, job.id);
+      if (job.doubt) {
+        titleRow.createSpan({ cls: "ai-scheduler-doubt-badge", text: "Unspecified details *" });
+      }
       const actions = top.createDiv({ cls: "ai-scheduler-planned-actions" });
       makeButton(actions, "Edit", () => {
         this.close();
@@ -2330,8 +2721,8 @@ var PlannerModal = class _PlannerModal extends import_obsidian5.Modal {
         const content = doubtBanner.createDiv({ cls: "ai-scheduler-alert-content" });
         content.createSpan({ cls: "ai-scheduler-alert-icon", text: "\u{1F4A1}" });
         const textCol = content.createDiv();
-        textCol.createDiv({ cls: "ai-scheduler-alert-title", text: "AI Planning Note" });
-        textCol.createDiv({ cls: "ai-scheduler-alert-desc", text: job.doubt });
+        textCol.createDiv({ cls: "ai-scheduler-alert-title", text: "AI Planning Note & Unspecified Fields" });
+        textCol.createDiv({ cls: "ai-scheduler-alert-desc", text: `${job.doubt} Default values were populated. Click 'Edit' if you wish to adjust any parameters.` });
       }
       if (job.prompt) {
         const promptBox = card.createDiv({ cls: "ai-scheduler-task-prompt" });
@@ -3099,6 +3490,34 @@ var import_obsidian8 = require("obsidian");
 
 // src/changelog.ts
 var CHANGELOG_DATA = [
+  {
+    version: "2.1.7.14",
+    date: "2026-10-03",
+    title: "Rich Cadences (Every N Days/Weeks/Months/Years), Initial Time Anchors & Red Asterisk Highlights",
+    highlights: [
+      'Rich Scheduling Cadences: Added native support for "every N days", "every N weeks", "every N months", and "yearly / every year".',
+      'Bounded Execution (For N Times): Added "Stop after N runs" across all recurring, interval, and cron schedules so tasks finish automatically after N executions.',
+      "Initial Starting Time & Date: Configurable starting time (HH:MM) and starting date (YYYY-MM-DD) for interval and recurring cadences.",
+      "Red Asterisk & Unspecified Detail Highlights: Added red asterisk markers (*) on mandatory/unspecified fields and AI doubt callout banners."
+    ],
+    added: [
+      "Added support for every N days, every N weeks, monthly/every N months, and yearly schedules.",
+      "Added initial starting date/time settings for interval and recurring schedules.",
+      "Added red asterisk (*) styling on required form labels and doubt badges for unspecified parameters."
+    ],
+    changed: [
+      "Expanded JobModal schedule editor with dedicated cadence controls and validation.",
+      "Enhanced AI Planning Note cards to highlight unmentioned prompt parameters with default values."
+    ],
+    contributors: [
+      {
+        name: "Rachit Asthana",
+        username: "racstan",
+        url: "https://github.com/racstan",
+        role: "Author & Lead Maintainer"
+      }
+    ]
+  },
   {
     version: "2.1.7.13",
     date: "2026-10-03",

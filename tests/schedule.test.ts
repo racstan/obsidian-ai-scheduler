@@ -157,3 +157,33 @@ test('normalizeJob sanitizes corrupted or stringified persisted fields', () => {
 	assert.equal(job.attempts, 0);
 	assert.deepEqual(job.contextPaths, []);
 });
+
+test('extended cadences calculate correct next runs and descriptions', () => {
+	const from = at(2026, 10, 3, 10, 0); // Saturday Oct 3, 2026, 10:00
+
+	// Every 3 days at 09:00
+	const every3Days: TaskSchedule = { kind: 'daily', time: '09:00', everyDays: 3 };
+	assert.equal(getScheduleNextRun(every3Days, from), at(2026, 10, 6, 9, 0).toISOString());
+	assert.equal(describeSchedule({ schedule: every3Days }), 'every 3 days at 09:00');
+
+	// Every 2 weeks on Monday at 09:00 with startAt
+	const every2Weeks: TaskSchedule = { kind: 'weekly', time: '09:00', days: [1], everyWeeks: 2, startAt: '2026-10-05T00:00:00.000Z' };
+	assert.equal(getScheduleNextRun(every2Weeks, from), at(2026, 10, 5, 9, 0).toISOString());
+	assert.equal(describeSchedule({ schedule: every2Weeks }), 'every 2 weeks on Mon at 09:00');
+
+	// Monthly on 15th at 14:00 every 2 months
+	const monthly: TaskSchedule = { kind: 'monthly', time: '14:00', dayOfMonth: 15, everyMonths: 2 };
+	assert.equal(getScheduleNextRun(monthly, from), at(2026, 10, 15, 14, 0).toISOString());
+	assert.equal(describeSchedule({ schedule: monthly }), 'every 2 months on day 15 at 14:00');
+
+	// Yearly on December 25th at 08:00
+	const yearly: TaskSchedule = { kind: 'yearly', time: '08:00', month: 12, dayOfMonth: 25, maxIterations: 5 };
+	assert.equal(getScheduleNextRun(yearly, from), at(2026, 12, 25, 8, 0).toISOString());
+	assert.equal(describeSchedule({ schedule: yearly }), 'yearly on December 25 at 08:00 · runs for 5 times then done');
+
+	// Interval with initial time anchor
+	const intervalWithTime: TaskSchedule = { kind: 'interval', intervalMinutes: 15, time: '14:00' };
+	const nextRun = getScheduleNextRun(intervalWithTime, from);
+	assert.equal(nextRun, at(2026, 10, 3, 14, 0).toISOString());
+});
+

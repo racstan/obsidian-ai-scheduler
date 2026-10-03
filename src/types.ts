@@ -7,7 +7,7 @@
  */
 export type BackendMode = 'claudian' | 'copilot' | 'none';
 
-export type ScheduleKind = 'once' | 'daily' | 'weekly' | 'multi' | 'hourly' | 'interval' | 'event' | 'cron';
+export type ScheduleKind = 'once' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'multi' | 'hourly' | 'interval' | 'event' | 'cron';
 
 export type JobStatus = 'scheduled' | 'running' | 'completed' | 'failed' | 'disabled' | 'missed';
 
@@ -18,19 +18,31 @@ export interface MultiRule {
 
 export interface TaskSchedule {
 	kind: ScheduleKind;
-	/** ISO-8601 timestamp for kind 'once'. */
+	/** ISO-8601 timestamp for kind 'once' or reference time. */
 	at?: string;
-	/** HH:MM local time for 'daily' and 'weekly'. */
+	/** Starting date or ISO timestamp for initial execution. */
+	startAt?: string;
+	/** HH:MM local time for 'daily', 'weekly', 'monthly', 'yearly', and start of 'interval'. */
 	time?: string;
 	/** Weekday numbers 0-6 (Sunday 0) for 'weekly'. */
 	days?: number[];
+	/** Interval in days for every N days (default 1). */
+	everyDays?: number;
+	/** Interval in weeks for every N weeks (default 1). */
+	everyWeeks?: number;
+	/** Day of month (1-31) for 'monthly' and 'yearly'. */
+	dayOfMonth?: number;
+	/** Month number (1-12) for 'yearly'. */
+	month?: number;
+	/** Interval in months for every N months (default 1). */
+	everyMonths?: number;
 	/** Weekday/time rule list for 'multi'. */
 	rules?: MultiRule[];
 	/** Vault event name for 'event'. */
 	event?: string;
 	/** Cadence in minutes for 'hourly' (60) and 'interval'. */
 	intervalMinutes?: number | null;
-	/** Optional bound on total runs for recurring kinds. */
+	/** Optional bound on total runs (run for N times then done). */
 	maxIterations?: number | null;
 	/** 5-field cron expression for kind 'cron'. */
 	expression?: string;
@@ -132,4 +144,4 @@ export const BACKEND_INFO = {
 	},
 } as const;
 
-export const SCHEDULE_KINDS: ScheduleKind[] = ['once', 'daily', 'weekly', 'multi', 'hourly', 'interval', 'event', 'cron'];
+export const SCHEDULE_KINDS: ScheduleKind[] = ['once', 'daily', 'weekly', 'monthly', 'yearly', 'hourly', 'interval', 'multi', 'event', 'cron'];

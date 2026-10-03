@@ -183,6 +183,9 @@ export class PlannerModal extends Modal {
 			const titleRow = top.createDiv({ cls: 'ai-scheduler-task-header' });
 			titleRow.createDiv({ cls: 'ai-scheduler-task-title', text: `#${job.taskNumber} · ${job.title}` });
 			appendTaskIdBadge(titleRow, job.id);
+			if (job.doubt) {
+				titleRow.createSpan({ cls: 'ai-scheduler-doubt-badge', text: 'Unspecified details *' });
+			}
 
 			const actions = top.createDiv({ cls: 'ai-scheduler-planned-actions' });
 			makeButton(actions, 'Edit', () => {
@@ -210,8 +213,8 @@ export class PlannerModal extends Modal {
 				const content = doubtBanner.createDiv({ cls: 'ai-scheduler-alert-content' });
 				content.createSpan({ cls: 'ai-scheduler-alert-icon', text: '💡' });
 				const textCol = content.createDiv();
-				textCol.createDiv({ cls: 'ai-scheduler-alert-title', text: 'AI Planning Note' });
-				textCol.createDiv({ cls: 'ai-scheduler-alert-desc', text: job.doubt });
+				textCol.createDiv({ cls: 'ai-scheduler-alert-title', text: 'AI Planning Note & Unspecified Fields' });
+				textCol.createDiv({ cls: 'ai-scheduler-alert-desc', text: `${job.doubt} Default values were populated. Click 'Edit' if you wish to adjust any parameters.` });
 			}
 
 			if (job.prompt) {
