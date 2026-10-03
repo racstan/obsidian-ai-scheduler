@@ -515,6 +515,15 @@ function sendSystemNotification(title, body) {
   }
   return false;
 }
+function formatDuration(isoString) {
+  const ms = Date.now() - new Date(isoString).getTime();
+  if (ms < 0) return "0s";
+  const sec = Math.floor(ms / 1e3);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  const remSec = sec % 60;
+  return `${min}m ${remSec}s`;
+}
 
 // src/schedule.ts
 function parseClock(value) {
@@ -2274,15 +2283,6 @@ var PlannerModal = class _PlannerModal extends import_obsidian5.Modal {
 };
 
 // src/ui/AssistantModal.ts
-function formatDuration(isoString) {
-  const ms = Date.now() - new Date(isoString).getTime();
-  if (ms < 0) return "0s";
-  const sec = Math.floor(ms / 1e3);
-  if (sec < 60) return `${sec}s`;
-  const min = Math.floor(sec / 60);
-  const remSec = sec % 60;
-  return `${min}m ${remSec}s`;
-}
 function appendTaskIdBadge2(container, id2) {
   const idBadge = container.createSpan({ cls: "ai-scheduler-task-id-badge", text: `ID: ${id2}` });
   idBadge.setAttribute("title", "Click to copy task ID");
@@ -2381,7 +2381,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
     const statThird = makeCard(stats, "ai-scheduler-card-stat");
     if (runningJobs.length > 0) {
       statThird.addClass("ai-scheduler-stat-running");
-      statThird.createDiv({ cls: "ai-scheduler-stat-value ai-scheduler-text-glow", text: `\u26A1 ${runningJobs.length} Running` });
+      statThird.createDiv({ cls: "ai-scheduler-stat-value ai-scheduler-text-running", text: `${runningJobs.length} Running` });
       statThird.createDiv({ cls: "ai-scheduler-stat-label", text: "EXECUTING IN BACKGROUND" });
     } else {
       statThird.createDiv({ cls: "ai-scheduler-stat-value", text: next ? formatDate(next.nextRunAt) : "None" });
@@ -2450,15 +2450,15 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
       if (isRunning) {
         const badge = titleRow.createSpan({ cls: "ai-scheduler-status-badge ai-scheduler-status-running" });
         badge.createSpan({ cls: "ai-scheduler-spinner-tiny" });
-        badge.createSpan({ text: "\u26A1 Running now in background..." });
+        badge.createSpan({ text: "Running in background..." });
       }
       copy.createDiv({ cls: "ai-scheduler-task-meta", text: `${describeBinding(job)} \xB7 ${describeSchedule(job)}${job.runCount ? ` \xB7 ${job.runCount} run${job.runCount === 1 ? "" : "s"}` : ""}` });
       if (isRunning) {
         const runInfo = copy.createDiv({ cls: "ai-scheduler-task-next ai-scheduler-text-running" });
         const startTime = job.lastRunAt || job.nextRunAt || (/* @__PURE__ */ new Date()).toISOString();
-        runInfo.setText(`\u26A1 Started execution at ${formatDate(startTime)} (${formatDuration(startTime)} elapsed) \xB7 AI is generating results`);
+        runInfo.setText(`Started execution at ${formatDate(startTime)} (${formatDuration(startTime)} elapsed) \xB7 AI is generating results`);
       } else {
-        const nextText = job.nextRunAt ? `Next run: ${formatDate(job.nextRunAt)}` : job.schedule.kind === "event" ? "\u26A1 Trigger: On vault note modification" : "\u23F0 Next run: Not scheduled";
+        const nextText = job.nextRunAt ? `Next run: ${formatDate(job.nextRunAt)}` : job.schedule.kind === "event" ? "Trigger: On vault note modification" : "\u23F0 Next run: Not scheduled";
         copy.createDiv({ cls: "ai-scheduler-task-next", text: `\u23F0 ${nextText}` });
       }
       const controls = card.createDiv({ cls: "ai-scheduler-task-actions" });
@@ -2624,7 +2624,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian6.Modal {
   getActivityTypeLabel(type) {
     switch (type) {
       case "running":
-        return "\u26A1 RUNNING";
+        return "RUNNING";
       case "completed":
         return "\u2705 DONE";
       case "failed":
@@ -3625,7 +3625,7 @@ var AssistantSettingTab = class extends import_obsidian8.PluginSettingTab {
     new import_obsidian8.Setting(containerEl).setName("About & support").setHeading();
     const aboutCard = containerEl.createDiv({ cls: "ai-scheduler-about-card" });
     const aboutHeader = aboutCard.createDiv({ cls: "ai-scheduler-about-header" });
-    aboutHeader.createDiv({ text: "\u26A1 AI Scheduler for Obsidian", cls: "ai-scheduler-about-title" });
+    aboutHeader.createDiv({ text: "AI Scheduler for Obsidian", cls: "ai-scheduler-about-title" });
     aboutHeader.createSpan({ text: `v${this.plugin.manifest.version}`, cls: "ai-scheduler-version-badge is-latest" });
     aboutCard.createEl("p", {
       text: "The autonomous background scheduling and proactive intelligence engine for Obsidian. Turn your vault into an active thinking partner that plans, reviews, executes, and synthesizes your knowledge in the background.",
@@ -3944,6 +3944,8 @@ var AISchedulerPlugin = class extends import_obsidian10.Plugin {
     this.pendingVaultEvents = [];
     this.runningJobs = /* @__PURE__ */ new Set();
     this.selfWrites = /* @__PURE__ */ new Set();
+    this.statusBarEl = null;
+    this.statusBarTimer = null;
   }
   markSelfWrite(path) {
     const norm = (0, import_obsidian10.normalizePath)(path);
@@ -3963,6 +3965,12 @@ var AISchedulerPlugin = class extends import_obsidian10.Plugin {
     this.running = false;
     this.reviewRunning = false;
     this.lastTickError = null;
+    if (typeof this.addStatusBarItem === "function") {
+      this.statusBarEl = this.addStatusBarItem();
+      this.statusBarEl.addClass("ai-scheduler-status-bar");
+      this.statusBarEl.hide();
+      this.updateStatusBar();
+    }
     this.addRibbonIcon("brain", "Open AI Scheduler", () => new AssistantModal(this.app, this).open());
     this.addCommand({
       id: "open-assistant",
@@ -4099,6 +4107,15 @@ var AISchedulerPlugin = class extends import_obsidian10.Plugin {
     await this.catchUpOnStart();
     if (this.settings.scheduleNotesEnabled) await this.notesSync.syncAll();
   }
+  onunload() {
+    var _a;
+    if (this.statusBarTimer !== null) {
+      window.clearInterval(this.statusBarTimer);
+      this.statusBarTimer = null;
+    }
+    (_a = this.statusBarEl) == null ? void 0 : _a.remove();
+    this.statusBarEl = null;
+  }
   async saveState() {
     try {
       await this.saveData({ version: 6, settings: this.settings, jobs: this.jobs, activity: this.activity.slice(-50) });
@@ -4184,10 +4201,12 @@ var AISchedulerPlugin = class extends import_obsidian10.Plugin {
   async executeJob(job) {
     if (this.runningJobs.has(job.id)) return;
     this.runningJobs.add(job.id);
+    this.updateStatusBar();
     try {
       await this.runJobBody(job);
     } finally {
       this.runningJobs.delete(job.id);
+      this.updateStatusBar();
     }
   }
   async runJobBody(job) {
@@ -4195,6 +4214,10 @@ var AISchedulerPlugin = class extends import_obsidian10.Plugin {
     job.lastRunAt = (/* @__PURE__ */ new Date()).toISOString();
     job.attempts = Number(job.attempts || 0) + 1;
     this.logActivity("running", `Task #${job.taskNumber} started: ${job.title}`, job.id);
+    if (job.notify !== false) {
+      new import_obsidian10.Notice(`AI Scheduler: Task #${job.taskNumber} started (${job.title})...`, 4e3);
+    }
+    this.updateStatusBar();
     await this.saveState();
     try {
       const execution = await resolveJobExecution(this, job);
@@ -4332,6 +4355,7 @@ ${job.lastError}`, 8e3);
       throw new Error("A review is already in progress.");
     }
     this.reviewRunning = true;
+    this.updateStatusBar();
     try {
       const now = /* @__PURE__ */ new Date();
       const today = localDateKey(now);
@@ -4373,6 +4397,7 @@ ${report}`);
       return report;
     } finally {
       this.reviewRunning = false;
+      this.updateStatusBar();
     }
   }
   includeReviewFile(file, start) {
@@ -4729,6 +4754,43 @@ ${report}`);
     job.lastError = "Cancelled or reset by user";
     reconcileAfterRun(job, { failed: true });
     this.logActivity("cancelled", `Task #${job.taskNumber} cancelled/reset by user: ${job.title}`, job.id);
+    this.updateStatusBar();
     await this.saveState();
+  }
+  updateStatusBar() {
+    if (!this.statusBarEl) return;
+    const runningList = this.jobs.filter((job) => this.runningJobs.has(job.id) || job.status === "running");
+    if (runningList.length === 0 && !this.reviewRunning) {
+      if (this.statusBarTimer !== null) {
+        window.clearInterval(this.statusBarTimer);
+        this.statusBarTimer = null;
+      }
+      this.statusBarEl.empty();
+      this.statusBarEl.hide();
+      return;
+    }
+    this.statusBarEl.show();
+    this.statusBarEl.empty();
+    this.statusBarEl.createSpan({ cls: "ai-scheduler-spinner-tiny ai-scheduler-status-bar-spinner" });
+    const label = this.statusBarEl.createSpan({ cls: "ai-scheduler-status-bar-text" });
+    if (runningList.length === 1) {
+      const j = runningList[0];
+      const startIso = j.lastRunAt || j.nextRunAt || (/* @__PURE__ */ new Date()).toISOString();
+      const duration = formatDuration(startIso);
+      label.setText(`AI: #${j.taskNumber} (${j.title}) \xB7 ${duration}`);
+    } else if (runningList.length > 1) {
+      label.setText(`AI: ${runningList.length} tasks running...`);
+    } else if (this.reviewRunning) {
+      label.setText("AI: Review in progress...");
+    }
+    this.statusBarEl.setAttribute("title", "AI Scheduler is running in background. Click to open dashboard.");
+    this.statusBarEl.onclick = () => {
+      new AssistantModal(this.app, this).open();
+    };
+    if (this.statusBarTimer === null) {
+      this.statusBarTimer = window.setInterval(() => {
+        this.updateStatusBar();
+      }, 1e3);
+    }
   }
 };

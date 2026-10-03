@@ -367,7 +367,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 
 		const aboutCard = containerEl.createDiv({ cls: 'ai-scheduler-about-card' });
 		const aboutHeader = aboutCard.createDiv({ cls: 'ai-scheduler-about-header' });
-		aboutHeader.createDiv({ text: '⚡ AI Scheduler for Obsidian', cls: 'ai-scheduler-about-title' });
+		aboutHeader.createDiv({ text: 'AI Scheduler for Obsidian', cls: 'ai-scheduler-about-title' });
 		aboutHeader.createSpan({ text: `v${this.plugin.manifest.version}`, cls: 'ai-scheduler-version-badge is-latest' });
 
 		aboutCard.createEl('p', {

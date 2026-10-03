@@ -1,20 +1,10 @@
 import { App, Modal, Notice, Setting } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
-import { formatDate, describeBinding, isDisabledTask, isNightlyReviewJob, summarizeTasks } from '../util';
+import { formatDate, formatDuration, describeBinding, isDisabledTask, isNightlyReviewJob, summarizeTasks } from '../util';
 import { describeSchedule } from '../schedule';
 import { closeExistingSchedulerModals, makeButton, makeCard } from './dom';
 import { JobModal } from './JobModal';
 import { PlannerModal } from './PlannerModal';
-
-function formatDuration(isoString: string): string {
-	const ms = Date.now() - new Date(isoString).getTime();
-	if (ms < 0) return '0s';
-	const sec = Math.floor(ms / 1000);
-	if (sec < 60) return `${sec}s`;
-	const min = Math.floor(sec / 60);
-	const remSec = sec % 60;
-	return `${min}m ${remSec}s`;
-}
 
 function appendTaskIdBadge(container: HTMLElement, id: string): void {
 	const idBadge = container.createSpan({ cls: 'ai-scheduler-task-id-badge', text: `ID: ${id}` });
@@ -131,7 +121,7 @@ export class AssistantModal extends Modal {
 		const statThird = makeCard(stats, 'ai-scheduler-card-stat');
 		if (runningJobs.length > 0) {
 			statThird.addClass('ai-scheduler-stat-running');
-			statThird.createDiv({ cls: 'ai-scheduler-stat-value ai-scheduler-text-glow', text: `⚡ ${runningJobs.length} Running` });
+			statThird.createDiv({ cls: 'ai-scheduler-stat-value ai-scheduler-text-running', text: `${runningJobs.length} Running` });
 			statThird.createDiv({ cls: 'ai-scheduler-stat-label', text: 'EXECUTING IN BACKGROUND' });
 		} else {
 			statThird.createDiv({ cls: 'ai-scheduler-stat-value', text: next ? formatDate(next.nextRunAt) : 'None' });
@@ -206,7 +196,7 @@ export class AssistantModal extends Modal {
 			if (isRunning) {
 				const badge = titleRow.createSpan({ cls: 'ai-scheduler-status-badge ai-scheduler-status-running' });
 				badge.createSpan({ cls: 'ai-scheduler-spinner-tiny' });
-				badge.createSpan({ text: '⚡ Running now in background...' });
+				badge.createSpan({ text: 'Running in background...' });
 			}
 
 			copy.createDiv({ cls: 'ai-scheduler-task-meta', text: `${describeBinding(job)} · ${describeSchedule(job)}${job.runCount ? ` · ${job.runCount} run${job.runCount === 1 ? '' : 's'}` : ''}` });
@@ -214,9 +204,9 @@ export class AssistantModal extends Modal {
 			if (isRunning) {
 				const runInfo = copy.createDiv({ cls: 'ai-scheduler-task-next ai-scheduler-text-running' });
 				const startTime = job.lastRunAt || job.nextRunAt || new Date().toISOString();
-				runInfo.setText(`⚡ Started execution at ${formatDate(startTime)} (${formatDuration(startTime)} elapsed) · AI is generating results`);
+				runInfo.setText(`Started execution at ${formatDate(startTime)} (${formatDuration(startTime)} elapsed) · AI is generating results`);
 			} else {
-				const nextText = job.nextRunAt ? `Next run: ${formatDate(job.nextRunAt)}` : (job.schedule.kind === 'event' ? '⚡ Trigger: On vault note modification' : '⏰ Next run: Not scheduled');
+				const nextText = job.nextRunAt ? `Next run: ${formatDate(job.nextRunAt)}` : (job.schedule.kind === 'event' ? 'Trigger: On vault note modification' : '⏰ Next run: Not scheduled');
 				copy.createDiv({ cls: 'ai-scheduler-task-next', text: `⏰ ${nextText}` });
 			}
 
@@ -392,7 +382,7 @@ export class AssistantModal extends Modal {
 
 	private getActivityTypeLabel(type: string): string {
 		switch (type) {
-			case 'running': return '⚡ RUNNING';
+			case 'running': return 'RUNNING';
 			case 'completed': return '✅ DONE';
 			case 'failed': return '❌ FAILED';
 			case 'planned': return '✨ PLANNED';

@@ -172,3 +172,15 @@ export function sendSystemNotification(title: string, body: string): boolean {
 	return false;
 }
 
+export function formatDuration(isoString: string): string {
+	const ms = Date.now() - new Date(isoString).getTime();
+	if (ms < 0) return '0s';
+	const sec = Math.floor(ms / 1000);
+	if (sec < 60) return `${sec}s`;
+	const min = Math.floor(sec / 60);
+	const remSec = sec % 60;
+	return `${min}m ${remSec}s`;
+}
+
+
+

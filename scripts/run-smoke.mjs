@@ -36,6 +36,7 @@ class Plugin extends Component {
 	addRibbonIcon() {}
 	addCommand(cmd) { this.app.commands.commands[cmd.id] = cmd; }
 	addSettingTab() {}
+	addStatusBarItem() { return { empty() {}, hide() {}, show() {}, addClass() {}, remove() {}, setAttribute() {}, createSpan() { return { setText() {}, addClass() {} }; } }; }
 }
 class Modal {
 	constructor(app) { this.app = app; this.contentEl = { empty() {}, createEl() { return { style: {}, createEl() { return { style: {} }; } }; } }; this.modalEl = { style: {} }; }

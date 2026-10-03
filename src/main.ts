@@ -32,7 +32,7 @@ import {
 import { executionPrompt, plannerPrompt, refinePrompt, reviewPrompt } from './prompts';
 import { getPathsContext, getVaultContextOptions, JobContext } from './context';
 import * as backends from './backends';
-import { extractJson, errorText, formatDate, isDisabledTask, isNightlyReviewJob, localDateKey, localTimestampKey, logActivityEntry, sendSystemNotification, sleep, validateJobSchema } from './util';
+import { extractJson, errorText, formatDate, formatDuration, isDisabledTask, isNightlyReviewJob, localDateKey, localTimestampKey, logActivityEntry, sendSystemNotification, sleep, validateJobSchema } from './util';
 import { AssistantModal } from './ui/AssistantModal';
 import { PlannerModal } from './ui/PlannerModal';
 import { AssistantSettingTab } from './ui/SettingsTab';
@@ -54,6 +54,8 @@ export class AISchedulerPlugin extends Plugin {
 	pendingVaultEvents: string[] = [];
 	runningJobs = new Set<string>();
 	private selfWrites = new Set<string>();
+	private statusBarEl: HTMLElement | null = null;
+	private statusBarTimer: number | null = null;
 
 	markSelfWrite(path: string): void {
 		const norm = normalizePath(path);
@@ -75,6 +77,13 @@ export class AISchedulerPlugin extends Plugin {
 		this.running = false;
 		this.reviewRunning = false;
 		this.lastTickError = null;
+
+		if (typeof this.addStatusBarItem === 'function') {
+			this.statusBarEl = this.addStatusBarItem();
+			this.statusBarEl.addClass('ai-scheduler-status-bar');
+			this.statusBarEl.hide();
+			this.updateStatusBar();
+		}
 
 		this.addRibbonIcon('brain', 'Open AI Scheduler', () => new AssistantModal(this.app, this).open());
 		this.addCommand({
@@ -217,6 +226,15 @@ export class AISchedulerPlugin extends Plugin {
 		if (this.settings.scheduleNotesEnabled) await this.notesSync.syncAll();
 	}
 
+	onunload(): void {
+		if (this.statusBarTimer !== null) {
+			window.clearInterval(this.statusBarTimer);
+			this.statusBarTimer = null;
+		}
+		this.statusBarEl?.remove();
+		this.statusBarEl = null;
+	}
+
 	async saveState(): Promise<void> {
 		try {
 			await this.saveData({ version: 6, settings: this.settings, jobs: this.jobs, activity: this.activity.slice(-50) });
@@ -308,10 +326,12 @@ export class AISchedulerPlugin extends Plugin {
 	async executeJob(job: Job): Promise<void> {
 		if (this.runningJobs.has(job.id)) return;
 		this.runningJobs.add(job.id);
+		this.updateStatusBar();
 		try {
 			await this.runJobBody(job);
 		} finally {
 			this.runningJobs.delete(job.id);
+			this.updateStatusBar();
 		}
 	}
 
@@ -320,6 +340,10 @@ export class AISchedulerPlugin extends Plugin {
 		job.lastRunAt = new Date().toISOString();
 		job.attempts = Number(job.attempts || 0) + 1;
 		this.logActivity('running', `Task #${job.taskNumber} started: ${job.title}`, job.id);
+		if (job.notify !== false) {
+			new Notice(`AI Scheduler: Task #${job.taskNumber} started (${job.title})...`, 4000);
+		}
+		this.updateStatusBar();
 		await this.saveState();
 		try {
 			const execution = await backends.resolveJobExecution(this, job);
@@ -466,6 +490,7 @@ export class AISchedulerPlugin extends Plugin {
 			throw new Error('A review is already in progress.');
 		}
 		this.reviewRunning = true;
+		this.updateStatusBar();
 		try {
 			const now = new Date();
 			const today = localDateKey(now);
@@ -505,6 +530,7 @@ export class AISchedulerPlugin extends Plugin {
 			return report;
 		} finally {
 			this.reviewRunning = false;
+			this.updateStatusBar();
 		}
 	}
 
@@ -902,7 +928,49 @@ export class AISchedulerPlugin extends Plugin {
 		job.lastError = 'Cancelled or reset by user';
 		reconcileAfterRun(job, { failed: true });
 		this.logActivity('cancelled', `Task #${job.taskNumber} cancelled/reset by user: ${job.title}`, job.id);
+		this.updateStatusBar();
 		await this.saveState();
+	}
+
+	updateStatusBar(): void {
+		if (!this.statusBarEl) return;
+		const runningList = this.jobs.filter(job => this.runningJobs.has(job.id) || job.status === 'running');
+		if (runningList.length === 0 && !this.reviewRunning) {
+			if (this.statusBarTimer !== null) {
+				window.clearInterval(this.statusBarTimer);
+				this.statusBarTimer = null;
+			}
+			this.statusBarEl.empty();
+			this.statusBarEl.hide();
+			return;
+		}
+
+		this.statusBarEl.show();
+		this.statusBarEl.empty();
+		this.statusBarEl.createSpan({ cls: 'ai-scheduler-spinner-tiny ai-scheduler-status-bar-spinner' });
+		const label = this.statusBarEl.createSpan({ cls: 'ai-scheduler-status-bar-text' });
+
+		if (runningList.length === 1) {
+			const j = runningList[0];
+			const startIso = j.lastRunAt || j.nextRunAt || new Date().toISOString();
+			const duration = formatDuration(startIso);
+			label.setText(`AI: #${j.taskNumber} (${j.title}) · ${duration}`);
+		} else if (runningList.length > 1) {
+			label.setText(`AI: ${runningList.length} tasks running...`);
+		} else if (this.reviewRunning) {
+			label.setText('AI: Review in progress...');
+		}
+
+		this.statusBarEl.setAttribute('title', 'AI Scheduler is running in background. Click to open dashboard.');
+		this.statusBarEl.onclick = () => {
+			new AssistantModal(this.app, this).open();
+		};
+
+		if (this.statusBarTimer === null) {
+			this.statusBarTimer = window.setInterval(() => {
+				this.updateStatusBar();
+			}, 1000);
+		}
 	}
 }
 
