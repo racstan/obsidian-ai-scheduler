@@ -71,6 +71,10 @@ export interface Job {
 	source?: string;
 	/** Vault path of the mirrored schedule note (opt-in notes storage). */
 	notePath?: string | null;
+	/** Path of the primary output file created or modified by this task. */
+	lastOutputPath?: string | null;
+	/** List of files created or modified during the task execution. */
+	lastOutputFiles?: string[];
 }
 
 export interface AISettings {

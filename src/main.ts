@@ -373,7 +373,12 @@ export class AISchedulerPlugin extends Plugin {
 			job.runCount = Number(job.runCount || 0) + 1;
 			await this.processFollowUps(reply, job);
 			if (job.output && job.output.folder && reply) {
-				await this.writeOutput(job.output.folder, job.output.filename, reply);
+				const writtenPath = await this.writeOutput(job.output.folder, job.output.filename, reply);
+				job.lastOutputPath = writtenPath;
+				if (!job.lastOutputFiles) job.lastOutputFiles = [];
+				if (!job.lastOutputFiles.includes(writtenPath)) {
+					job.lastOutputFiles.push(writtenPath);
+				}
 			}
 			reconcileAfterRun(job);
 			this.logActivity('completed', `Task #${job.taskNumber} finished: ${job.title}`, job.id);
@@ -519,6 +524,13 @@ export class AISchedulerPlugin extends Plugin {
 			}
 			const path = `${this.settings.reportFolder}/${filename}`;
 			await this.writeOutput(this.settings.reportFolder, filename, `# ${reportTitle} - ${today}\n\nGenerated: ${formatDate(now.toISOString())}\n\n${report}`);
+			if (nightlyJob) {
+				nightlyJob.lastOutputPath = path;
+				if (!nightlyJob.lastOutputFiles) nightlyJob.lastOutputFiles = [];
+				if (!nightlyJob.lastOutputFiles.includes(path)) {
+					nightlyJob.lastOutputFiles.push(path);
+				}
+			}
 			this.logActivity('review', `Daily review written to ${path}`);
 			if (manual || this.settings.notifyOnCompletion) {
 				new Notice(`Review written to ${path}`, 6000);

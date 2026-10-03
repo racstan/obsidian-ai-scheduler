@@ -5,6 +5,7 @@ import { describeSchedule } from '../schedule';
 import { closeExistingSchedulerModals, makeButton, makeCard } from './dom';
 import { JobModal } from './JobModal';
 import { PlannerModal } from './PlannerModal';
+import { TaskViewModal } from './TaskViewModal';
 
 function appendTaskIdBadge(container: HTMLElement, id: string): void {
 	const idBadge = container.createSpan({ cls: 'ai-scheduler-task-id-badge', text: `ID: ${id}` });
@@ -325,10 +326,10 @@ export class AssistantModal extends Modal {
 					copy.createDiv({ cls: 'ai-scheduler-task-paused', text: `Last ran: ${formatDate(job.lastRunAt)}` });
 				}
 				const controls = card.createDiv('ai-scheduler-task-actions');
-				makeButton(controls, 'Edit', () => {
+				makeButton(controls, 'View', () => {
 					this.close();
 					window.setTimeout(() => {
-						new JobModal(this.app, this.plugin, job, () => {
+						new TaskViewModal(this.app, this.plugin, job, () => {
 							new AssistantModal(this.app, this.plugin).open();
 						}).open();
 					}, 50);
