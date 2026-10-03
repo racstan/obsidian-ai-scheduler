@@ -1493,5 +1493,89 @@ button.ai-scheduler-coffee-btn:hover {
 	user-select: text;
 }
 
+/* ---- Past Tasks Scrollable Window ------------------------------------- */
+.ai-scheduler-past-tasks-scroll {
+	max-height: 280px;
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding-right: 6px;
+	margin-bottom: 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m, 8px);
+	padding: 8px;
+	background: var(--background-secondary-alt);
+}
+
+/* ---- Active Live Planning Banner --------------------------------------- */
+.ai-scheduler-planning-live-card {
+	padding: 12px 16px;
+	border-radius: var(--radius-m, 8px);
+	background: var(--background-secondary);
+	border: 1px solid var(--interactive-accent);
+	margin-bottom: 18px;
+}
+
+.ai-scheduler-planning-live-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.ai-scheduler-planning-live-title {
+	font-weight: 600;
+	font-size: 13.5px;
+	color: var(--text-accent);
+}
+
+.ai-scheduler-planning-live-goal {
+	margin-top: 6px;
+	font-size: 12.5px;
+	color: var(--text-normal);
+	font-style: italic;
+}
+
+.ai-scheduler-planning-live-sub {
+	margin-top: 4px;
+	font-size: 11.5px;
+	color: var(--text-muted);
+}
+
+/* ---- Past Due Modal ---------------------------------------------------- */
+.ai-scheduler-past-due-modal {
+	max-width: 480px;
+}
+
+.ai-scheduler-past-due-title {
+	margin-top: 0;
+	margin-bottom: 12px;
+}
+
+.ai-scheduler-past-due-desc {
+	margin-bottom: 20px;
+	color: var(--text-normal);
+	font-size: 13.5px;
+	line-height: 1.5;
+}
+
+.ai-scheduler-past-due-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 10px;
+	margin-top: 16px;
+}
+
+/* ---- Clickable Task ID Badge in Activity ------------------------------- */
+.ai-scheduler-task-id-badge.is-clickable {
+	cursor: pointer;
+	text-decoration: underline;
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.ai-scheduler-task-id-badge.is-clickable:hover {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent, #ffffff);
+	text-decoration: none;
+}
+
 
 

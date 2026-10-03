@@ -5,6 +5,29 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.7.12] - 2026-10-03
+
+### Highlights
+- **Fixed Scrollable Past Tasks Window**: Past tasks are now presented in a clean, fixed-height scrollable window that prevents vertical overflow.
+- **Background Planning State & Visibility**: Added live state tracking (`isPlanning`, `activePlanningGoal`), an interactive banner in the dashboard, and a status bar indicator while AI generates a schedule plan.
+- **Past-Due Warning & Modal**: When re-enabling a disabled task whose scheduled run time has passed, a modal prompts to "Run now", "Edit schedule", or keep disabled.
+- **Clickable Task IDs in Recent Activity**: Activity log entries now display clickable Task ID badges linking directly to task details and vault file navigation.
+- **Streamlined Button UI**: Removed emojis from action buttons for a cleaner, native Obsidian appearance.
+
+### Added
+- Added `PastDuePromptModal` for managing tasks enabled after their scheduled time slot has passed.
+- Added background planning indicators in the dashboard modal and the status bar.
+- Added interactive Task ID click navigation in the Recent Activity log.
+
+### Changed
+- Wrapped Past Tasks list in a fixed-height scrollable container.
+- Cleaned button labels across all modals and pickers.
+
+### Contributors
+- [@racstan](https://github.com/racstan) (Rachit Asthana)
+
+---
+
 ## [2.1.7.11] - 2026-10-03
 
 ### Highlights

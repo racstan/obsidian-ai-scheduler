@@ -53,6 +53,8 @@ export class AISchedulerPlugin extends Plugin {
 	notesSync: ScheduleNotesSync = new ScheduleNotesSync(this);
 	pendingVaultEvents: string[] = [];
 	runningJobs = new Set<string>();
+	isPlanning = false;
+	activePlanningGoal: string | null = null;
 	private selfWrites = new Set<string>();
 	private statusBarEl: HTMLElement | null = null;
 	private statusBarTimer: number | null = null;
@@ -701,29 +703,39 @@ export class AISchedulerPlugin extends Plugin {
 	}
 
 	async planAndCreate(goal: string, contextPaths: string[] = [], resultFolder = ''): Promise<{ reply: string; jobs: Job[] }> {
-		const execution = await backends.resolveModel(this, this.settings.planningModel, 'AI planning');
-		const validatedPaths = this.validateContextPaths(contextPaths);
-		const prompt = plannerPrompt(goal, validatedPaths);
-		const context = getPathsContext(this.app, validatedPaths);
-		const reply = await backends.sendToAI(this, prompt, execution, context);
-		const plans = extractJson(reply)
-			.map(item => validateJobSchema(item))
-			.filter((item): item is Record<string, unknown> => Boolean(item));
-		if (!plans.length) throw new Error('The AI returned no valid schedule. Ask it for a concrete time or cadence.');
-		const jobs: Job[] = [];
-		for (const plan of plans.slice(0, 10)) {
-			const planRecord = plan as { contextPaths?: string[]; context?: { paths?: string[] }; output?: JobOutput | null };
-			jobs.push(await this.addJob(Object.assign(
-				this.jobFromPlan(Object.assign({}, plan, {
-					contextPaths: planRecord.contextPaths || (planRecord.context && planRecord.context.paths) || validatedPaths,
-					output: planRecord.output || (resultFolder ? { folder: resultFolder } : null),
-				}), execution.tab as number, 'planner'),
-				{ profile: execution.modelRef, conversationId: execution.conversationId, providerId: execution.providerId, model: execution.model },
-			)));
+		this.isPlanning = true;
+		this.activePlanningGoal = goal;
+		this.updateStatusBar();
+		try {
+			const execution = await backends.resolveModel(this, this.settings.planningModel, 'AI planning');
+			const validatedPaths = this.validateContextPaths(contextPaths);
+			const prompt = plannerPrompt(goal, validatedPaths);
+			const context = getPathsContext(this.app, validatedPaths);
+			const reply = await backends.sendToAI(this, prompt, execution, context);
+			const plans = extractJson(reply)
+				.map(item => validateJobSchema(item))
+				.filter((item): item is Record<string, unknown> => Boolean(item));
+			if (!plans.length) throw new Error('The AI returned no valid schedule. Ask it for a concrete time or cadence.');
+			const jobs: Job[] = [];
+			for (const plan of plans.slice(0, 10)) {
+				const planRecord = plan as { contextPaths?: string[]; context?: { paths?: string[] }; output?: JobOutput | null };
+				const newJob = await this.addJob(Object.assign(
+					this.jobFromPlan(Object.assign({}, plan, {
+						contextPaths: planRecord.contextPaths || (planRecord.context && planRecord.context.paths) || validatedPaths,
+						output: planRecord.output || (resultFolder ? { folder: resultFolder } : null),
+					}), execution.tab as number, 'planner'),
+					{ profile: execution.modelRef, conversationId: execution.conversationId, providerId: execution.providerId, model: execution.model },
+				));
+				jobs.push(newJob);
+				this.logActivity('planned', `AI created Task #${newJob.taskNumber}: ${newJob.title}`, newJob.id);
+			}
+			await this.saveState();
+			return { reply, jobs };
+		} finally {
+			this.isPlanning = false;
+			this.activePlanningGoal = null;
+			this.updateStatusBar();
 		}
-		this.logActivity('planned', `AI created ${jobs.length} job(s)`);
-		await this.saveState();
-		return { reply, jobs };
 	}
 
 	async refineJob(job: Job, request: string, contextPaths: string[] = job.contextPaths || []): Promise<{ title: string; prompt: string; schedule: TaskSchedule }> {
@@ -947,7 +959,7 @@ export class AISchedulerPlugin extends Plugin {
 	updateStatusBar(): void {
 		if (!this.statusBarEl) return;
 		const runningList = this.jobs.filter(job => this.runningJobs.has(job.id) || job.status === 'running');
-		if (runningList.length === 0 && !this.reviewRunning) {
+		if (runningList.length === 0 && !this.reviewRunning && !this.isPlanning) {
 			if (this.statusBarTimer !== null) {
 				window.clearInterval(this.statusBarTimer);
 				this.statusBarTimer = null;
@@ -962,7 +974,9 @@ export class AISchedulerPlugin extends Plugin {
 		this.statusBarEl.createSpan({ cls: 'ai-scheduler-spinner-tiny ai-scheduler-status-bar-spinner' });
 		const label = this.statusBarEl.createSpan({ cls: 'ai-scheduler-status-bar-text' });
 
-		if (runningList.length === 1) {
+		if (this.isPlanning) {
+			label.setText('AI: Designing schedule plan...');
+		} else if (runningList.length === 1) {
 			const j = runningList[0];
 			const startIso = j.lastRunAt || j.nextRunAt || new Date().toISOString();
 			const duration = formatDuration(startIso);

@@ -274,7 +274,7 @@ export class TaskViewModal extends Modal {
 		if (this.job.lastReply) {
 			const outputHeading = shell.createDiv('ai-scheduler-section-heading');
 			outputHeading.createEl('h2', { text: 'Latest AI output response', cls: 'ai-scheduler-section-title' });
-			makeButton(outputHeading, '📋 Copy output', () => {
+			makeButton(outputHeading, 'Copy output', () => {
 				if (typeof navigator !== 'undefined' && navigator.clipboard) {
 					void navigator.clipboard.writeText(this.job.lastReply).then(() => {
 						new Notice('Copied AI output to clipboard.');
@@ -290,7 +290,7 @@ export class TaskViewModal extends Modal {
 		// Footer
 		const footer = shell.createDiv({ cls: 'ai-scheduler-footer' });
 		makeButton(footer, 'Close', () => this.close());
-		makeButton(footer, '▶️ Run again', () => {
+		makeButton(footer, 'Run again', () => {
 			new ConfirmModal(
 				this.app,
 				`Run task #${this.job.taskNumber} (${this.job.title}) immediately? It will execute in the background now.`,

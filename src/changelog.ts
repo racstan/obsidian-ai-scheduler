@@ -23,6 +23,35 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.7.12',
+		date: '2026-10-03',
+		title: 'Scrollable Past Tasks, Live Planning Visibility & Past-Due Edge Case Handling',
+		highlights: [
+			'Fixed Scrollable Past Tasks Window: Past tasks are now constrained to a clean, fixed-height scrollable window.',
+			'Background Planning State & Visibility: Live banner in dashboard and status bar when AI is generating a schedule plan.',
+			'Past-Due Enable Warning & Action Modal: Prompts to "Run now" or "Edit schedule" when enabling a task whose scheduled time has passed.',
+			'Interactive Task IDs in Activity: Clickable Task ID badges in Recent Activity to open task details and file navigation directly.',
+			'Streamlined Button UI: Removed emojis from action buttons for a cleaner, native Obsidian appearance.',
+		],
+		added: [
+			'Added PastDuePromptModal for handling tasks whose run time elapsed while disabled.',
+			'Added isPlanning and activePlanningGoal background state tracking and status bar indicator.',
+			'Added interactive Task ID navigation in Recent Activity log rows.',
+		],
+		changed: [
+			'Wrapped Past Tasks list in a fixed-height scrollable container.',
+			'Sanitized action buttons across AssistantModal, PlannerModal, TaskViewModal, and contextPicker.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author & Lead Maintainer',
+			},
+		],
+	},
+	{
 		version: '2.1.7.11',
 		date: '2026-10-03',
 		title: 'Past Task View Modal & Vault File Navigation',

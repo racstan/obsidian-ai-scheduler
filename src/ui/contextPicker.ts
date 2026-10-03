@@ -111,7 +111,7 @@ export function createContextPicker(
 
 	const controls = card.createDiv({ cls: 'ai-scheduler-picker-controls' });
 
-	makeButton(controls, '📎 Attach file...', () => {
+	makeButton(controls, 'Attach file...', () => {
 		new FilePickerModal(app, file => {
 			pathsSet.add(file.path);
 			renderChips();
@@ -119,7 +119,7 @@ export function createContextPicker(
 		}).open();
 	});
 
-	makeButton(controls, '📄 Attach active note', () => {
+	makeButton(controls, 'Attach active note', () => {
 		const active = app.workspace.getActiveFile();
 		if (!active) {
 			new Notice('No active note is currently open in Obsidian.');
@@ -130,7 +130,7 @@ export function createContextPicker(
 		new Notice(`Attached active note: ${active.path}`);
 	});
 
-	makeButton(controls, '📁 Attach folder...', () => {
+	makeButton(controls, 'Attach folder...', () => {
 		new FolderPickerModal(app, folder => {
 			const normPath = `${folder.path}/`;
 			pathsSet.add(normPath);
