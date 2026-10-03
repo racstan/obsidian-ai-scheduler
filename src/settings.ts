@@ -105,6 +105,7 @@ export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date(
 		cooldownMinutes: Number.isFinite(cooldownMinutes) && cooldownMinutes >= 0 ? cooldownMinutes : undefined,
 		lastEventPath: typeof raw.lastEventPath === 'string' ? raw.lastEventPath : undefined,
 		source: typeof raw.source === 'string' ? raw.source : undefined,
+		doubt: typeof raw.doubt === 'string' ? raw.doubt : undefined,
 		schedule: normalizedSchedule,
 		nextRunAt,
 	};

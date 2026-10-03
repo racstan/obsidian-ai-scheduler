@@ -680,13 +680,30 @@ export class AISchedulerPlugin extends Plugin {
 		};
 		const context = plan.context as { paths?: string[] } | undefined;
 		const titleStr = typeof plan.title === 'string' ? plan.title : 'Assistant task';
+		const promptCandidate = typeof plan.prompt === 'string' && plan.prompt.trim()
+			? plan.prompt.trim()
+			: (typeof plan.instructions === 'string' && plan.instructions.trim()
+				? plan.instructions.trim()
+				: (typeof plan.action === 'string' && plan.action.trim()
+					? plan.action.trim()
+					: (typeof plan.task === 'string' && plan.task.trim()
+						? plan.task.trim()
+						: (typeof plan.description === 'string' && plan.description.trim()
+							? plan.description.trim()
+							: titleStr))));
+		const doubt = typeof plan.doubt === 'string' && plan.doubt.trim()
+			? plan.doubt.trim()
+			: (typeof plan.clarification === 'string' && plan.clarification.trim()
+				? plan.clarification.trim()
+				: null);
 		const nextRunAt = normalized.kind === 'event' ? null : getScheduleNextRun(normalized);
 		if (normalized.kind !== 'event' && !nextRunAt) {
 			throw new Error(`Invalid schedule for "${titleStr}": no valid next run time`);
 		}
 		return {
 			title: titleStr.slice(0, 120),
-			prompt: typeof plan.prompt === 'string' ? plan.prompt : '',
+			prompt: promptCandidate,
+			doubt,
 			tab: Number(planRecord.tab || fallbackTab || this.settings.assistantTab),
 			profile: planRecord.profile || null,
 			conversationId: planRecord.conversationId || null,
@@ -727,7 +744,10 @@ export class AISchedulerPlugin extends Plugin {
 					{ profile: execution.modelRef, conversationId: execution.conversationId, providerId: execution.providerId, model: execution.model },
 				));
 				jobs.push(newJob);
-				this.logActivity('planned', `AI created Task #${newJob.taskNumber}: ${newJob.title}`, newJob.id);
+				if (newJob.doubt) {
+					new Notice(`AI Planning Note: ${newJob.doubt}`, 9000);
+				}
+				this.logActivity('planned', `AI created Task #${newJob.taskNumber}: ${newJob.title}${newJob.doubt ? ` (${newJob.doubt})` : ''}`, newJob.id);
 			}
 			await this.saveState();
 			return { reply, jobs };

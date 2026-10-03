@@ -17,11 +17,21 @@ export function executionPrompt(prompt: string, contextPaths: string[]): string 
 }
 
 export function plannerPrompt(goal: string, contextPaths: string[]): string {
+	const now = new Date();
+	const nowIso = now.toISOString();
+	const nowLocal = now.toLocaleString();
 	return [
 		'You are the planning brain for an autonomous Obsidian AI Scheduler.',
 		'Turn the user goal below into one or more safe, concrete automation jobs.',
+		`Reference context: Current local time is ${nowLocal} (ISO: ${nowIso}).`,
 		'Return ONLY a JSON array inside <assistant-scheduler> tags. No Markdown outside the tags.',
-		'Each item must have: title, prompt, schedule.',
+		'Each item MUST have: title, prompt, schedule.',
+		'- "title": concise name for the task.',
+		'- "prompt": complete, actionable instructions for the AI to execute (never leave prompt empty).',
+		'- "doubt": (optional) if there is any ambiguity in user timing or requirements, state your assumption here so the user is notified to confirm.',
+		'Schedule rules and natural language time parsing:',
+		'- When interpreting times in natural shorthand: e.g. "150" or "150 today" or "at 150" means 1:50 PM (13:50) or 01:50, NOT 15:00. "330" means 3:30 (15:30), "1130" means 11:30, "9" means 09:00.',
+		'- For one-time tasks or "today", schedule.kind must be "once" with "at" as an exact ISO-8601 string for that date and time.',
 		'schedule must be one of:',
 		'- {"kind":"once","at":"ISO-8601 timestamp"}',
 		'- {"kind":"daily","time":"HH:MM"}',

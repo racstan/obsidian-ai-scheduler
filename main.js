@@ -815,6 +815,7 @@ function normalizeJob(raw, now = /* @__PURE__ */ new Date()) {
     cooldownMinutes: Number.isFinite(cooldownMinutes) && cooldownMinutes >= 0 ? cooldownMinutes : void 0,
     lastEventPath: typeof raw.lastEventPath === "string" ? raw.lastEventPath : void 0,
     source: typeof raw.source === "string" ? raw.source : void 0,
+    doubt: typeof raw.doubt === "string" ? raw.doubt : void 0,
     schedule: normalizedSchedule,
     nextRunAt
   };
@@ -941,11 +942,21 @@ function executionPrompt(prompt, contextPaths) {
 ${FOLLOW_UP_INSTRUCTION}`;
 }
 function plannerPrompt(goal, contextPaths) {
+  const now = /* @__PURE__ */ new Date();
+  const nowIso = now.toISOString();
+  const nowLocal = now.toLocaleString();
   return [
     "You are the planning brain for an autonomous Obsidian AI Scheduler.",
     "Turn the user goal below into one or more safe, concrete automation jobs.",
+    `Reference context: Current local time is ${nowLocal} (ISO: ${nowIso}).`,
     "Return ONLY a JSON array inside <assistant-scheduler> tags. No Markdown outside the tags.",
-    "Each item must have: title, prompt, schedule.",
+    "Each item MUST have: title, prompt, schedule.",
+    '- "title": concise name for the task.',
+    '- "prompt": complete, actionable instructions for the AI to execute (never leave prompt empty).',
+    '- "doubt": (optional) if there is any ambiguity in user timing or requirements, state your assumption here so the user is notified to confirm.',
+    "Schedule rules and natural language time parsing:",
+    '- When interpreting times in natural shorthand: e.g. "150" or "150 today" or "at 150" means 1:50 PM (13:50) or 01:50, NOT 15:00. "330" means 3:30 (15:30), "1130" means 11:30, "9" means 09:00.',
+    '- For one-time tasks or "today", schedule.kind must be "once" with "at" as an exact ISO-8601 string for that date and time.',
     "schedule must be one of:",
     '- {"kind":"once","at":"ISO-8601 timestamp"}',
     '- {"kind":"daily","time":"HH:MM"}',
@@ -1700,6 +1711,7 @@ var KIND_LABELS = {
 var JobModal = class extends import_obsidian4.Modal {
   constructor(app, plugin, job, onSaved) {
     super(app);
+    this.editMode = "manual";
     this.inputs = [];
     this.multiArea = null;
     this.dayChecks = [];
@@ -1712,6 +1724,9 @@ var JobModal = class extends import_obsidian4.Modal {
   }
   onOpen() {
     closeExistingSchedulerModals(this);
+    this.render();
+  }
+  render() {
     const { contentEl } = this;
     this.modalEl.addClass("ai-scheduler-modal");
     this.modalEl.addClass("ai-scheduler-modal-sm");
@@ -1731,11 +1746,39 @@ var JobModal = class extends import_obsidian4.Modal {
         window.setTimeout(() => new AssistantModal(this.app, this.plugin).open(), 50);
       }
     };
-    shell.createEl("h2", { text: "Edit scheduled task" });
-    shell.createEl("p", { text: "Adjust the schedule directly, or describe a change in plain language and let AI rewrite it.", cls: "ai-scheduler-subtitle" });
+    shell.createEl("h2", { text: `Edit Task #${this.job.taskNumber}` });
+    shell.createEl("p", { text: "Choose to edit the schedule and prompt manually, or ask AI to rewrite them for you.", cls: "ai-scheduler-subtitle" });
+    const switcher = shell.createDiv({ cls: "ai-scheduler-tab-switcher" });
+    const manualBtn = switcher.createEl("button", {
+      cls: `ai-scheduler-tab-btn ${this.editMode === "manual" ? "is-active" : ""}`,
+      text: "Edit manually"
+    });
+    const aiBtn = switcher.createEl("button", {
+      cls: `ai-scheduler-tab-btn ${this.editMode === "ai" ? "is-active" : ""}`,
+      text: "Edit with AI"
+    });
+    manualBtn.onclick = () => {
+      if (this.editMode !== "manual") {
+        this.editMode = "manual";
+        this.render();
+      }
+    };
+    aiBtn.onclick = () => {
+      if (this.editMode !== "ai") {
+        this.editMode = "ai";
+        this.render();
+      }
+    };
+    if (this.editMode === "manual") {
+      this.renderManualMode(shell);
+    } else {
+      this.renderAiMode(shell);
+    }
+  }
+  renderManualMode(shell) {
     const detailsCard = makeCard(shell, "ai-scheduler-card-tight", "ai-scheduler-card-flush");
     const detailsHeader = detailsCard.createDiv({ cls: "ai-scheduler-task-header ai-scheduler-gap-8" });
-    detailsHeader.createDiv({ cls: "ai-scheduler-lead", text: `Task #${this.job.taskNumber} Details` });
+    detailsHeader.createDiv({ cls: "ai-scheduler-lead", text: "Task Details" });
     const idBadge = detailsHeader.createSpan({ cls: "ai-scheduler-task-id-badge", text: `ID: ${this.job.id}` });
     idBadge.setAttribute("title", "Click to copy task ID");
     idBadge.onclick = (e) => {
@@ -1749,16 +1792,16 @@ var JobModal = class extends import_obsidian4.Modal {
     detailsCard.createDiv({ cls: "ai-scheduler-form-label", text: "Task title" });
     const titleInput = detailsCard.createEl("input", {
       type: "text",
-      value: this.job.title,
       placeholder: "Task title...",
       cls: "ai-scheduler-input ai-scheduler-form-gap"
     });
+    titleInput.value = this.job.title || "";
     detailsCard.createDiv({ cls: "ai-scheduler-form-label", text: "Prompt & instructions" });
     const promptInput = detailsCard.createEl("textarea", {
-      value: this.job.prompt,
       placeholder: "Instructions for the AI when executing this task (type @ to attach files)...",
       cls: "ai-scheduler-textarea ai-scheduler-form-gap"
     });
+    promptInput.value = this.job.prompt || "";
     attachMentionSuggest({
       textarea: promptInput,
       app: this.app,
@@ -1770,7 +1813,12 @@ var JobModal = class extends import_obsidian4.Modal {
     this.renderScheduleEditor(shell);
     const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), this.job.contextPaths || [], this.app);
     shell.createDiv({ cls: "ai-scheduler-form-label", text: "Result folder for this task (optional)" });
-    const resultFolder = shell.createEl("input", { type: "text", value: this.job.output && this.job.output.folder || "", placeholder: "Optional result folder, e.g. Projects/News", cls: "ai-scheduler-input ai-scheduler-form-gap" });
+    const resultFolder = shell.createEl("input", {
+      type: "text",
+      placeholder: "Optional result folder, e.g. Projects/News",
+      cls: "ai-scheduler-input ai-scheduler-form-gap"
+    });
+    resultFolder.value = this.job.output && this.job.output.folder || "";
     const footer = shell.createDiv({ cls: "ai-scheduler-footer-wrap" });
     makeButton(footer, "Cancel", () => this.close());
     makeButton(footer, "Save schedule changes", async () => {
@@ -1800,8 +1848,14 @@ var JobModal = class extends import_obsidian4.Modal {
         new import_obsidian4.Notice(`Could not update task: ${errorText(error)}`, 8e3);
       }
     }, true);
+  }
+  renderAiMode(shell) {
     const aiSection = makeCard(shell, "ai-scheduler-card-ai");
-    aiSection.createDiv({ cls: "ai-scheduler-lead ai-scheduler-gap-6", text: "Edit with AI (optional)" });
+    aiSection.createDiv({ cls: "ai-scheduler-lead ai-scheduler-gap-6", text: "Describe what you want to change" });
+    aiSection.createDiv({
+      cls: "ai-scheduler-hint ai-scheduler-gap-8",
+      text: 'Example: "Change time to 1:50 PM every weekday", "Add daily summary notes folder", or "Rewrite instructions to check recent meetings".'
+    });
     const readiness = this.plugin.getBackendReadiness();
     if (!readiness.ok) {
       const banner = aiSection.createDiv({ cls: "ai-scheduler-alert-banner" });
@@ -1818,7 +1872,11 @@ var JobModal = class extends import_obsidian4.Modal {
         }, 50);
       };
     }
-    const request = aiSection.createEl("textarea", { placeholder: "Example: Change this to run every 30 minutes for 8 iterations, and save each result in Projects/News (type @ to attach files)...", cls: "ai-scheduler-textarea ai-scheduler-textarea-ai" });
+    const request = aiSection.createEl("textarea", {
+      placeholder: "Describe your requested change (type @ to attach files)...",
+      cls: "ai-scheduler-textarea ai-scheduler-textarea-ai"
+    });
+    const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), this.job.contextPaths || [], this.app);
     attachMentionSuggest({
       textarea: request,
       app: this.app,
@@ -1827,27 +1885,46 @@ var JobModal = class extends import_obsidian4.Modal {
         new import_obsidian4.Notice(`Attached to context: ${file.path}`);
       }
     });
-    makeButton(aiSection, "Update task with AI", async (button) => {
+    shell.createDiv({ cls: "ai-scheduler-form-label", text: "Result folder for this task (optional)" });
+    const resultFolder = shell.createEl("input", {
+      type: "text",
+      placeholder: "Optional result folder, e.g. Projects/News",
+      cls: "ai-scheduler-input ai-scheduler-form-gap"
+    });
+    resultFolder.value = this.job.output && this.job.output.folder || "";
+    const footer = shell.createDiv({ cls: "ai-scheduler-footer-wrap" });
+    makeButton(footer, "Cancel", () => this.close());
+    makeButton(footer, "Update task with AI", async (button) => {
       const change = request.value.trim();
       if (!change) {
         new import_obsidian4.Notice("Describe the task change first.");
         return;
       }
       button.disabled = true;
+      button.setText("AI is updating...");
       try {
         const contextPaths = contextPicker.getPaths();
         const plan = await this.plugin.refineJob(this.job, change, contextPaths);
         const schedule = plan.schedule || this.job.schedule;
-        if (schedule.kind !== "event" && !getScheduleNextRun(schedule, new Date(Date.now() - 1e3))) throw new Error("AI returned an invalid schedule. Ask for a concrete time or cadence.");
+        if (schedule.kind !== "event" && !getScheduleNextRun(schedule, new Date(Date.now() - 1e3))) {
+          throw new Error("AI returned an invalid schedule. Ask for a concrete time or cadence.");
+        }
         const folder = resultFolder.value.trim();
         const output = folder ? Object.assign({}, this.job.output || {}, { folder }) : null;
-        await this.plugin.updateJob(this.job, { title: String(plan.title).trim(), prompt: String(plan.prompt).trim(), schedule, contextPaths, output });
+        await this.plugin.updateJob(this.job, {
+          title: String(plan.title).trim(),
+          prompt: String(plan.prompt).trim(),
+          schedule,
+          contextPaths,
+          output
+        });
         new import_obsidian4.Notice("AI updated and saved the scheduled task.", 6e3);
         this.onSaved();
         this.close();
       } catch (error) {
         new import_obsidian4.Notice(`Could not update task: ${errorText(error)}`, 8e3);
         button.disabled = false;
+        button.setText("Update task with AI");
       }
     }, true);
   }
@@ -2248,6 +2325,14 @@ var PlannerModal = class _PlannerModal extends import_obsidian5.Modal {
       const runs = previewSchedule(job.schedule, 3);
       const meta = card.createDiv({ cls: "ai-scheduler-task-meta" });
       meta.setText(`Schedule: ${describeSchedule(job)}${cronForm ? ` (${cronForm})` : ""} \xB7 Next: ${runs.length ? runs[0] : job.nextRunAt ? formatDate(job.nextRunAt) : "on trigger"}`);
+      if (job.doubt) {
+        const doubtBanner = card.createDiv({ cls: "ai-scheduler-alert-banner ai-scheduler-gap-8" });
+        const content = doubtBanner.createDiv({ cls: "ai-scheduler-alert-content" });
+        content.createSpan({ cls: "ai-scheduler-alert-icon", text: "\u{1F4A1}" });
+        const textCol = content.createDiv();
+        textCol.createDiv({ cls: "ai-scheduler-alert-title", text: "AI Planning Note" });
+        textCol.createDiv({ cls: "ai-scheduler-alert-desc", text: job.doubt });
+      }
       if (job.prompt) {
         const promptBox = card.createDiv({ cls: "ai-scheduler-task-prompt" });
         promptBox.setText(job.prompt);
@@ -2931,7 +3016,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
         }, false, true);
       }
     }
-    const activity = this.plugin.activity.slice(-30).reverse();
+    const activity = this.plugin.activity.slice(-10).reverse();
     const activityHeading = this.renderSection(shell, "Recent activity", activity.length ? "All times are local" : "No activity yet");
     makeButton(activityHeading, "Clear", async (button) => {
       button.disabled = true;
@@ -3014,6 +3099,33 @@ var import_obsidian8 = require("obsidian");
 
 // src/changelog.ts
 var CHANGELOG_DATA = [
+  {
+    version: "2.1.7.13",
+    date: "2026-10-03",
+    title: "Dual Edit Modes (Manual / AI), Textarea Content Binding & Time Shorthand Clarifications",
+    highlights: [
+      "Dedicated Edit Modes (Manual / AI): Added intuitive segmented switcher tabs in the Edit dialog allowing instant switching between manual tweaking and AI-assisted rewriting.",
+      "Fixed Empty Prompt/Instructions Textarea: Resolved DOM textarea binding issue so existing prompt instructions and titles are always accurately populated.",
+      'Natural Time Parsing & Ambiguity Notes: Added smart natural shorthand parsing (e.g. "150 today" -> 1:50 PM / 13:50) with AI clarification doubt banners.',
+      "Optimized Recent Activity Window: Capped recent activity to latest 10 entries to maximize dashboard rendering performance."
+    ],
+    added: [
+      'Added segmented tab switcher in JobModal for "Edit manually" vs "Edit with AI".',
+      "Added doubt and clarification tracking for AI-planned tasks with visual callouts and notifications."
+    ],
+    changed: [
+      "Explicitly bound value properties to textarea and input fields in JobModal.",
+      "Limited Recent Activity feed to the 10 most recent entries."
+    ],
+    contributors: [
+      {
+        name: "Rachit Asthana",
+        username: "racstan",
+        url: "https://github.com/racstan",
+        role: "Author & Lead Maintainer"
+      }
+    ]
+  },
   {
     version: "2.1.7.12",
     date: "2026-10-03",
@@ -4935,13 +5047,16 @@ ${report}`);
     const planRecord = plan;
     const context = plan.context;
     const titleStr = typeof plan.title === "string" ? plan.title : "Assistant task";
+    const promptCandidate = typeof plan.prompt === "string" && plan.prompt.trim() ? plan.prompt.trim() : typeof plan.instructions === "string" && plan.instructions.trim() ? plan.instructions.trim() : typeof plan.action === "string" && plan.action.trim() ? plan.action.trim() : typeof plan.task === "string" && plan.task.trim() ? plan.task.trim() : typeof plan.description === "string" && plan.description.trim() ? plan.description.trim() : titleStr;
+    const doubt = typeof plan.doubt === "string" && plan.doubt.trim() ? plan.doubt.trim() : typeof plan.clarification === "string" && plan.clarification.trim() ? plan.clarification.trim() : null;
     const nextRunAt = normalized.kind === "event" ? null : getScheduleNextRun(normalized);
     if (normalized.kind !== "event" && !nextRunAt) {
       throw new Error(`Invalid schedule for "${titleStr}": no valid next run time`);
     }
     return {
       title: titleStr.slice(0, 120),
-      prompt: typeof plan.prompt === "string" ? plan.prompt : "",
+      prompt: promptCandidate,
+      doubt,
       tab: Number(planRecord.tab || fallbackTab || this.settings.assistantTab),
       profile: planRecord.profile || null,
       conversationId: planRecord.conversationId || null,
@@ -4979,7 +5094,10 @@ ${report}`);
           { profile: execution.modelRef, conversationId: execution.conversationId, providerId: execution.providerId, model: execution.model }
         ));
         jobs.push(newJob);
-        this.logActivity("planned", `AI created Task #${newJob.taskNumber}: ${newJob.title}`, newJob.id);
+        if (newJob.doubt) {
+          new import_obsidian11.Notice(`AI Planning Note: ${newJob.doubt}`, 9e3);
+        }
+        this.logActivity("planned", `AI created Task #${newJob.taskNumber}: ${newJob.title}${newJob.doubt ? ` (${newJob.doubt})` : ""}`, newJob.id);
       }
       await this.saveState();
       return { reply, jobs };

@@ -29,6 +29,7 @@ export class JobModal extends Modal {
 	plugin: AISchedulerPlugin;
 	job: import('../types').Job;
 	onSaved: () => void;
+	private editMode: 'manual' | 'ai' = 'manual';
 	private kind: ScheduleKind;
 	private inputs: HTMLInputElement[] = [];
 	private multiArea: HTMLTextAreaElement | null = null;
@@ -46,6 +47,10 @@ export class JobModal extends Modal {
 
 	onOpen(): void {
 		closeExistingSchedulerModals(this);
+		this.render();
+	}
+
+	render(): void {
 		const { contentEl } = this;
 		this.modalEl.addClass('ai-scheduler-modal');
 		this.modalEl.addClass('ai-scheduler-modal-sm');
@@ -67,12 +72,44 @@ export class JobModal extends Modal {
 			}
 		};
 
-		shell.createEl('h2', { text: 'Edit scheduled task' });
-		shell.createEl('p', { text: 'Adjust the schedule directly, or describe a change in plain language and let AI rewrite it.', cls: 'ai-scheduler-subtitle' });
+		shell.createEl('h2', { text: `Edit Task #${this.job.taskNumber}` });
+		shell.createEl('p', { text: 'Choose to edit the schedule and prompt manually, or ask AI to rewrite them for you.', cls: 'ai-scheduler-subtitle' });
 
+		// Mode Switcher Tabs
+		const switcher = shell.createDiv({ cls: 'ai-scheduler-tab-switcher' });
+		const manualBtn = switcher.createEl('button', {
+			cls: `ai-scheduler-tab-btn ${this.editMode === 'manual' ? 'is-active' : ''}`,
+			text: 'Edit manually',
+		});
+		const aiBtn = switcher.createEl('button', {
+			cls: `ai-scheduler-tab-btn ${this.editMode === 'ai' ? 'is-active' : ''}`,
+			text: 'Edit with AI',
+		});
+
+		manualBtn.onclick = () => {
+			if (this.editMode !== 'manual') {
+				this.editMode = 'manual';
+				this.render();
+			}
+		};
+		aiBtn.onclick = () => {
+			if (this.editMode !== 'ai') {
+				this.editMode = 'ai';
+				this.render();
+			}
+		};
+
+		if (this.editMode === 'manual') {
+			this.renderManualMode(shell);
+		} else {
+			this.renderAiMode(shell);
+		}
+	}
+
+	private renderManualMode(shell: HTMLElement): void {
 		const detailsCard = makeCard(shell, 'ai-scheduler-card-tight', 'ai-scheduler-card-flush');
 		const detailsHeader = detailsCard.createDiv({ cls: 'ai-scheduler-task-header ai-scheduler-gap-8' });
-		detailsHeader.createDiv({ cls: 'ai-scheduler-lead', text: `Task #${this.job.taskNumber} Details` });
+		detailsHeader.createDiv({ cls: 'ai-scheduler-lead', text: 'Task Details' });
 		const idBadge = detailsHeader.createSpan({ cls: 'ai-scheduler-task-id-badge', text: `ID: ${this.job.id}` });
 		idBadge.setAttribute('title', 'Click to copy task ID');
 		idBadge.onclick = (e) => {
@@ -87,17 +124,17 @@ export class JobModal extends Modal {
 		detailsCard.createDiv({ cls: 'ai-scheduler-form-label', text: 'Task title' });
 		const titleInput = detailsCard.createEl('input', {
 			type: 'text',
-			value: this.job.title,
 			placeholder: 'Task title...',
 			cls: 'ai-scheduler-input ai-scheduler-form-gap',
 		});
+		titleInput.value = this.job.title || '';
 
 		detailsCard.createDiv({ cls: 'ai-scheduler-form-label', text: 'Prompt & instructions' });
 		const promptInput = detailsCard.createEl('textarea', {
-			value: this.job.prompt,
 			placeholder: 'Instructions for the AI when executing this task (type @ to attach files)...',
 			cls: 'ai-scheduler-textarea ai-scheduler-form-gap',
 		});
+		promptInput.value = this.job.prompt || '';
 		attachMentionSuggest({
 			textarea: promptInput,
 			app: this.app,
@@ -111,7 +148,12 @@ export class JobModal extends Modal {
 
 		const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), this.job.contextPaths || [], this.app);
 		shell.createDiv({ cls: 'ai-scheduler-form-label', text: 'Result folder for this task (optional)' });
-		const resultFolder = shell.createEl('input', { type: 'text', value: this.job.output && this.job.output.folder || '', placeholder: 'Optional result folder, e.g. Projects/News', cls: 'ai-scheduler-input ai-scheduler-form-gap' });
+		const resultFolder = shell.createEl('input', {
+			type: 'text',
+			placeholder: 'Optional result folder, e.g. Projects/News',
+			cls: 'ai-scheduler-input ai-scheduler-form-gap'
+		});
+		resultFolder.value = (this.job.output && this.job.output.folder) || '';
 
 		const footer = shell.createDiv({ cls: 'ai-scheduler-footer-wrap' });
 		makeButton(footer, 'Cancel', () => this.close());
@@ -139,9 +181,16 @@ export class JobModal extends Modal {
 				new Notice(`Could not update task: ${errorText(error)}`, 8000);
 			}
 		}, true);
+	}
 
+	private renderAiMode(shell: HTMLElement): void {
 		const aiSection = makeCard(shell, 'ai-scheduler-card-ai');
-		aiSection.createDiv({ cls: 'ai-scheduler-lead ai-scheduler-gap-6', text: 'Edit with AI (optional)' });
+		aiSection.createDiv({ cls: 'ai-scheduler-lead ai-scheduler-gap-6', text: 'Describe what you want to change' });
+		aiSection.createDiv({
+			cls: 'ai-scheduler-hint ai-scheduler-gap-8',
+			text: 'Example: "Change time to 1:50 PM every weekday", "Add daily summary notes folder", or "Rewrite instructions to check recent meetings".'
+		});
+
 		const readiness = this.plugin.getBackendReadiness();
 		if (!readiness.ok) {
 			const banner = aiSection.createDiv({ cls: 'ai-scheduler-alert-banner' });
@@ -158,7 +207,13 @@ export class JobModal extends Modal {
 				}, 50);
 			};
 		}
-		const request = aiSection.createEl('textarea', { placeholder: 'Example: Change this to run every 30 minutes for 8 iterations, and save each result in Projects/News (type @ to attach files)...', cls: 'ai-scheduler-textarea ai-scheduler-textarea-ai' });
+
+		const request = aiSection.createEl('textarea', {
+			placeholder: 'Describe your requested change (type @ to attach files)...',
+			cls: 'ai-scheduler-textarea ai-scheduler-textarea-ai'
+		});
+
+		const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), this.job.contextPaths || [], this.app);
 		attachMentionSuggest({
 			textarea: request,
 			app: this.app,
@@ -168,22 +223,45 @@ export class JobModal extends Modal {
 			},
 		});
 
-		makeButton(aiSection, 'Update task with AI', async button => {
+		shell.createDiv({ cls: 'ai-scheduler-form-label', text: 'Result folder for this task (optional)' });
+		const resultFolder = shell.createEl('input', {
+			type: 'text',
+			placeholder: 'Optional result folder, e.g. Projects/News',
+			cls: 'ai-scheduler-input ai-scheduler-form-gap'
+		});
+		resultFolder.value = (this.job.output && this.job.output.folder) || '';
+
+		const footer = shell.createDiv({ cls: 'ai-scheduler-footer-wrap' });
+		makeButton(footer, 'Cancel', () => this.close());
+		makeButton(footer, 'Update task with AI', async button => {
 			const change = request.value.trim();
 			if (!change) { new Notice('Describe the task change first.'); return; }
 			button.disabled = true;
+			button.setText('AI is updating...');
 			try {
 				const contextPaths = contextPicker.getPaths();
 				const plan = await this.plugin.refineJob(this.job, change, contextPaths);
 				const schedule = plan.schedule || this.job.schedule;
-				if (schedule.kind !== 'event' && !getScheduleNextRun(schedule, new Date(Date.now() - 1000))) throw new Error('AI returned an invalid schedule. Ask for a concrete time or cadence.');
+				if (schedule.kind !== 'event' && !getScheduleNextRun(schedule, new Date(Date.now() - 1000))) {
+					throw new Error('AI returned an invalid schedule. Ask for a concrete time or cadence.');
+				}
 				const folder = resultFolder.value.trim();
 				const output = folder ? Object.assign({}, this.job.output || {}, { folder }) : null;
-				await this.plugin.updateJob(this.job, { title: String(plan.title).trim(), prompt: String(plan.prompt).trim(), schedule, contextPaths, output });
+				await this.plugin.updateJob(this.job, {
+					title: String(plan.title).trim(),
+					prompt: String(plan.prompt).trim(),
+					schedule,
+					contextPaths,
+					output
+				});
 				new Notice('AI updated and saved the scheduled task.', 6000);
 				this.onSaved();
 				this.close();
-			} catch (error) { new Notice(`Could not update task: ${errorText(error)}`, 8000); button.disabled = false; }
+			} catch (error) {
+				new Notice(`Could not update task: ${errorText(error)}`, 8000);
+				button.disabled = false;
+				button.setText('Update task with AI');
+			}
 		}, true);
 	}
 

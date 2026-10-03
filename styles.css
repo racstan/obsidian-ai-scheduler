@@ -1577,5 +1577,40 @@ button.ai-scheduler-coffee-btn:hover {
 	text-decoration: none;
 }
 
+/* ---- Edit Mode Tab Switcher -------------------------------------------- */
+.ai-scheduler-tab-switcher {
+	display: flex;
+	gap: 6px;
+	margin-bottom: 16px;
+	background: var(--background-secondary-alt);
+	padding: 4px;
+	border-radius: var(--radius-m, 8px);
+	border: 1px solid var(--background-modifier-border);
+}
+
+.ai-scheduler-tab-btn {
+	flex: 1;
+	padding: 8px 14px;
+	font-size: 13px;
+	font-weight: 500;
+	border-radius: var(--radius-s, 6px);
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	transition: background 0.15s ease, color 0.15s ease;
+}
+
+.ai-scheduler-tab-btn:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.ai-scheduler-tab-btn.is-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent, #ffffff);
+	font-weight: 600;
+}
+
 
 

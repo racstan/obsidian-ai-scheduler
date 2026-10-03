@@ -75,6 +75,8 @@ export interface Job {
 	lastOutputPath?: string | null;
 	/** List of files created or modified during the task execution. */
 	lastOutputFiles?: string[];
+	/** Optional clarification or doubt note generated during AI planning. */
+	doubt?: string | null;
 }
 
 export interface AISettings {

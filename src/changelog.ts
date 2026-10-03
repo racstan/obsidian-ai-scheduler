@@ -23,6 +23,33 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.7.13',
+		date: '2026-10-03',
+		title: 'Dual Edit Modes (Manual / AI), Textarea Content Binding & Time Shorthand Clarifications',
+		highlights: [
+			'Dedicated Edit Modes (Manual / AI): Added intuitive segmented switcher tabs in the Edit dialog allowing instant switching between manual tweaking and AI-assisted rewriting.',
+			'Fixed Empty Prompt/Instructions Textarea: Resolved DOM textarea binding issue so existing prompt instructions and titles are always accurately populated.',
+			'Natural Time Parsing & Ambiguity Notes: Added smart natural shorthand parsing (e.g. "150 today" -> 1:50 PM / 13:50) with AI clarification doubt banners.',
+			'Optimized Recent Activity Window: Capped recent activity to latest 10 entries to maximize dashboard rendering performance.',
+		],
+		added: [
+			'Added segmented tab switcher in JobModal for "Edit manually" vs "Edit with AI".',
+			'Added doubt and clarification tracking for AI-planned tasks with visual callouts and notifications.',
+		],
+		changed: [
+			'Explicitly bound value properties to textarea and input fields in JobModal.',
+			'Limited Recent Activity feed to the 10 most recent entries.',
+		],
+		contributors: [
+			{
+				name: 'Rachit Asthana',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author & Lead Maintainer',
+			},
+		],
+	},
+	{
 		version: '2.1.7.12',
 		date: '2026-10-03',
 		title: 'Scrollable Past Tasks, Live Planning Visibility & Past-Due Edge Case Handling',

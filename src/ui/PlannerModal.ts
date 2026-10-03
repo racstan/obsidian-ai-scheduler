@@ -205,6 +205,15 @@ export class PlannerModal extends Modal {
 			const meta = card.createDiv({ cls: 'ai-scheduler-task-meta' });
 			meta.setText(`Schedule: ${describeSchedule(job)}${cronForm ? ` (${cronForm})` : ''} · Next: ${runs.length ? runs[0] : (job.nextRunAt ? formatDate(job.nextRunAt) : 'on trigger')}`);
 
+			if (job.doubt) {
+				const doubtBanner = card.createDiv({ cls: 'ai-scheduler-alert-banner ai-scheduler-gap-8' });
+				const content = doubtBanner.createDiv({ cls: 'ai-scheduler-alert-content' });
+				content.createSpan({ cls: 'ai-scheduler-alert-icon', text: '💡' });
+				const textCol = content.createDiv();
+				textCol.createDiv({ cls: 'ai-scheduler-alert-title', text: 'AI Planning Note' });
+				textCol.createDiv({ cls: 'ai-scheduler-alert-desc', text: job.doubt });
+			}
+
 			if (job.prompt) {
 				const promptBox = card.createDiv({ cls: 'ai-scheduler-task-prompt' });
 				promptBox.setText(job.prompt);

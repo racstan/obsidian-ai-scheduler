@@ -450,7 +450,7 @@ export class AssistantModal extends Modal {
 			}
 		}
 
-		const activity = this.plugin.activity.slice(-30).reverse();
+		const activity = this.plugin.activity.slice(-10).reverse();
 		const activityHeading = this.renderSection(shell, 'Recent activity', activity.length ? 'All times are local' : 'No activity yet');
 		makeButton(activityHeading, 'Clear', async button => {
 			button.disabled = true;

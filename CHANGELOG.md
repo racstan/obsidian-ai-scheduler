@@ -5,6 +5,27 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.7.13] - 2026-10-03
+
+### Highlights
+- **Dedicated Edit Modes (Manual / AI)**: Added intuitive segmented switcher tabs in the Edit dialog allowing instant switching between manual schedule tweaking and AI-assisted rewriting.
+- **Fixed Empty Prompt/Instructions Textarea**: Resolved DOM textarea binding issue so existing prompt instructions and titles are always accurately populated.
+- **Natural Time Parsing & Ambiguity Notes**: Added smart natural shorthand parsing (e.g. "150 today" -> 1:50 PM / 13:50) with AI clarification doubt banners.
+- **Optimized Recent Activity Window**: Capped recent activity to latest 10 entries to maximize dashboard rendering performance.
+
+### Added
+- Added segmented tab switcher in `JobModal` for "Edit manually" vs "Edit with AI".
+- Added doubt and clarification tracking for AI-planned tasks with visual callouts and notifications.
+
+### Changed
+- Explicitly bound value properties to textarea and input fields in `JobModal`.
+- Limited Recent Activity feed to the 10 most recent entries.
+
+### Contributors
+- [@racstan](https://github.com/racstan) (Rachit Asthana)
+
+---
+
 ## [2.1.7.12] - 2026-10-03
 
 ### Highlights
