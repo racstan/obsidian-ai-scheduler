@@ -158,7 +158,6 @@ export class CalendarModal extends Modal {
 		const shell = contentEl.createDiv('ai-scheduler-shell ai-scheduler-shell-lg');
 
 		if (this.viewMode === 'day') {
-			this.renderDayHeaderAndControls(shell);
 			const dayStart = new Date(this.selectedDate.getFullYear(), this.selectedDate.getMonth(), this.selectedDate.getDate(), 0, 0, 0, 0);
 			const dayEnd = new Date(this.selectedDate.getFullYear(), this.selectedDate.getMonth(), this.selectedDate.getDate(), 23, 59, 59, 999);
 			const occurrencesMap = this.buildOccurrencesMap(dayStart, dayEnd);
@@ -307,9 +306,18 @@ export class CalendarModal extends Modal {
 		this.renderEventTasksSection(shell);
 	}
 
-	private renderDayHeaderAndControls(shell: HTMLElement): void {
-		// Header row with Back button and actions
-		const header = shell.createDiv({ cls: 'ai-scheduler-calendar-header ai-scheduler-cal-day-header-wrap' });
+	private renderDayPage(
+		container: HTMLElement,
+		date: Date,
+		occurrencesMap: Map<string, CalendarOccurrence[]>,
+	): void {
+		const key = toLocalDateKey(date);
+		const occurrences = occurrencesMap.get(key) || [];
+		const rel = getRelativeDayLabel(date);
+		const formattedDate = `${DAY_NAMES[date.getDay()]}, ${MONTH_NAMES[date.getMonth() + 1]} ${date.getDate()}, ${date.getFullYear()}`;
+
+		// 1. Unified Day Header
+		const header = container.createDiv({ cls: 'ai-scheduler-calendar-header ai-scheduler-cal-day-header-wrap' });
 
 		const titleCol = header.createDiv({ cls: 'ai-scheduler-cal-day-title-col' });
 		const backRow = titleCol.createDiv({ cls: 'ai-scheduler-cal-back-bar' });
@@ -322,11 +330,17 @@ export class CalendarModal extends Modal {
 			this.render();
 		};
 
-		const formattedTitle = `${DAY_NAMES[this.selectedDate.getDay()]}, ${MONTH_NAMES[this.selectedDate.getMonth() + 1]} ${this.selectedDate.getDate()}, ${this.selectedDate.getFullYear()}`;
-		titleCol.createEl('h1', { text: formattedTitle, cls: 'ai-scheduler-title ai-scheduler-cal-day-page-title' });
-		titleCol.createEl('p', {
-			text: 'Detailed schedule, task breakdowns, and execution actions for this date.',
-			cls: 'ai-scheduler-subtitle',
+		const headingRow = titleCol.createDiv({ cls: 'ai-scheduler-cal-day-title-row' });
+		headingRow.createEl('h1', { text: formattedDate, cls: 'ai-scheduler-title ai-scheduler-cal-day-page-title' });
+
+		const badgeRow = titleCol.createDiv({ cls: 'ai-scheduler-cal-day-badge-row' });
+		badgeRow.createSpan({ cls: `ai-scheduler-cal-day-rel-badge ${rel.cls}`, text: rel.text });
+		const summaryText = occurrences.length === 0
+			? 'No tasks scheduled'
+			: `${occurrences.length} task run${occurrences.length === 1 ? '' : 's'} scheduled (${occurrences.filter(o => o.isCompleted).length} completed)`;
+		badgeRow.createSpan({
+			cls: 'ai-scheduler-cal-day-count-badge',
+			text: summaryText,
 		});
 
 		const topActions = header.createDiv({ cls: 'ai-scheduler-calendar-top-actions' });
@@ -355,11 +369,11 @@ export class CalendarModal extends Modal {
 			}, 50);
 		}, true);
 
-		// Navigation Bar for Day: Prev day, Next day, Today, View Toggles
-		const controlsBar = shell.createDiv({ cls: 'ai-scheduler-cal-controls ai-scheduler-cal-day-controls' });
+		// 2. Day Controls Bar: Prev Day, Today, Next Day, Filter, View Toggles
+		const controlsBar = container.createDiv({ cls: 'ai-scheduler-cal-controls ai-scheduler-cal-day-controls' });
 
 		const navGroup = controlsBar.createDiv({ cls: 'ai-scheduler-cal-nav' });
-		const prevDayBtn = navGroup.createEl('button', { text: '‹ Previous day', cls: 'ai-scheduler-cal-nav-btn ai-scheduler-cal-day-step-btn' });
+		const prevDayBtn = navGroup.createEl('button', { text: '‹ Previous', cls: 'ai-scheduler-cal-day-nav-btn' });
 		prevDayBtn.onclick = () => {
 			const prev = new Date(this.selectedDate);
 			prev.setDate(prev.getDate() - 1);
@@ -378,7 +392,7 @@ export class CalendarModal extends Modal {
 			this.render();
 		};
 
-		const nextDayBtn = navGroup.createEl('button', { text: 'Next day ›', cls: 'ai-scheduler-cal-nav-btn ai-scheduler-cal-day-step-btn' });
+		const nextDayBtn = navGroup.createEl('button', { text: 'Next ›', cls: 'ai-scheduler-cal-day-nav-btn' });
 		nextDayBtn.onclick = () => {
 			const next = new Date(this.selectedDate);
 			next.setDate(next.getDate() + 1);
@@ -428,67 +442,15 @@ export class CalendarModal extends Modal {
 			this.viewMode = 'day';
 			this.render();
 		};
-	}
 
-	private renderDayPage(
-		container: HTMLElement,
-		date: Date,
-		occurrencesMap: Map<string, CalendarOccurrence[]>,
-	): void {
-		const key = toLocalDateKey(date);
-		const occurrences = occurrencesMap.get(key) || [];
-		const rel = getRelativeDayLabel(date);
-
-		// Hero Card for the Selected Day
-		const heroCard = makeCard(container, 'ai-scheduler-cal-day-hero');
-		const heroTop = heroCard.createDiv({ cls: 'ai-scheduler-cal-day-hero-top' });
-
-		const heroLeft = heroTop.createDiv();
-		const badgeRow = heroLeft.createDiv({ cls: 'ai-scheduler-cal-day-badge-row' });
-		badgeRow.createSpan({ cls: `ai-scheduler-cal-day-rel-badge ${rel.cls}`, text: rel.text });
-		badgeRow.createSpan({
-			cls: 'ai-scheduler-cal-day-count-badge',
-			text: occurrences.length === 0 ? 'No tasks scheduled' : `${occurrences.length} task run${occurrences.length === 1 ? '' : 's'}`,
-		});
-
-		const heroTitle = heroLeft.createEl('h2', {
-			cls: 'ai-scheduler-cal-day-hero-title',
-			text: `${DAY_NAMES[date.getDay()]}, ${MONTH_NAMES[date.getMonth() + 1]} ${date.getDate()}, ${date.getFullYear()}`,
-		});
-
-		const heroSubtitle = heroLeft.createDiv({
-			cls: 'ai-scheduler-cal-day-hero-subtitle',
-			text: occurrences.length === 0
-				? 'No AI tasks are set to execute on this date. You can add one anytime.'
-				: `${occurrences.filter(o => o.isCompleted).length} completed · ${occurrences.filter(o => !o.isCompleted && o.job.enabled).length} scheduled/pending`,
-		});
-
-		const heroActions = heroTop.createDiv({ cls: 'ai-scheduler-cal-day-hero-actions' });
-		makeButton(heroActions, '+ Schedule Task', () => {
-			this.close();
-			window.setTimeout(() => {
-				const defaultJob = normalizeJob({
-					prompt: '',
-					title: '',
-					schedule: {
-						kind: 'once',
-						at: new Date(this.selectedDate.getFullYear(), this.selectedDate.getMonth(), this.selectedDate.getDate(), 9, 0).toISOString(),
-					},
-				});
-				new JobModal(this.app, this.plugin, defaultJob, () => {
-					new CalendarModal(this.app, this.plugin, this.selectedDate, 'day').open();
-				}).open();
-			}, 50);
-		}, true);
-
-		// Metrics row
+		// 3. Metrics row (only when tasks exist on this date)
 		if (occurrences.length > 0) {
 			const completedCount = occurrences.filter(o => o.isCompleted).length;
 			const runningCount = occurrences.filter(o => o.job.status === 'running' || this.plugin.runningJobs.has(o.job.id)).length;
 			const pausedCount = occurrences.filter(o => !o.job.enabled || o.job.status === 'disabled').length;
 			const pendingCount = occurrences.length - completedCount - runningCount - pausedCount;
 
-			const statsGrid = heroCard.createDiv({ cls: 'ai-scheduler-cal-day-stats-grid' });
+			const statsGrid = container.createDiv({ cls: 'ai-scheduler-cal-day-stats-grid' });
 
 			const stat1 = statsGrid.createDiv({ cls: 'ai-scheduler-cal-day-stat-card' });
 			stat1.createDiv({ cls: 'ai-scheduler-cal-day-stat-num', text: String(occurrences.length) });
@@ -507,11 +469,11 @@ export class CalendarModal extends Modal {
 			stat4.createDiv({ cls: 'ai-scheduler-cal-day-stat-label', text: 'Paused' });
 		}
 
-		// Main Task Timeline List or Empty State
+		// 4. Main Task Timeline List or Empty State
 		if (occurrences.length === 0) {
 			const emptyCard = makeCard(container, 'ai-scheduler-cal-day-empty-card');
 			emptyCard.createDiv({ cls: 'ai-scheduler-cal-day-empty-icon', text: '🗓️' });
-			emptyCard.createEl('h3', { cls: 'ai-scheduler-cal-day-empty-title', text: `No tasks scheduled for ${MONTH_SHORT_NAMES[date.getMonth() + 1]} ${date.getDate()}` });
+			emptyCard.createEl('h3', { cls: 'ai-scheduler-cal-day-empty-title', text: `No tasks scheduled for ${DAY_NAMES[date.getDay()]}, ${MONTH_SHORT_NAMES[date.getMonth() + 1]} ${date.getDate()}` });
 			emptyCard.createDiv({
 				cls: 'ai-scheduler-cal-day-empty-desc',
 				text: 'There are no active or scheduled AI tasks set for this day. You can schedule a one-time task, set up a recurring schedule, or ask the AI planner to organize your routine.',

@@ -2317,16 +2317,36 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-cal-day-page-title {
 	font-size: 24px;
-	margin-bottom: 4px;
+	font-weight: 700;
+	margin: 2px 0 6px 0;
+	letter-spacing: -0.02em;
+	color: var(--text-normal);
 }
 
 .ai-scheduler-cal-day-controls {
 	margin-bottom: 16px;
 }
 
-.ai-scheduler-cal-day-step-btn {
+.ai-scheduler-cal-day-nav-btn {
+	padding: 5px 14px;
 	font-size: 12.5px;
-	padding: 5px 10px;
+	font-weight: 600;
+	border-radius: var(--radius-s, 6px);
+	cursor: pointer;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	transition: all 0.15s ease;
+	white-space: nowrap;
+}
+
+.ai-scheduler-cal-day-nav-btn:hover {
+	background: var(--background-modifier-hover);
+	border-color: var(--interactive-accent);
+	color: var(--text-accent, var(--interactive-accent));
 }
 
 /* Day Hero Card */
