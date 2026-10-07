@@ -322,7 +322,7 @@ export class TaskViewModal extends Modal {
 					() => {
 						void (async () => {
 							new Notice(`Starting task #${this.job.taskNumber} now...`);
-							await this.plugin.retryJob(this.job);
+							await this.plugin.runJobNow(this.job);
 							this.close();
 							if (this.onBack) this.onBack();
 						})();

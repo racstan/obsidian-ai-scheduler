@@ -61,6 +61,11 @@ export class JobModal extends Modal {
 		this.kind = job.schedule.kind;
 	}
 
+	/** True when the job is not registered yet; saving creates it. */
+	private get isNew(): boolean {
+		return !this.plugin.jobs.includes(this.job);
+	}
+
 	onOpen(): void {
 		closeExistingSchedulerModals(this);
 		this.render();
@@ -88,7 +93,7 @@ export class JobModal extends Modal {
 			}
 		};
 
-		shell.createEl('h2', { text: `Edit Task #${this.job.taskNumber}` });
+		shell.createEl('h2', { text: this.isNew ? 'New task' : `Edit task #${this.job.taskNumber}` });
 		shell.createEl('p', { text: 'Choose to edit the schedule and prompt manually, or ask AI to rewrite them for you.', cls: 'ai-scheduler-subtitle' });
 
 		// Mode Switcher Tabs
@@ -197,6 +202,11 @@ export class JobModal extends Modal {
 				const output = folder ? Object.assign({}, this.job.output || {}, { folder }) : null;
 				const newTitle = titleInput.value.trim() || this.job.title;
 				const newPrompt = promptInput.value.trim() || this.job.prompt;
+				if (this.isNew && (!titleInput.value.trim() || !newPrompt)) {
+					new Notice('Enter a title and instructions for the new task.', 8000);
+					return;
+				}
+				const wasNew = this.isNew;
 				await this.plugin.updateJob(this.job, {
 					title: newTitle,
 					prompt: newPrompt,
@@ -205,7 +215,7 @@ export class JobModal extends Modal {
 					output,
 					cooldownMinutes: state.cooldownMinutes,
 				});
-				new Notice('Schedule updated and saved.', 6000);
+				new Notice(wasNew ? `Task #${this.job.taskNumber} created.` : 'Schedule updated and saved.', 6000);
 				this.onSaved();
 				this.close();
 			} catch (error) {

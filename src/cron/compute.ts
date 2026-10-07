@@ -15,6 +15,11 @@ const MAX_SEARCH_YEARS = 8;
 // a generous guard only ever fires on malformed input that still parses.
 const MAX_ITERATIONS = 1_000_000;
 
+/** Truncates to the whole minute without local-time setters (safe in the repeated DST hour). */
+function floorToMinute(date: Date): Date {
+	return new Date(Math.floor(date.getTime() / 60000) * 60000);
+}
+
 function dayMatches(expression: CronExpression, date: Date): boolean {
 	const domOk = expression.dom.includes(date.getDate());
 	const dowOk = expression.dow.includes(date.getDay());
@@ -44,9 +49,10 @@ function firstAllowedMinuteAtOrAfter(expression: CronExpression, date: Date, aft
 	if (after) {
 		const candidate = minutes.find(minute => minute > current);
 		if (candidate !== undefined) {
-			const next = new Date(date.getTime());
-			next.setMinutes(candidate, 0, 0);
-			return next;
+			// Epoch arithmetic, not setMinutes: inside the repeated DST hour the
+			// wall-clock setter resolves to the earlier (pre-transition) instant,
+			// which would move the candidate backwards in time.
+			return floorToMinute(new Date(date.getTime() + (candidate - current) * 60000));
 		}
 		// Past the last allowed minute of this hour: try the next allowed hour.
 		return nextAllowedHourStart(expression, date);
@@ -121,29 +127,25 @@ export function cronMatches(expression: CronExpression | string, date: Date): bo
 /** The next scheduled instant strictly after `from`, or null within the search bound. */
 export function cronNext(expression: CronExpression | string, from: Date = new Date()): Date | null {
 	const parsed = typeof expression === 'string' ? parseCron(expression) : expression;
-	let candidate = new Date(from.getTime());
-	candidate.setSeconds(0, 0);
+	let candidate = floorToMinute(from);
 	if (candidate.getTime() <= from.getTime()) candidate = new Date(candidate.getTime() + 60000);
 	const limitYear = from.getFullYear() + MAX_SEARCH_YEARS;
 	for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
 		if (candidate.getFullYear() > limitYear) return null;
+		const previous = candidate;
 		if (!parsed.month.includes(candidate.getMonth() + 1)) {
 			candidate = nextAllowedMonthStart(parsed, candidate);
-			continue;
-		}
-		if (!dayMatches(parsed, candidate)) {
+		} else if (!dayMatches(parsed, candidate)) {
 			candidate = nextDayStart(candidate);
-			continue;
-		}
-		if (!parsed.hour.includes(candidate.getHours())) {
+		} else if (!parsed.hour.includes(candidate.getHours())) {
 			candidate = nextAllowedHourStart(parsed, candidate);
-			continue;
-		}
-		if (!parsed.minute.includes(candidate.getMinutes())) {
+		} else if (!parsed.minute.includes(candidate.getMinutes())) {
 			candidate = firstAllowedMinuteAtOrAfter(parsed, candidate, true);
-			continue;
+		} else {
+			return candidate;
 		}
-		return candidate;
+		// A forward search must never move backwards in time (DST ambiguity).
+		if (candidate.getTime() <= previous.getTime()) candidate = new Date(previous.getTime() + 60000);
 	}
 	return null;
 }
@@ -151,8 +153,7 @@ export function cronNext(expression: CronExpression | string, from: Date = new D
 /** The most recent scheduled instant strictly before `from`, or null within the search bound. */
 export function cronPrev(expression: CronExpression | string, from: Date = new Date()): Date | null {
 	const parsed = typeof expression === 'string' ? parseCron(expression) : expression;
-	let candidate = new Date(from.getTime());
-	candidate.setSeconds(0, 0);
+	let candidate = floorToMinute(from);
 	if (candidate.getTime() >= from.getTime()) candidate = new Date(candidate.getTime() - 60000);
 	const limitYear = from.getFullYear() - MAX_SEARCH_YEARS;
 	for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {

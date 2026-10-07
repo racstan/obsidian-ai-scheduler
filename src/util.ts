@@ -47,6 +47,11 @@ export function localTimestampKey(date: Date = new Date()): string {
 	return `${localDateKey(date)}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 }
 
+/** A task title made safe for use inside a note filename. */
+export function outputTitle(title: string): string {
+	return String(title || '').replace(/[\\/:*?"<>|#^[\]]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60).trim() || 'Task output';
+}
+
 export function formatDate(iso: string | null | undefined): string {
 	if (!iso) return 'unknown time';
 	const date = new Date(iso);

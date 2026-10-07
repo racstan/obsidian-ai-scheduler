@@ -8,7 +8,7 @@
  */
 import { App, Notice, TFile, TFolder } from 'obsidian';
 import { AISettings, BACKEND_INFO, Job } from './types';
-import { contentFromMessage, errorText, sendSystemNotification, sleep, withTimeout } from './util';
+import { contentFromMessage, errorText, isPeriodicReviewJob, sendSystemNotification, sleep, withTimeout } from './util';
 
 export const AGENT_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -554,8 +554,9 @@ export async function resolveModel(host: BackendHost, value: string | null | und
 }
 
 export async function resolveJobExecution(host: BackendHost, job: Job): Promise<ResolvedExecution> {
-	const selectedModel = job.routine === 'daily-review' ? host.settings.nightlyReviewModel : host.settings.executionModel;
-	const action = job.routine === 'daily-review' ? 'nightly review' : 'scheduled task execution';
+	const isReview = isPeriodicReviewJob(job);
+	const selectedModel = isReview ? host.settings.nightlyReviewModel : host.settings.executionModel;
+	const action = isReview ? 'periodic review' : 'scheduled task execution';
 	return resolveModel(host, selectedModel, action);
 }
 
