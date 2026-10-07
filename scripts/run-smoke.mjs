@@ -68,6 +68,12 @@ module.exports = {
 		try { return JSON.parse(text); } catch { return {}; }
 	},
 	stringifyYaml: (data) => JSON.stringify(data, null, 1),
+	getFrontMatterInfo: (content) => {
+		const nl = String.fromCharCode(10);
+		const lines = String(content).split(nl);
+		const end = lines[0] === '---' ? lines.indexOf('---', 1) : -1;
+		return end < 0 ? { exists: false, frontmatter: '' } : { exists: true, frontmatter: lines.slice(1, end).join(nl) };
+	},
 	requestUrl: () => { throw new Error('unused'); },
 	Setting: class {},
 };
@@ -134,7 +140,7 @@ function fakeApp() {
 	const app = {
 		_pluginData: null,
 		_savedCount: 0,
-		workspace: { getActiveFile: () => null, on() { return {}; } },
+		workspace: { getActiveFile: () => null, on() { return {}; }, onLayoutReady(cb) { cb(); } },
 		plugins: { plugins: {} },
 		commands: { commands: {}, executeCommand() {} },
 		fileManager: {
@@ -354,6 +360,29 @@ async function main() {
 	const reloaded = third.jobs.find(j => j.id === monthly.id);
 	assert.deepEqual(reloaded.schedule, monthly.schedule, 'monthly schedule survives reload');
 	assert.equal(reloaded.schedule.dayOfMonth, 15);
+
+	// A job edited before it is registered (calendar "New task") is created on save.
+	const draft = Object.assign(JSON.parse(JSON.stringify(monthly)), { id: 'draft-job', title: 'Draft', taskNumber: 0 });
+	await second.updateJob(draft, { title: 'From calendar', prompt: 'p', schedule: { kind: 'daily', time: '09:00' } });
+	assert.ok(second.jobs.includes(draft), 'new job registered on save');
+	assert.ok(draft.taskNumber > 0, 'new job gets a task number');
+
+	// "Run now" runs a recurring job immediately, even when its next slot is in the future.
+	const recurring = second.jobs.find(j => j.title === 'Cron task');
+	const runsBefore = recurring.runCount;
+	recurring.nextRunAt = iso(3_600_000);
+	await second.runJobNow(recurring);
+	assert.equal(recurring.runCount, runsBefore + 1, 'run now executes a recurring job');
+
+	// Re-ensuring the periodic review with unchanged settings keeps its next run.
+	const review = second.jobs.find(j => j.routine === 'periodic-review');
+	const overdue = iso(-60_000);
+	review.nextRunAt = overdue;
+	await second.ensurePeriodicReviewJob();
+	assert.equal(review.nextRunAt, overdue, 'unchanged review cadence keeps an overdue run');
+	second.settings.reviewTime = '06:30';
+	await second.ensurePeriodicReviewJob();
+	assert.notEqual(review.nextRunAt, overdue, 'changed review cadence reschedules');
 
 	await second.deleteAllJobs();
 	assert.equal(second.jobs.length, 1, 'nightly review job survives delete-all');

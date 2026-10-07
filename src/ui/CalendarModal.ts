@@ -579,7 +579,7 @@ export class CalendarModal extends Modal {
 			makeButton(actions, occ.isCompleted ? '▶ Run again' : '▶ Run now', () => {
 				void (async () => {
 					new Notice(`Starting Task #${job.taskNumber ?? ''} (${job.title})...`);
-					await this.plugin.retryJob(job);
+					await this.plugin.runJobNow(job);
 					this.render();
 				})();
 			});
@@ -797,7 +797,7 @@ export class CalendarModal extends Modal {
 			makeButton(actions, occ.isCompleted ? '▶ Run again' : '▶ Run now', () => {
 				void (async () => {
 					new Notice(`Starting Task #${job.taskNumber ?? ''} (${job.title})...`);
-					await this.plugin.retryJob(job);
+					await this.plugin.runJobNow(job);
 					this.render();
 				})();
 			});
@@ -887,7 +887,7 @@ export class CalendarModal extends Modal {
 			makeButton(actions, '▶ Run', () => {
 				void (async () => {
 					new Notice(`Starting Task #${job.taskNumber ?? ''}...`);
-					await this.plugin.retryJob(job);
+					await this.plugin.runJobNow(job);
 					this.render();
 				})();
 			});
@@ -937,7 +937,7 @@ export class CalendarModal extends Modal {
 			makeButton(actions, '▶ Run now', () => {
 				void (async () => {
 					new Notice(`Starting Task #${job.taskNumber ?? ''}...`);
-					await this.plugin.retryJob(job);
+					await this.plugin.runJobNow(job);
 					this.render();
 				})();
 			});

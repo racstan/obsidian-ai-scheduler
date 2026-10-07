@@ -76,7 +76,7 @@ export class PastDuePromptModal extends Modal {
 			void (async () => {
 				this.close();
 				new Notice(`Starting task #${this.job.taskNumber} now...`);
-				await this.plugin.retryJob(this.job);
+				await this.plugin.runJobNow(this.job);
 				this.onDone();
 			})();
 		}, true);
@@ -442,7 +442,7 @@ export class AssistantModal extends Modal {
 						() => {
 							void (async () => {
 								new Notice(`Starting task #${job.taskNumber} now...`);
-								await this.plugin.retryJob(job);
+								await this.plugin.runJobNow(job);
 								this.render();
 							})();
 						}

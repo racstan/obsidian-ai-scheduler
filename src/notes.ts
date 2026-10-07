@@ -7,10 +7,22 @@
  * data.json keeps mirroring everything, so turning notes off is lossless and
  * the plugin works exactly as before when notes are disabled.
  */
-import { TAbstractFile, TFile, normalizePath, stringifyYaml } from 'obsidian';
+import { TAbstractFile, TFile, getFrontMatterInfo, normalizePath, parseYaml, stringifyYaml } from 'obsidian';
 import { Job, SCHEDULE_KINDS, TaskSchedule } from './types';
 import { cronFormFor, describeSchedule, getScheduleNextRun, previewSchedule } from './schedule';
 import { normalizeJob } from './settings';
+
+function definitionFromContent(content: string): NoteDefinition | null {
+	const info = getFrontMatterInfo(content);
+	if (!info.exists) return null;
+	try {
+		const parsed = parseYaml(info.frontmatter) as { 'ai-scheduler'?: NoteDefinition } | null;
+		const definition = parsed?.['ai-scheduler'];
+		return definition && typeof definition === 'object' ? definition : null;
+	} catch {
+		return null; // mid-edit YAML; the next save will be parsed again
+	}
+}
 
 export const TABLE_START = '<!-- ai-scheduler:table:start -->';
 export const TABLE_END = '<!-- ai-scheduler:table:end -->';
@@ -317,9 +329,10 @@ export class ScheduleNotesSync {
 		this.lastWritten.set(file.path, content);
 		const job = this.plugin.jobs.find(candidate => candidate.notePath === file.path);
 		if (job) {
-			const cache = this.plugin.app.metadataCache.getFileCache(file);
-			const definition = cache?.frontmatter?.['ai-scheduler'] as NoteDefinition | undefined;
-			if (definition && typeof definition === 'object') {
+			// Parse the content just read: at 'modify' time the metadata cache usually
+			// still holds the previous version, which would revert the user's edit.
+			const definition = definitionFromContent(content);
+			if (definition) {
 				this.applyDefinition(job, definition, file.path);
 				await this.plugin.saveState();
 			}

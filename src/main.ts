@@ -31,7 +31,7 @@ import {
 import { executionPrompt, plannerPrompt, refinePrompt, reviewPrompt } from './prompts';
 import { getPathsContext, getVaultContextOptions, JobContext } from './context';
 import * as backends from './backends';
-import { extractJson, errorText, formatDate, formatDuration, isDisabledTask, isNightlyReviewJob, localDateKey, localTimestampKey, logActivityEntry, sendSystemNotification, sleep, validateJobSchema, buildTaskLogRow, TASK_LOG_HEADER } from './util';
+import { extractJson, errorText, formatDate, formatDuration, isDisabledTask, isNightlyReviewJob, localDateKey, localTimestampKey, logActivityEntry, outputTitle, sendSystemNotification, sleep, validateJobSchema, buildTaskLogRow, TASK_LOG_HEADER } from './util';
 import { AssistantModal } from './ui/AssistantModal';
 import { PlannerModal } from './ui/PlannerModal';
 import { CalendarModal } from './ui/CalendarModal';
@@ -207,20 +207,6 @@ export class AISchedulerPlugin extends Plugin {
 		this.addSettingTab(new AssistantSettingTab(this.app, this));
 
 		this.registerInterval(window.setInterval(() => { void this.tick(); }, TICK_MS));
-		this.registerEvent(this.app.vault.on('modify', file => {
-			void this.handleVaultChange(file);
-			void this.notesSync.handleVaultChange(file, 'modify');
-		}));
-		this.registerEvent(this.app.vault.on('create', file => {
-			void this.handleVaultChange(file);
-			void this.notesSync.handleVaultChange(file, 'modify');
-		}));
-		this.registerEvent(this.app.vault.on('delete', file => {
-			void this.notesSync.handleVaultChange(file, 'delete');
-		}));
-		this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
-			void this.notesSync.handleVaultChange(file, 'rename', oldPath);
-		}));
 
 		if (this.settings.nightlyReviewEnabled) await this.ensurePeriodicReviewJob();
 		await this.saveState();
@@ -243,8 +229,30 @@ export class AISchedulerPlugin extends Plugin {
 			});
 		}
 
-		await this.catchUpOnStart();
-		if (this.settings.scheduleNotesEnabled) await this.notesSync.syncAll();
+		// Vault listeners wait for the layout: Obsidian fires 'create' for every
+		// existing file during the initial vault load. Catch-up runs here too and is
+		// not awaited, so a long AI run can't hold up onload (and the backend
+		// plugin has had a chance to load).
+		this.app.workspace.onLayoutReady(() => {
+			this.registerEvent(this.app.vault.on('modify', file => {
+				void this.handleVaultChange(file);
+				void this.notesSync.handleVaultChange(file, 'modify');
+			}));
+			this.registerEvent(this.app.vault.on('create', file => {
+				void this.handleVaultChange(file);
+				void this.notesSync.handleVaultChange(file, 'modify');
+			}));
+			this.registerEvent(this.app.vault.on('delete', file => {
+				void this.notesSync.handleVaultChange(file, 'delete');
+			}));
+			this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
+				void this.notesSync.handleVaultChange(file, 'rename', oldPath);
+			}));
+			void (async () => {
+				if (this.settings.scheduleNotesEnabled) await this.notesSync.syncAll();
+				await this.catchUpOnStart();
+			})().catch(error => console.error('[ai-scheduler] Startup tasks failed:', error));
+		});
 	}
 
 	onunload(): void {
@@ -401,17 +409,13 @@ export class AISchedulerPlugin extends Plugin {
 			job.status = 'completed';
 			job.runCount = Number(job.runCount || 0) + 1;
 			if (job.source !== 'self-talk') await this.processFollowUps(reply, job);
-			if (job.output?.folder && reply) {
-				const writtenPath = await this.writeOutput(job.output.folder, job.output.filename, reply);
-				job.lastOutputPath = writtenPath;
-				if (!job.lastOutputFiles) job.lastOutputFiles = [];
-				if (!job.lastOutputFiles.includes(writtenPath)) {
-					job.lastOutputFiles.push(writtenPath);
-				}
-			} else if (reply) {
-				// No explicit output folder set — fall back to the plugin default.
-				const fallbackFolder = this.getDefaultOutputFolder();
-				const writtenPath = await this.writeOutput(fallbackFolder, job.output?.filename, reply);
+			// Reviews write their own report in runDailyReview.
+			if (!isReview) {
+				const folder = job.output?.folder || this.getDefaultOutputFolder();
+				// Without a fixed filename every run gets its own note, so jobs sharing a
+				// folder (or a job running several times a day) don't replace each other.
+				const filename = job.output?.filename || `${localTimestampKey()} ${outputTitle(job.title)}`;
+				const writtenPath = await this.writeOutput(folder, filename, reply);
 				job.lastOutputPath = writtenPath;
 				if (!job.lastOutputFiles) job.lastOutputFiles = [];
 				if (!job.lastOutputFiles.includes(writtenPath)) {
@@ -460,13 +464,17 @@ export class AISchedulerPlugin extends Plugin {
 			&& (!job.schedule.event || job.schedule.event === 'modify' || job.schedule.event === 'vault-change'));
 		if (!eventJobs.length) return;
 		const now = Date.now();
+		let changed = false;
 		for (const job of eventJobs) {
 			const cooldown = Math.max(0, Number(job.cooldownMinutes) || 10) * 60000;
 			if (job.lastRunAt && now - new Date(job.lastRunAt).getTime() < cooldown) continue;
+			if (job.nextRunAt) continue; // already queued to run
 			job.nextRunAt = new Date(now + 2000).toISOString();
 			job.lastEventPath = file.path;
+			changed = true;
 		}
-		await this.saveState();
+		// Autosave fires 'modify' every couple of seconds while typing; only persist real changes.
+		if (changed) await this.saveState();
 	}
 
 	async addJob(raw: Record<string, unknown>): Promise<Job> {
@@ -534,14 +542,22 @@ export class AISchedulerPlugin extends Plugin {
 			});
 			this.jobs.push(job);
 		} else {
+			// Runs on every load and settings change: only reschedule when the cadence
+			// actually changed (or the job was off), otherwise restarts would keep
+			// pushing the next review out and an overdue one would never be caught up.
+			const canonical = (value: TaskSchedule) => JSON.stringify(normalizeJob({ schedule: value }).schedule);
+			const scheduleChanged = canonical(job.schedule) !== canonical(schedule);
+			const wasInactive = !job.enabled || !job.nextRunAt;
 			job.title = 'Periodic vault review';
 			job.routine = 'periodic-review';
-			job.enabled = true;
-			job.status = 'scheduled';
-			job.lastStatus = null;
 			job.tab = this.settings.assistantTab;
 			job.schedule = schedule;
-			job.nextRunAt = getScheduleNextRun(schedule);
+			if (scheduleChanged || wasInactive) {
+				job.enabled = true;
+				job.status = 'scheduled';
+				job.lastStatus = null;
+				job.nextRunAt = getScheduleNextRun(schedule);
+			}
 		}
 	}
 
@@ -590,14 +606,8 @@ export class AISchedulerPlugin extends Plugin {
 			const report = reply || `# ${reportTitle} - ${today}\n\nThe active AI backend did not return a report.`;
 			const timestamp = localTimestampKey(now);
 			const reportFolder = this.getPeriodicReviewFolder();
-			let filename = `${timestamp}.md`;
-			let suffix = 2;
-			while (this.app.vault.getAbstractFileByPath(normalizePath(`${reportFolder}/${filename}`))) {
-				filename = `${timestamp}-${suffix}.md`;
-				suffix += 1;
-			}
-			const path = `${reportFolder}/${filename}`;
-			await this.writeOutput(reportFolder, filename, `# ${reportTitle} - ${today}\n\nGenerated: ${formatDate(now.toISOString())}\n\n${report}`);
+			// writeOutput picks a free name if this timestamp is already taken.
+			const path = await this.writeOutput(reportFolder, timestamp, `# ${reportTitle} - ${today}\n\nGenerated: ${formatDate(now.toISOString())}\n\n${report}`);
 			if (reviewJob) {
 				reviewJob.lastOutputPath = path;
 				if (!reviewJob.lastOutputFiles) reviewJob.lastOutputFiles = [];
@@ -1169,17 +1179,18 @@ export class AISchedulerPlugin extends Plugin {
 		job.enabled = true;
 		job.status = 'scheduled';
 		job.lastError = null;
+		if (!this.jobs.includes(job)) {
+			// New tasks (e.g. from the calendar) are edited before they are registered.
+			if (job.schedule.kind !== 'event' && !job.nextRunAt) {
+				throw new Error(`Cannot create "${job.title}": its schedule is invalid or has no valid time.`);
+			}
+			this.assignTaskNumbers();
+			job.taskNumber = Math.max(0, ...this.jobs.map(candidate => Number(candidate.taskNumber) || 0)) + 1;
+			job.createdAt = new Date().toISOString();
+			this.jobs.push(job);
+			this.logActivity('planned', `Task #${job.taskNumber} created: ${job.title}`, job.id);
+		}
 		await this.saveState();
-	}
-
-	async retryJob(job: Job): Promise<void> {
-		job.enabled = true;
-		job.status = 'scheduled';
-		job.lastStatus = null;
-		job.lastError = null;
-		rescheduleEnabledJob(job);
-		await this.saveState();
-		await this.tick();
 	}
 
 	async runJobNow(job: Job): Promise<void> {

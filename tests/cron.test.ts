@@ -181,3 +181,17 @@ test('cronUpcoming finds leap year Feb 29 across 2100 century boundary', () => {
 	assert.equal(upcoming[0].getMonth(), 1);
 	assert.equal(upcoming[0].getDate(), 29);
 });
+
+test('cronNext never returns a time at or before `from` inside the repeated fall-back hour', () => {
+	// 06:05:30Z on 2026-11-01 is 01:05 EST, the second pass through 01:xx.
+	const from = new Date('2026-11-01T06:05:30Z');
+	assert.equal(cronNext('*/15 * * * *', from)!.toISOString(), '2026-11-01T06:15:00.000Z');
+	assert.equal(cronNext('45 * * * *', from)!.toISOString(), '2026-11-01T06:45:00.000Z');
+	// Walk the whole transition night minute by minute: results strictly increase.
+	let cursor = new Date('2026-11-01T04:00:00Z');
+	for (let i = 0; i < 20; i++) {
+		const next = cronNext('*/15 * * * *', cursor)!;
+		assert.ok(next.getTime() > cursor.getTime(), `went backwards from ${cursor.toISOString()}`);
+		cursor = next;
+	}
+});
