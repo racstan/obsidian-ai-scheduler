@@ -16,6 +16,8 @@ await build({
 	target: 'es2022',
 	logLevel: 'warning',
 	outfile: '.tmp-tests/index.test.cjs',
+	// Plugin modules import the Obsidian API, which only exists inside the app.
+	alias: { obsidian: './tests/stubs/obsidian.ts' },
 });
 
 // Pin a DST-observing timezone so the daylight-saving tests are deterministic

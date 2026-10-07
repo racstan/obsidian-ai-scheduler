@@ -83,6 +83,8 @@ export interface Job {
 	source?: string;
 	/** Vault path of the mirrored schedule note (opt-in notes storage). */
 	notePath?: string | null;
+	/** The user moved the note out of the schedules folder; keep it where it is. */
+	noteMovedByUser?: boolean;
 	/** Path of the primary output file created or modified by this task. */
 	lastOutputPath?: string | null;
 	/** List of files created or modified during the task execution. */
