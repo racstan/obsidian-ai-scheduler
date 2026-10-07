@@ -90,9 +90,10 @@ export function recoverInterruptedRuns(jobs: Job[]): number {
 	return recovered;
 }
 
-/** Recomputes the next run for a (re-)enabled non-event job. */
+/** Recomputes the next run for a (re-)enabled job. Event jobs wait for their
+ * next vault event instead of firing the moment they are enabled. */
 export function rescheduleEnabledJob(job: Job): void {
 	job.nextRunAt = job.schedule.kind === 'event'
-		? new Date().toISOString()
+		? null
 		: getScheduleNextRun(job.schedule, new Date(Date.now() - 1000));
 }

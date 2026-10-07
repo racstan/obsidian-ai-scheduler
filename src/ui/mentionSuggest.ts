@@ -22,6 +22,8 @@ export function attachMentionSuggest(options: MentionSuggestOptions): () => void
 			popup.remove();
 			popup = null;
 		}
+		textarea.setAttribute('aria-expanded', 'false');
+		textarea.removeAttribute('aria-activedescendant');
 		matches = [];
 		selectedIndex = 0;
 		queryStartIndex = -1;
@@ -54,7 +56,8 @@ export function attachMentionSuggest(options: MentionSuggestOptions): () => void
 		const cursor = textarea.selectionStart;
 		const before = text.slice(0, queryStartIndex);
 		const after = text.slice(cursor);
-		const mentionText = `[[${file.basename}]]`;
+		// Shortest unambiguous link text, so notes with duplicate basenames resolve correctly.
+		const mentionText = `[[${app.metadataCache.fileToLinktext(file, '')}]]`;
 		textarea.value = `${before}${mentionText} ${after}`;
 		const nextCursor = before.length + mentionText.length + 1;
 		textarea.setSelectionRange(nextCursor, nextCursor);
@@ -77,15 +80,18 @@ export function attachMentionSuggest(options: MentionSuggestOptions): () => void
 			}
 			popup = parent.createDiv({ cls: 'ai-scheduler-mention-popup' });
 		}
+		const popupId = 'ai-scheduler-mention-list';
 		popup.empty();
 
 		const header = popup.createDiv({ cls: 'ai-scheduler-mention-header' });
 		header.createSpan({ text: '📄 Vault files (press Enter to attach)' });
 
-		const list = popup.createDiv({ cls: 'ai-scheduler-mention-list' });
+		const list = popup.createDiv({ cls: 'ai-scheduler-mention-list', attr: { id: popupId, role: 'listbox', 'aria-label': 'Vault files' } });
 		matches.forEach((file, index) => {
+			const isSelected = index === selectedIndex;
 			const item = list.createDiv({
-				cls: `ai-scheduler-mention-item ${index === selectedIndex ? 'is-selected' : ''}`,
+				cls: `ai-scheduler-mention-item ${isSelected ? 'is-selected' : ''}`,
+				attr: { id: `${popupId}-${index}`, role: 'option', 'aria-selected': String(isSelected) },
 			});
 			item.createSpan({ cls: 'ai-scheduler-mention-icon', text: '📄' });
 			const info = item.createDiv({ cls: 'ai-scheduler-mention-info' });
@@ -99,6 +105,10 @@ export function attachMentionSuggest(options: MentionSuggestOptions): () => void
 				insertSelection(file);
 			});
 		});
+
+		textarea.setAttribute('aria-controls', popupId);
+		textarea.setAttribute('aria-expanded', 'true');
+		textarea.setAttribute('aria-activedescendant', `${popupId}-${selectedIndex}`);
 
 		// Scroll selected item into view
 		const selectedEl = list.children[selectedIndex] as HTMLElement;
@@ -144,9 +154,13 @@ export function attachMentionSuggest(options: MentionSuggestOptions): () => void
 		}
 	};
 
+	let blurTimer: number | null = null;
 	const onBlur = () => {
-		window.setTimeout(() => {
-			removePopup();
+		if (blurTimer !== null) window.clearTimeout(blurTimer);
+		blurTimer = window.setTimeout(() => {
+			blurTimer = null;
+			// The popup may already be gone (selection made, or modal closed).
+			if (popup) removePopup();
 		}, 200);
 	};
 
@@ -155,6 +169,10 @@ export function attachMentionSuggest(options: MentionSuggestOptions): () => void
 	textarea.addEventListener('blur', onBlur);
 
 	return () => {
+		if (blurTimer !== null) {
+			window.clearTimeout(blurTimer);
+			blurTimer = null;
+		}
 		textarea.removeEventListener('input', onInput);
 		textarea.removeEventListener('keydown', onKeyDown);
 		textarea.removeEventListener('blur', onBlur);

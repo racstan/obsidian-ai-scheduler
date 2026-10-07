@@ -1,7 +1,7 @@
 {
   "name": "obsidian-ai-scheduler",
   "version": "2.1.7.19",
-  "description": "The autonomous background scheduling and proactive intelligence engine. Automate recurring tasks, cron cadences, nightly vault reviews, and event-driven AI workflows via Claudian or Copilot.",
+  "description": "Run AI tasks on a schedule, when notes change, or as periodic vault reviews, using Claudian or Obsidian Copilot.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs dev",
@@ -22,7 +22,6 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.10.2",
-    "@types/obsidian": "npm:obsidian@^1.8.7",
     "esbuild": "^0.25.0",
     "eslint": "^10.10.0",
     "eslint-plugin-obsidianmd": "^0.4.2",

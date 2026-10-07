@@ -9,7 +9,7 @@ import { AISchedulerPlugin } from '../main';
 import { Job } from '../types';
 import { describeBinding, formatDate } from '../util';
 import { describeSchedule } from '../schedule';
-import { closeExistingSchedulerModals, makeButton, makeCard } from './dom';
+import { closeExistingSchedulerModals, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
 import { AssistantModal, ConfirmModal } from './AssistantModal';
 
 export interface TaskFileReference {
@@ -25,12 +25,15 @@ export class TaskViewModal extends Modal {
 	plugin: AISchedulerPlugin;
 	job: Job;
 	onBack?: () => void;
+	/** Label of the back button; names where `onBack` returns to. */
+	backLabel: string;
 
-	constructor(app: App, plugin: AISchedulerPlugin, job: Job, onBack?: () => void) {
+	constructor(app: App, plugin: AISchedulerPlugin, job: Job, onBack?: () => void, backLabel = 'Back to dashboard') {
 		super(app);
 		this.plugin = plugin;
 		this.job = job;
 		this.onBack = onBack;
+		this.backLabel = backLabel;
 	}
 
 	onOpen(): void {
@@ -127,21 +130,29 @@ export class TaskViewModal extends Modal {
 		return files;
 	}
 
+	/**
+	 * Opens a related file only if it resolves to an existing note. Paths come
+	 * partly from AI output, so unresolved links must never create new notes.
+	 */
 	private openFile(path: string): void {
 		const norm = normalizePath(path);
-		let targetFile = this.app.vault.getAbstractFileByPath(norm);
-		if (!targetFile && !norm.endsWith('.md')) {
-			targetFile = this.app.vault.getAbstractFileByPath(`${norm}.md`);
+		let target = this.app.vault.getAbstractFileByPath(norm);
+		if (!target && !norm.endsWith('.md')) {
+			target = this.app.vault.getAbstractFileByPath(`${norm}.md`);
+		}
+		if (!target) {
+			// Wikilinks may be written as a bare basename; resolve like Obsidian does.
+			target = this.app.metadataCache.getFirstLinkpathDest(norm, '');
 		}
 
-		if (targetFile instanceof TFile) {
-			void this.app.workspace.getLeaf(false).openFile(targetFile);
-			new Notice(`Opened: ${targetFile.basename}`);
+		if (target instanceof TFile) {
+			void this.app.workspace.getLeaf(false).openFile(target);
+			new Notice(`Opened: ${target.basename}`);
 			this.close();
+		} else if (target instanceof TFolder) {
+			new Notice(`"${norm}" is a folder. Browse it in the file explorer.`);
 		} else {
-			void this.app.workspace.openLinkText(norm, '', false);
-			new Notice(`Navigating to: ${norm}`);
-			this.close();
+			new Notice(`"${norm}" does not exist in this vault.`);
 		}
 	}
 
@@ -154,7 +165,7 @@ export class TaskViewModal extends Modal {
 		const navBar = shell.createDiv({ cls: 'ai-scheduler-modal-nav' });
 		const backBtn = navBar.createEl('button', {
 			cls: 'ai-scheduler-back-btn',
-			text: '← back to dashboard',
+			text: this.backLabel,
 		});
 		backBtn.onclick = () => {
 			this.close();
@@ -170,35 +181,35 @@ export class TaskViewModal extends Modal {
 		headerRow.createEl('h1', { text: `Task #${this.job.taskNumber} · ${this.job.title}`, cls: 'ai-scheduler-title ai-scheduler-title-sm' });
 		const idBadge = headerRow.createSpan({ cls: 'ai-scheduler-task-id-badge', text: `ID: ${this.job.id}` });
 		idBadge.setAttribute('title', 'Click to copy task ID');
-		idBadge.onclick = (e) => {
+		makeClickable(idBadge, `Copy task ID ${this.job.id}`, (e) => {
 			e.stopPropagation();
 			if (typeof navigator !== 'undefined' && navigator.clipboard) {
 				void navigator.clipboard.writeText(this.job.id).then(() => {
-					new Notice(`Copied Task ID: ${this.job.id}`);
+					new Notice(`Copied task ID: ${this.job.id}`);
 				});
 			}
-		};
+		});
 
 		// Overview Metadata Card
 		const metaCard = makeCard(shell, 'ai-scheduler-card-tight', 'ai-scheduler-card-flush');
 		const metaGrid = metaCard.createDiv({ cls: 'ai-scheduler-view-grid' });
 
 		const statusCol = metaGrid.createDiv();
-		statusCol.createDiv({ cls: 'ai-scheduler-stat-label', text: 'STATUS' });
-		const statusBadge = statusCol.createDiv({ cls: 'ai-scheduler-task-title' });
+		statusCol.createDiv({ cls: 'ai-scheduler-stat-label', text: 'Status' });
+		const statusBadge = statusCol.createDiv({ cls: 'ai-scheduler-task-title ai-scheduler-text-caps' });
 		const statusText = this.job.lastStatus || this.job.status || 'completed';
-		statusBadge.setText(statusText.toUpperCase());
+		statusBadge.setText(statusText);
 
 		const timingCol = metaGrid.createDiv();
-		timingCol.createDiv({ cls: 'ai-scheduler-stat-label', text: 'LAST EXECUTED' });
+		timingCol.createDiv({ cls: 'ai-scheduler-stat-label', text: 'Last executed' });
 		timingCol.createDiv({ cls: 'ai-scheduler-view-val', text: this.job.lastRunAt ? formatDate(this.job.lastRunAt) : 'Never' });
 
 		const scheduleCol = metaGrid.createDiv();
-		scheduleCol.createDiv({ cls: 'ai-scheduler-stat-label', text: 'SCHEDULE' });
+		scheduleCol.createDiv({ cls: 'ai-scheduler-stat-label', text: 'Schedule' });
 		scheduleCol.createDiv({ cls: 'ai-scheduler-view-val', text: describeSchedule(this.job) });
 
 		const backendCol = metaGrid.createDiv();
-		backendCol.createDiv({ cls: 'ai-scheduler-stat-label', text: 'AI BACKEND / MODEL' });
+		backendCol.createDiv({ cls: 'ai-scheduler-stat-label', text: 'AI backend / model' });
 		backendCol.createDiv({ cls: 'ai-scheduler-view-val', text: describeBinding(this.job) });
 
 		// Error banner if failed
@@ -226,7 +237,7 @@ export class TaskViewModal extends Modal {
 		} else {
 			for (const fileRef of relatedFiles) {
 				const fileCard = filesContainer.createDiv({ cls: 'ai-scheduler-file-row' });
-				fileCard.onclick = () => this.openFile(fileRef.path);
+				makeClickable(fileCard, `Open ${fileRef.path}`, () => this.openFile(fileRef.path));
 
 				const left = fileCard.createDiv({ cls: 'ai-scheduler-file-left' });
 				left.createSpan({ cls: 'ai-scheduler-file-icon', text: fileRef.path.endsWith('/') ? '📁' : '📄' });
@@ -347,6 +358,7 @@ export class TaskViewModal extends Modal {
 	}
 
 	onClose(): void {
+		releaseSchedulerModal(this);
 		this.contentEl.empty();
 	}
 }

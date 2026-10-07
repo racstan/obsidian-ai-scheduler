@@ -4,7 +4,7 @@
 import { App, Modal, Setting } from 'obsidian';
 import type { AISchedulerPlugin } from '../main';
 import { CHANGELOG_DATA, getLatestRelease, getReleasesSince, ReleaseChangelog } from '../changelog';
-import { closeExistingSchedulerModals } from './dom';
+import { closeExistingSchedulerModals, releaseSchedulerModal } from './dom';
 
 export interface ChangelogModalOptions {
 	fromVersion?: string | null;
@@ -197,6 +197,7 @@ export class ChangelogModal extends Modal {
 	}
 
 	onClose(): void {
+		releaseSchedulerModal(this);
 		const { contentEl } = this;
 		contentEl.empty();
 	}

@@ -6,9 +6,10 @@
  * never calls an AI provider and holds no API keys. Functions take the plugin
  * instance so the orchestration stays in main.ts.
  */
-import { App, Notice, TFile, TFolder } from 'obsidian';
+import { App, TFile, TFolder } from 'obsidian';
 import { AISettings, BACKEND_INFO, Job } from './types';
-import { contentFromMessage, errorText, isPeriodicReviewJob, sendSystemNotification, sleep, withTimeout } from './util';
+import { JobContext } from './context';
+import { contentFromMessage, errorText, isPeriodicReviewJob, sleep, withTimeout } from './util';
 
 export const AGENT_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -25,13 +26,6 @@ export interface ResolvedExecution {
 	conversationId: string | null;
 	providerId: string | null;
 	model: string | null;
-}
-
-export interface JobContext {
-	paths: string[];
-	missingPaths: string[];
-	linkedContentPath: string | null;
-	externalContextPaths: string[];
 }
 
 export interface BackendHost {
@@ -67,6 +61,7 @@ export interface ClaudianTab {
 				content: string;
 				turnRequestOverride?: Record<string, unknown>;
 			}) => Promise<unknown>;
+			cancelStreaming?: () => void;
 		};
 	};
 	ui?: {
@@ -218,9 +213,10 @@ export function tabIsBusy(view: ClaudianView | null, tab: ClaudianTab | null): b
 	return Boolean(working || tab.state?.isStreaming || tab.isStreaming || item?.isWorking || item?.isStreaming);
 }
 
-export async function waitForTabIdle(view: ClaudianView | null, tab: ClaudianTab | null): Promise<void> {
+export async function waitForTabIdle(view: ClaudianView | null, tab: ClaudianTab | null, signal?: AbortSignal): Promise<void> {
 	const started = Date.now();
 	while (tabIsBusy(view, tab)) {
+		if (signal?.aborted) throw new Error('Cancelled by user.');
 		if (tab?.state?.error) {
 			throw new Error(`Claudian reported an error: ${errorText(tab.state.error)}`);
 		}
@@ -265,6 +261,7 @@ export async function sendToClaudian(
 	tabNumber = host.settings.assistantTab,
 	conversationId: string | null = null,
 	context: JobContext | null = null,
+	signal?: AbortSignal,
 ): Promise<string> {
 	const view = await getClaudianView(host);
 	const manager = getTabManager(view);
@@ -291,9 +288,23 @@ export async function sendToClaudian(
 	if (context && context.externalContextPaths && context.externalContextPaths.length) {
 		turnRequest.externalContextPaths = context.externalContextPaths;
 	}
-	const send = controller.sendMessage({ content: prompt, turnRequestOverride: turnRequest });
-	await withTimeout(send, AGENT_TIMEOUT_MS, `AI task timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes`);
-	await waitForTabIdle(view, active);
+	if (signal?.aborted) throw new Error('Cancelled by user.');
+	// Stop Claudian's stream on timeout or when the user resets the run, instead
+	// of leaving the agent working unseen.
+	const cancel = () => {
+		try { controller.cancelStreaming?.(); } catch { /* best effort */ }
+	};
+	signal?.addEventListener('abort', cancel, { once: true });
+	try {
+		const send = controller.sendMessage({ content: prompt, turnRequestOverride: turnRequest });
+		await withTimeout(send, AGENT_TIMEOUT_MS, `AI task timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes`);
+		await waitForTabIdle(view, active, signal);
+	} catch (error) {
+		cancel();
+		throw error;
+	} finally {
+		signal?.removeEventListener('abort', cancel);
+	}
 	await sleep(300);
 	return lastAssistantReply(host, view, active, beforeCount);
 }
@@ -305,7 +316,7 @@ export function getCopilotPlugin(host: BackendHost): CopilotPlugin | null {
 	return (candidate as CopilotPlugin) ?? null;
 }
 
-export async function sendToCopilot(host: BackendHost, prompt: string, context: JobContext | null = null): Promise<string> {
+export async function sendToCopilot(host: BackendHost, prompt: string, context: JobContext | null = null, signal?: AbortSignal): Promise<string> {
 	const copilot = getCopilotPlugin(host);
 	const chatManager = copilot?.chatManager;
 	const chain = copilot?.chainOwner && typeof copilot.chainOwner.getCurrentChainManager === 'function'
@@ -333,6 +344,8 @@ export async function sendToCopilot(host: BackendHost, prompt: string, context: 
 	if (!llmMessage) throw new Error('Obsidian Copilot did not prepare the scheduler message.');
 	let reply = '';
 	const abort = new AbortController();
+	if (signal?.aborted) throw new Error('Cancelled by user.');
+	signal?.addEventListener('abort', () => abort.abort(), { once: true });
 	const run = chain.runChain(
 		llmMessage,
 		abort,
@@ -359,10 +372,15 @@ export function sendToAI(
 	prompt: string,
 	execution: Partial<ResolvedExecution> = {},
 	context: JobContext | null = null,
+	signal?: AbortSignal,
 ): Promise<string> {
-	const send = () => host.settings.backendMode === 'copilot'
-		? sendToCopilot(host, prompt, context)
-		: sendToClaudian(host, prompt, execution.tab as number | undefined, execution.conversationId || null, context);
+	const send = () => {
+		// Cancelled while waiting in the queue: don't start it at all.
+		if (signal?.aborted) return Promise.reject(new Error('Cancelled by user.'));
+		return host.settings.backendMode === 'copilot'
+			? sendToCopilot(host, prompt, context, signal)
+			: sendToClaudian(host, prompt, execution.tab as number | undefined, execution.conversationId || null, context, signal);
+	};
 	const result = backendQueue.then(send, send);
 	backendQueue = result.catch(() => undefined);
 	return result;
@@ -577,9 +595,4 @@ export async function resolveJobExecution(host: BackendHost, job: Job): Promise<
 	const selectedModel = isReview ? host.settings.nightlyReviewModel : host.settings.executionModel;
 	const action = isReview ? 'periodic review' : 'scheduled task execution';
 	return resolveModel(host, selectedModel, action);
-}
-
-export function notify(message: string, timeout = 5000): void {
-	new Notice(message, timeout);
-	sendSystemNotification('AI Scheduler', message);
 }

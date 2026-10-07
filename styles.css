@@ -232,7 +232,7 @@
 	margin-bottom: 22px;
 	background: var(--background-secondary);
 	border: 1px solid var(--background-modifier-border);
-	border-left: 4px solid var(--color-orange, #e5933a);
+	border-left: 4px solid var(--color-orange);
 }
 
 .ai-scheduler-alert-content {
@@ -325,43 +325,44 @@
 	padding: 2px 6px;
 	border-radius: 4px;
 	letter-spacing: 0.03em;
+	text-transform: uppercase;
 	flex-shrink: 0;
 }
 
 .ai-scheduler-act-running {
-	background: rgba(56, 189, 248, 0.15);
-	color: #38bdf8;
-	border: 1px solid rgba(56, 189, 248, 0.3);
+	background: rgba(var(--color-blue-rgb), 0.15);
+	color: var(--color-blue);
+	border: 1px solid rgba(var(--color-blue-rgb), 0.3);
 }
 
 .ai-scheduler-act-completed {
-	background: rgba(34, 197, 94, 0.15);
-	color: #4ade80;
-	border: 1px solid rgba(34, 197, 94, 0.3);
+	background: rgba(var(--color-green-rgb), 0.15);
+	color: var(--color-green);
+	border: 1px solid rgba(var(--color-green-rgb), 0.3);
 }
 
 .ai-scheduler-act-failed {
-	background: rgba(239, 68, 68, 0.15);
-	color: #f87171;
-	border: 1px solid rgba(239, 68, 68, 0.3);
+	background: rgba(var(--color-red-rgb), 0.15);
+	color: var(--color-red);
+	border: 1px solid rgba(var(--color-red-rgb), 0.3);
 }
 
 .ai-scheduler-act-planned {
-	background: rgba(168, 85, 247, 0.15);
-	color: #c084fc;
-	border: 1px solid rgba(168, 85, 247, 0.3);
+	background: rgba(var(--color-purple-rgb), 0.15);
+	color: var(--color-purple);
+	border: 1px solid rgba(var(--color-purple-rgb), 0.3);
 }
 
 .ai-scheduler-act-cancelled {
-	background: rgba(245, 158, 11, 0.15);
-	color: #fbbf24;
-	border: 1px solid rgba(245, 158, 11, 0.3);
+	background: rgba(var(--color-orange-rgb), 0.15);
+	color: var(--color-orange);
+	border: 1px solid rgba(var(--color-orange-rgb), 0.3);
 }
 
 .ai-scheduler-act-deleted {
-	background: rgba(244, 63, 94, 0.15);
-	color: #fb7185;
-	border: 1px solid rgba(244, 63, 94, 0.3);
+	background: rgba(var(--color-red-rgb), 0.15);
+	color: var(--color-red);
+	border: 1px solid rgba(var(--color-red-rgb), 0.3);
 }
 
 .ai-scheduler-act-info,
@@ -556,7 +557,7 @@
 }
 
 .ai-scheduler-button-danger {
-	color: var(--text-error, #e03e3e);
+	color: var(--text-error);
 	border: 1px solid var(--background-modifier-border);
 	background: transparent;
 	transition: all 0.15s ease;
@@ -564,9 +565,9 @@
 }
 
 .ai-scheduler-button-danger:hover {
-	color: #ffffff;
-	background: var(--text-error, #e03e3e);
-	border-color: var(--text-error, #e03e3e);
+	color: var(--text-on-accent);
+	background: var(--text-error);
+	border-color: var(--text-error);
 }
 
 .ai-scheduler-input {
@@ -665,16 +666,16 @@
 	background: var(--background-secondary);
 	border: 1px solid var(--interactive-accent);
 	border-radius: var(--radius-m, 8px);
-	box-shadow: 0 0 20px rgba(120, 80, 240, 0.15);
+	box-shadow: 0 0 20px hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.15);
 	animation: aisch-pulse 2s infinite ease-in-out;
 }
 
 @keyframes aisch-pulse {
 	0%, 100% {
-		box-shadow: 0 0 10px rgba(120, 80, 240, 0.1);
+		box-shadow: 0 0 10px hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.1);
 	}
 	50% {
-		box-shadow: 0 0 25px rgba(120, 80, 240, 0.3);
+		box-shadow: 0 0 25px hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.3);
 	}
 }
 
@@ -684,12 +685,8 @@
 	border: 3px solid var(--background-modifier-border);
 	border-top-color: var(--interactive-accent);
 	border-radius: 50%;
-	animation: aisch-spin 0.8s linear infinite;
+	animation: ai-scheduler-spin 0.8s linear infinite;
 	margin-bottom: 12px;
-}
-
-@keyframes aisch-spin {
-	to { transform: rotate(360deg); }
 }
 
 .ai-scheduler-planning-title {
@@ -844,6 +841,10 @@
 	transition: all 0.15s ease;
 }
 
+.ai-scheduler-back-btn::before {
+	content: "← ";
+}
+
 .ai-scheduler-back-btn:hover {
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
@@ -903,7 +904,7 @@
 }
 
 .ai-scheduler-chip-remove:hover {
-	color: var(--text-error, #e03e3e);
+	color: var(--text-error);
 }
 
 .ai-scheduler-context-empty {
@@ -932,7 +933,7 @@
 	background: var(--background-secondary);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-m, 8px);
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+	box-shadow: var(--shadow-l);
 	z-index: var(--layer-modal, 1000);
 	overflow: hidden;
 	display: flex;
@@ -1160,7 +1161,7 @@
 }
 
 .ai-scheduler-changelog-section-heading.changed {
-	color: var(--text-warning, #d97706);
+	color: var(--text-warning);
 }
 
 .ai-scheduler-changelog-section-heading.fixed {
@@ -1439,7 +1440,7 @@
 }
 
 .ai-scheduler-file-missing {
-	color: var(--text-error, #e03e3e);
+	color: var(--text-error);
 }
 
 .ai-scheduler-open-file-btn {
@@ -1551,7 +1552,7 @@
 
 .ai-scheduler-task-id-badge.is-clickable:hover {
 	background: var(--interactive-accent);
-	color: var(--text-on-accent, #ffffff);
+	color: var(--text-on-accent);
 	text-decoration: none;
 }
 
@@ -1586,13 +1587,13 @@
 
 .ai-scheduler-tab-btn.is-active {
 	background: var(--interactive-accent);
-	color: var(--text-on-accent, #ffffff);
+	color: var(--text-on-accent);
 	font-weight: 600;
 }
 
 /* ---- Required Asterisk & AI Uncertainty Highlights ---------------------- */
 .ai-scheduler-required-asterisk {
-	color: var(--text-error, #e03e3e);
+	color: var(--text-error);
 	font-weight: 700;
 	font-size: 13.5px;
 	margin-left: 2px;
@@ -1606,8 +1607,8 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 .ai-scheduler-shell input.ai-scheduler-input-highlight,
 .ai-scheduler-shell textarea.ai-scheduler-input-highlight,
 .ai-scheduler-modal .ai-scheduler-input-highlight {
-	border-color: var(--text-error, #e03e3e);
-	background-color: rgba(224, 62, 62, 0.04);
+	border-color: var(--text-error);
+	background-color: rgba(var(--color-red-rgb), 0.04);
 }
 
 .ai-scheduler-doubt-badge {
@@ -1617,17 +1618,17 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	font-size: 11px;
 	font-weight: 600;
 	border-radius: var(--radius-s, 4px);
-	background: rgba(224, 62, 62, 0.12);
-	color: var(--text-error, #e03e3e);
-	border: 1px solid rgba(224, 62, 62, 0.3);
+	background: rgba(var(--color-red-rgb), 0.12);
+	color: var(--text-error);
+	border: 1px solid rgba(var(--color-red-rgb), 0.3);
 	margin-left: 6px;
 }
 
 /* ---- Restored Activity Badge & Deleted Tasks Scroll ------------------- */
 .ai-scheduler-act-restored {
-	background: rgba(16, 185, 129, 0.15);
-	color: #10b981;
-	border: 1px solid rgba(16, 185, 129, 0.3);
+	background: rgba(var(--color-green-rgb), 0.15);
+	color: var(--color-green);
+	border: 1px solid rgba(var(--color-green-rgb), 0.3);
 }
 
 .ai-scheduler-deleted-tasks-scroll {
@@ -1755,15 +1756,15 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-cal-toggle-btn.is-active {
 	background: var(--interactive-accent);
-	color: var(--text-on-accent, #ffffff);
+	color: var(--text-on-accent);
 	font-weight: 600;
 }
 
 /* Modal sizing expansion for Calendar */
-.ai-scheduler-modal.ai-scheduler-calendar-modal {
-	width: min(1280px, calc(100vw - 32px)) !important;
-	max-width: 1280px !important;
-	max-height: min(92vh, 920px) !important;
+.modal.ai-scheduler-modal.ai-scheduler-calendar-modal {
+	width: min(1280px, calc(100vw - 32px));
+	max-width: 1280px;
+	max-height: min(92vh, 920px);
 }
 
 .ai-scheduler-calendar-modal .ai-scheduler-content {
@@ -1842,11 +1843,11 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-cal-day-cell.is-today {
 	border: 2px solid var(--interactive-accent);
-	box-shadow: 0 0 0 1px rgba(var(--interactive-accent-rgb, 120, 80, 240), 0.25);
+	box-shadow: 0 0 0 1px hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.25);
 }
 
 .ai-scheduler-cal-day-cell.is-selected {
-	background: rgba(var(--interactive-accent-rgb, 120, 80, 240), 0.08);
+	background: hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.08);
 	border-color: var(--interactive-accent);
 }
 
@@ -1870,7 +1871,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	padding: 1px 5px;
 	border-radius: 10px;
 	background: var(--interactive-accent);
-	color: var(--text-on-accent, #ffffff);
+	color: var(--text-on-accent);
 	line-height: 1.2;
 }
 
@@ -1923,12 +1924,12 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-chip.is-review {
-	border-left: 3px solid #8b5cf6;
+	border-left: 3px solid var(--color-purple);
 }
 
 .ai-scheduler-cal-chip.is-running {
-	border-left: 3px solid #f59e0b;
-	animation: ai-pulse 2s infinite;
+	border-left: 3px solid var(--color-orange);
+	animation: ai-scheduler-pulse-soft 2s infinite ease-in-out;
 }
 
 .ai-scheduler-cal-chip.is-paused {
@@ -1955,7 +1956,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 .ai-scheduler-cal-chip-check {
 	font-size: 10px;
 	font-weight: 800;
-	color: #10b981;
+	color: var(--color-green);
 	flex-shrink: 0;
 	line-height: 1;
 }
@@ -1995,15 +1996,15 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-badge-completed {
-	background: rgba(16, 185, 129, 0.15);
-	color: #10b981;
-	border-color: rgba(16, 185, 129, 0.3);
+	background: rgba(var(--color-green-rgb), 0.15);
+	color: var(--color-green);
+	border-color: rgba(var(--color-green-rgb), 0.3);
 }
 
 /* Warning callout banner for periodic reviews */
 .ai-scheduler-warning-callout {
-	background: rgba(245, 158, 11, 0.1);
-	border: 1px solid rgba(245, 158, 11, 0.35);
+	background: rgba(var(--color-orange-rgb), 0.1);
+	border: 1px solid rgba(var(--color-orange-rgb), 0.35);
 	border-radius: var(--radius-m, 8px);
 	padding: 12px 16px;
 	margin: 10px 0 16px;
@@ -2027,7 +2028,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 .ai-scheduler-warning-title {
 	font-weight: 600;
 	margin-bottom: 2px;
-	color: var(--text-accent, #f59e0b);
+	color: var(--text-warning);
 }
 
 /* Day Details Panel */
@@ -2087,8 +2088,8 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-timeline-item.is-running {
-	border-left: 3px solid #f59e0b;
-	animation: ai-pulse 2s infinite;
+	border-left: 3px solid var(--color-orange);
+	animation: ai-scheduler-pulse-soft 2s infinite ease-in-out;
 }
 
 .ai-scheduler-cal-timeline-item.is-paused {
@@ -2139,9 +2140,9 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-badge-folder {
-	background: rgba(59, 130, 246, 0.1);
-	color: #3b82f6;
-	border-color: rgba(59, 130, 246, 0.2);
+	background: rgba(var(--color-blue-rgb), 0.1);
+	color: var(--color-blue);
+	border-color: rgba(var(--color-blue-rgb), 0.2);
 }
 
 .ai-scheduler-cal-prompt-preview {
@@ -2385,21 +2386,21 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-day-rel-badge.is-today {
-	background: rgba(16, 185, 129, 0.18);
-	color: #10b981;
-	border: 1px solid rgba(16, 185, 129, 0.35);
+	background: rgba(var(--color-green-rgb), 0.18);
+	color: var(--color-green);
+	border: 1px solid rgba(var(--color-green-rgb), 0.35);
 }
 
 .ai-scheduler-cal-day-rel-badge.is-tomorrow {
-	background: rgba(168, 85, 247, 0.18);
-	color: #c084fc;
-	border: 1px solid rgba(168, 85, 247, 0.35);
+	background: rgba(var(--color-purple-rgb), 0.18);
+	color: var(--color-purple);
+	border: 1px solid rgba(var(--color-purple-rgb), 0.35);
 }
 
 .ai-scheduler-cal-day-rel-badge.is-yesterday {
-	background: rgba(245, 158, 11, 0.18);
-	color: #fbbf24;
-	border: 1px solid rgba(245, 158, 11, 0.35);
+	background: rgba(var(--color-orange-rgb), 0.18);
+	color: var(--color-orange);
+	border: 1px solid rgba(var(--color-orange-rgb), 0.35);
 }
 
 .ai-scheduler-cal-day-rel-badge.is-past {
@@ -2409,9 +2410,9 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-day-rel-badge.is-upcoming {
-	background: rgba(56, 189, 248, 0.15);
-	color: #38bdf8;
-	border: 1px solid rgba(56, 189, 248, 0.3);
+	background: rgba(var(--color-blue-rgb), 0.15);
+	color: var(--color-blue);
+	border: 1px solid rgba(var(--color-blue-rgb), 0.3);
 }
 
 .ai-scheduler-cal-day-count-badge {
@@ -2470,11 +2471,11 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-day-stat-num.is-completed {
-	color: #10b981;
+	color: var(--color-green);
 }
 
 .ai-scheduler-cal-day-stat-num.is-pending {
-	color: #38bdf8;
+	color: var(--color-blue);
 }
 
 .ai-scheduler-cal-day-stat-num.is-paused {
@@ -2512,18 +2513,18 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-cal-day-card:hover {
 	border-color: var(--interactive-accent);
-	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+	box-shadow: var(--shadow-s);
 }
 
 .ai-scheduler-cal-day-card.is-running {
-	border-left-color: #f59e0b;
-	animation: ai-pulse 2s infinite;
+	border-left-color: var(--color-orange);
+	animation: ai-scheduler-pulse-soft 2s infinite ease-in-out;
 }
 
 .ai-scheduler-cal-day-card.is-completed {
 	opacity: 0.75;
 	background: var(--background-secondary-alt);
-	border-left-color: #10b981;
+	border-left-color: var(--color-green);
 }
 
 .ai-scheduler-cal-day-card.is-paused {
@@ -2682,5 +2683,42 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	justify-content: center;
 }
 
+/* ---- Utilities & accessibility ----------------------------------------- */
 
+.ai-scheduler-text-caps {
+	text-transform: uppercase;
+}
 
+.ai-scheduler-day-toggles {
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.ai-scheduler-day-toggle-label {
+	font-size: var(--font-ui-smaller, 12px);
+	color: var(--text-muted);
+	margin-left: 6px;
+}
+
+.ai-scheduler-modal [role="button"]:focus-visible,
+.ai-scheduler-mention-popup [role="option"]:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ai-scheduler-status-running,
+	.ai-scheduler-spinner,
+	.ai-scheduler-spinner-tiny,
+	.ai-scheduler-status-bar-spinner,
+	.ai-scheduler-planning-card,
+	.ai-scheduler-cal-chip.is-running,
+	.ai-scheduler-cal-timeline-item.is-running,
+	.ai-scheduler-cal-day-card.is-running {
+		animation: none;
+	}
+
+	.ai-scheduler-cal-back-btn:hover {
+		transform: none;
+	}
+}
