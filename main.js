@@ -959,8 +959,17 @@ function normalizeJob(raw, now = /* @__PURE__ */ new Date()) {
     event: typeof scheduleRaw.event === "string" ? scheduleRaw.event : void 0,
     intervalMinutes: Number.isFinite(Number(scheduleRaw.intervalMinutes || scheduleRaw.everyMinutes || Number(scheduleRaw.everyHours || 0) * 60)) ? Number(scheduleRaw.intervalMinutes || scheduleRaw.everyMinutes || Number(scheduleRaw.everyHours || 0) * 60) : null,
     maxIterations: normalizeMaxIterationsField(scheduleRaw.maxIterations || scheduleRaw.maxRuns || scheduleRaw.iterations),
-    expression: typeof scheduleRaw.expression === "string" ? scheduleRaw.expression : void 0
+    expression: typeof scheduleRaw.expression === "string" ? scheduleRaw.expression : void 0,
+    startAt: typeof scheduleRaw.startAt === "string" && !Number.isNaN(new Date(scheduleRaw.startAt).getTime()) ? scheduleRaw.startAt : void 0,
+    everyDays: intInRange(scheduleRaw.everyDays, 1, Number.MAX_SAFE_INTEGER),
+    everyWeeks: intInRange(scheduleRaw.everyWeeks, 1, Number.MAX_SAFE_INTEGER),
+    everyMonths: intInRange(scheduleRaw.everyMonths, 1, Number.MAX_SAFE_INTEGER),
+    dayOfMonth: intInRange(scheduleRaw.dayOfMonth, 1, 31),
+    month: intInRange(scheduleRaw.month, 1, 12)
   };
+  for (const key of Object.keys(normalizedSchedule)) {
+    if (normalizedSchedule[key] === void 0) delete normalizedSchedule[key];
+  }
   const nextRunAt = raw.nextRunAt !== void 0 && (typeof raw.nextRunAt === "string" || raw.nextRunAt === null) ? raw.nextRunAt : getScheduleNextRun(normalizedSchedule, now);
   const enabled = typeof raw.enabled === "boolean" ? raw.enabled : raw.enabled === "false" ? false : true;
   const rawStatus = typeof raw.status === "string" ? raw.status : "";
@@ -1003,6 +1012,11 @@ function normalizeJob(raw, now = /* @__PURE__ */ new Date()) {
     schedule: normalizedSchedule,
     nextRunAt
   };
+}
+function intInRange(value, min, max) {
+  if (value === void 0 || value === null || value === "") return void 0;
+  const number = Number(value);
+  return Number.isInteger(number) && number >= min && number <= max ? number : void 0;
 }
 function normalizeMaxIterationsField(value) {
   const number = Number(value);
@@ -1130,10 +1144,11 @@ Selected task context:
 ${contextPaths.map((path) => `- ${path}`).join("\n")}
 Use the attached page/project context and respect the user's backend permissions.`;
 }
-function executionPrompt(prompt, contextPaths) {
-  return `${contextPrompt(prompt, contextPaths)}
+function executionPrompt(prompt, contextPaths, allowFollowUps = true) {
+  const base = contextPrompt(prompt, contextPaths);
+  return allowFollowUps ? `${base}
 
-${FOLLOW_UP_INSTRUCTION}`;
+${FOLLOW_UP_INSTRUCTION}` : base;
 }
 function plannerPrompt(goal, contextPaths) {
   const now = /* @__PURE__ */ new Date();
@@ -5711,6 +5726,12 @@ var ScheduleNotesSync = class _ScheduleNotesSync {
     if (job.schedule.intervalMinutes) schedule.intervalMinutes = job.schedule.intervalMinutes;
     if (job.schedule.maxIterations) schedule.maxIterations = job.schedule.maxIterations;
     if (job.schedule.expression) schedule.expression = job.schedule.expression;
+    if (job.schedule.startAt) schedule.startAt = job.schedule.startAt;
+    if (job.schedule.everyDays) schedule.everyDays = job.schedule.everyDays;
+    if (job.schedule.everyWeeks) schedule.everyWeeks = job.schedule.everyWeeks;
+    if (job.schedule.everyMonths) schedule.everyMonths = job.schedule.everyMonths;
+    if (job.schedule.dayOfMonth) schedule.dayOfMonth = job.schedule.dayOfMonth;
+    if (job.schedule.month) schedule.month = job.schedule.month;
     const definition = {
       id: job.id,
       taskNumber: job.taskNumber,
@@ -6264,7 +6285,7 @@ var AISchedulerPlugin = class extends import_obsidian12.Plugin {
       await this.saveState();
       const context = this.getJobContext(job);
       const isReview = job.routine === "daily-review" || job.routine === "periodic-review";
-      const prompt = isReview ? "" : executionPrompt(job.prompt, context.paths);
+      const prompt = isReview ? "" : executionPrompt(job.prompt, context.paths, job.source !== "self-talk");
       const reply = isReview ? await this.runDailyReview(false, execution, "periodic") : await sendToAI(this, prompt, execution, context);
       const trimmedReply = (reply || "").trim();
       if (!trimmedReply) {
@@ -6275,7 +6296,7 @@ var AISchedulerPlugin = class extends import_obsidian12.Plugin {
       job.lastError = null;
       job.status = "completed";
       job.runCount = Number(job.runCount || 0) + 1;
-      await this.processFollowUps(reply, job);
+      if (job.source !== "self-talk") await this.processFollowUps(reply, job);
       if (((_a = job.output) == null ? void 0 : _a.folder) && reply) {
         const writtenPath = await this.writeOutput(job.output.folder, job.output.filename, reply);
         job.lastOutputPath = writtenPath;
@@ -6511,40 +6532,41 @@ ${report}`);
     if (context.missingPaths.length) throw new Error(`Selected context no longer exists: ${context.missingPaths.join(", ")}`);
     return context;
   }
+  /**
+   * Writes task output as a Markdown note. Output locations can come from AI
+   * replies or schedule notes, so the folder must stay inside the vault and out
+   * of hidden/config folders, and existing notes the plugin did not write are
+   * never overwritten (a numbered sibling is created instead).
+   */
   async writeOutput(folder, filename, content) {
+    var _a;
     const cleanFolder = (0, import_obsidian12.normalizePath)(String(folder || "").replace(/^\/+|\/+$/g, ""));
-    let cleanName = String(filename || `${localDateKey()}.md`).replace(/[\\/]/g, "-");
-    let path = (0, import_obsidian12.normalizePath)(cleanFolder ? `${cleanFolder}/${cleanName}` : cleanName);
-    this.markSelfWrite(path);
-    await this.ensureFolder(cleanFolder);
-    let existing = this.app.vault.getAbstractFileByPath(path);
-    if (existing instanceof import_obsidian12.TFolder) {
-      let suffix = 2;
-      while (existing instanceof import_obsidian12.TFolder) {
-        cleanName = cleanName.replace(/(\.md)?$/, `-${suffix}.md`);
-        path = (0, import_obsidian12.normalizePath)(cleanFolder ? `${cleanFolder}/${cleanName}` : cleanName);
-        existing = this.app.vault.getAbstractFileByPath(path);
-        suffix += 1;
-      }
+    const segments = cleanFolder === "/" ? [] : cleanFolder.split("/").filter(Boolean);
+    const configDir = this.app.vault.configDir;
+    if (segments.some((segment) => segment === ".." || segment.startsWith(".") || segment.includes(":")) || segments[0] === configDir) {
+      throw new Error(`Refusing to write output to unsafe folder "${folder}".`);
     }
+    const folderPath = segments.join("/");
+    let baseName = String(filename || localDateKey()).replace(/[\\/:]/g, "-").replace(/^\.+/, "").trim();
+    baseName = baseName.replace(/\.md$/i, "") || localDateKey();
+    const pathFor = (name) => (0, import_obsidian12.normalizePath)(folderPath ? `${folderPath}/${name}.md` : `${name}.md`);
+    const ownOutputs = /* @__PURE__ */ new Set();
+    for (const job of [...this.jobs, ...this.deletedJobs]) {
+      if (job.lastOutputPath) ownOutputs.add(job.lastOutputPath);
+      (_a = job.lastOutputFiles) == null ? void 0 : _a.forEach((path2) => ownOutputs.add(path2));
+    }
+    let path = pathFor(baseName);
+    let existing = this.app.vault.getAbstractFileByPath(path);
+    for (let suffix = 2; existing && !(existing instanceof import_obsidian12.TFile && ownOutputs.has(path)); suffix++) {
+      path = pathFor(`${baseName}-${suffix}`);
+      existing = this.app.vault.getAbstractFileByPath(path);
+    }
+    await this.ensureFolder(folderPath);
+    this.markSelfWrite(path);
     if (existing instanceof import_obsidian12.TFile) {
       await this.app.vault.modify(existing, content);
     } else {
-      try {
-        await this.app.vault.create(path, content);
-      } catch (err) {
-        const retryFile = this.app.vault.getAbstractFileByPath(path);
-        if (retryFile instanceof import_obsidian12.TFile) {
-          await this.app.vault.modify(retryFile, content);
-        } else if (errorText(err).includes("already exists")) {
-          try {
-            await this.app.vault.adapter.write(path, content);
-          } catch (e) {
-          }
-        } else {
-          throw err;
-        }
-      }
+      await this.app.vault.create(path, content);
     }
     return path;
   }
@@ -6620,21 +6642,34 @@ ${row}`);
   async processFollowUps(reply, parentJob) {
     const MAX_TOTAL_JOBS = 100;
     const plans = extractJson(reply).map((item) => validateJobSchema(item)).filter((item) => Boolean(item));
+    const proposed = [];
     for (const plan of plans.slice(0, 3)) {
       if (this.jobs.length >= MAX_TOTAL_JOBS) {
         console.warn("[ai-scheduler] Follow-up skipped: job limit reached");
         break;
       }
-      await this.addJob(Object.assign(
-        this.jobFromPlan(plan, parentJob.tab, "self-talk"),
-        {
-          profile: parentJob.profile || null,
-          conversationId: parentJob.conversationId || null,
-          providerId: parentJob.providerId || null,
-          model: parentJob.model || null,
-          contextPaths: parentJob.contextPaths || []
-        }
-      ));
+      try {
+        proposed.push(await this.addJob(Object.assign(
+          this.jobFromPlan(plan, parentJob.tab, "self-talk"),
+          {
+            profile: parentJob.profile || null,
+            conversationId: parentJob.conversationId || null,
+            providerId: parentJob.providerId || null,
+            model: parentJob.model || null,
+            contextPaths: parentJob.contextPaths || [],
+            output: null,
+            enabled: false,
+            status: "disabled"
+          }
+        )));
+      } catch (error) {
+        console.warn("[ai-scheduler] Follow-up skipped:", errorText(error));
+      }
+    }
+    if (proposed.length) {
+      const numbers = proposed.map((job) => `#${job.taskNumber}`).join(", ");
+      this.logActivity("planned", `Task #${parentJob.taskNumber} proposed follow-up ${proposed.length === 1 ? "task" : "tasks"} ${numbers} (disabled until you enable them)`, parentJob.id);
+      new import_obsidian12.Notice(`AI proposed ${proposed.length} follow-up ${proposed.length === 1 ? "task" : "tasks"} (${numbers}). Review and enable them in the dashboard.`, 8e3);
     }
   }
   jobFromPlan(plan, fallbackTab, source) {

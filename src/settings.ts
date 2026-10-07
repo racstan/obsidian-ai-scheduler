@@ -59,7 +59,17 @@ export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date(
 			: null,
 		maxIterations: normalizeMaxIterationsField(scheduleRaw.maxIterations || scheduleRaw.maxRuns || scheduleRaw.iterations),
 		expression: typeof scheduleRaw.expression === 'string' ? scheduleRaw.expression : undefined,
+		startAt: typeof scheduleRaw.startAt === 'string' && !Number.isNaN(new Date(scheduleRaw.startAt).getTime()) ? scheduleRaw.startAt : undefined,
+		everyDays: intInRange(scheduleRaw.everyDays, 1, Number.MAX_SAFE_INTEGER),
+		everyWeeks: intInRange(scheduleRaw.everyWeeks, 1, Number.MAX_SAFE_INTEGER),
+		everyMonths: intInRange(scheduleRaw.everyMonths, 1, Number.MAX_SAFE_INTEGER),
+		dayOfMonth: intInRange(scheduleRaw.dayOfMonth, 1, 31),
+		month: intInRange(scheduleRaw.month, 1, 12),
 	};
+	// Drop absent optional fields so stored and round-tripped schedules stay identical.
+	for (const key of Object.keys(normalizedSchedule) as (keyof TaskSchedule)[]) {
+		if (normalizedSchedule[key] === undefined) delete normalizedSchedule[key];
+	}
 	const nextRunAt = raw.nextRunAt !== undefined && (typeof raw.nextRunAt === 'string' || raw.nextRunAt === null)
 		? raw.nextRunAt
 		: getScheduleNextRun(normalizedSchedule, now);
@@ -116,6 +126,12 @@ export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date(
 		schedule: normalizedSchedule,
 		nextRunAt,
 	};
+}
+
+function intInRange(value: unknown, min: number, max: number): number | undefined {
+	if (value === undefined || value === null || value === '') return undefined;
+	const number = Number(value);
+	return Number.isInteger(number) && number >= min && number <= max ? number : undefined;
 }
 
 function normalizeMaxIterationsField(value: unknown): number | null {

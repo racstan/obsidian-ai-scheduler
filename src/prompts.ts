@@ -12,8 +12,9 @@ export function contextPrompt(prompt: string, paths: string[]): string {
 	return `${prompt}\n\nSelected task context:\n${contextPaths.map(path => `- ${path}`).join('\n')}\nUse the attached page/project context and respect the user's backend permissions.`;
 }
 
-export function executionPrompt(prompt: string, contextPaths: string[]): string {
-	return `${contextPrompt(prompt, contextPaths)}\n\n${FOLLOW_UP_INSTRUCTION}`;
+export function executionPrompt(prompt: string, contextPaths: string[], allowFollowUps = true): string {
+	const base = contextPrompt(prompt, contextPaths);
+	return allowFollowUps ? `${base}\n\n${FOLLOW_UP_INSTRUCTION}` : base;
 }
 
 export function plannerPrompt(goal: string, contextPaths: string[]): string {
