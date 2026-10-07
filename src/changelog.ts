@@ -23,6 +23,37 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.7.17',
+		date: '2026-10-07',
+		title: 'Calendar Layout Overhaul, Completed Task Strikethrough & Periodic Review Refactor',
+		highlights: [
+			'Fixed Calendar Grid: Rebuilt the month calendar grid with rigid minmax(0, 1fr) 7-column tracks, fixed-height date windows, and expanded modal geometry to eliminate column distortion.',
+			'Scrollable Day Task Window: Each day cell provides an internal scrollable list of tasks, letting you view multiple tasks cleanly without distorting the layout.',
+			'Completed Task Strikethrough: Completed and past tasks remain permanently on the calendar, marked with a strikethrough and checkmark badge.',
+			'Periodic Review Refactor: Refactored Nightly Review into Periodic Review with custom cadences (Daily, Weekly, Every N days, Hourly) and a computer sleep/power notice.',
+			'Default Periodic Review Folder: Review summaries automatically route to <Default Folder>/Periodic Reviews (e.g. AI Scheduler/Periodic Reviews).',
+		],
+		added: [
+			'Added internal vertical scrollbars for day cells with multiple tasks in the calendar month view.',
+			'Added checkmark badge and strikethrough styling for completed tasks across month grid and day timeline panels.',
+			'Added periodic review cadence selector supporting daily, weekly, every N days, and hourly intervals.',
+			'Added computer sleep and power notice banner in review settings.',
+		],
+		changed: [
+			'Expanded calendar modal default width to 1280px (95vw) for high-clarity viewing.',
+			'Refactored nightly review commands and settings to Periodic AI Review.',
+			'Defaulted review output directory to <Default Folder>/Periodic Reviews.',
+		],
+		contributors: [
+			{
+				name: 'racstan',
+				username: 'racstan',
+				url: 'https://github.com/racstan',
+				role: 'Author & Lead Maintainer',
+			},
+		],
+	},
+	{
 		version: '2.1.7.16',
 		date: '2026-10-07',
 		title: 'Schedule Calendar View, Default Output Folder, Task Activity Logging & PolyForm License',

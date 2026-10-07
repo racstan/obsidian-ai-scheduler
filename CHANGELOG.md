@@ -5,6 +5,31 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.7.17] - 2026-10-07
+
+### Highlights
+- **Fixed Calendar Grid**: Rebuilt the month calendar grid with rigid `minmax(0, 1fr)` 7-column tracks, fixed-height date windows, and expanded modal geometry to eliminate column distortion.
+- **Scrollable Day Task Window**: Each day cell provides an internal scrollable list of tasks, letting you view multiple tasks cleanly without distorting the layout.
+- **Completed Task Strikethrough**: Completed and past tasks remain permanently on the calendar, marked with a strikethrough and checkmark badge.
+- **Periodic Review Refactor**: Refactored Nightly Review into Periodic Review with custom cadences (Daily, Weekly, Every N days, Hourly) and a computer sleep/power notice.
+- **Default Periodic Review Folder**: Review summaries automatically route to `<Default Folder>/Periodic Reviews` (e.g. `AI Scheduler/Periodic Reviews`).
+
+### Added
+- Added internal vertical scrollbars for day cells with multiple tasks in the calendar month view.
+- Added checkmark badge and strikethrough styling for completed tasks across month grid and day timeline panels.
+- Added periodic review cadence selector supporting daily, weekly, every N days, and hourly intervals.
+- Added computer sleep and power notice banner in review settings.
+
+### Changed
+- Expanded calendar modal default width to 1280px (95vw) for high-clarity viewing.
+- Refactored nightly review commands and settings to Periodic AI Review.
+- Defaulted review output directory to `<Default Folder>/Periodic Reviews`.
+
+### Contributors
+- [@racstan](https://github.com/racstan)
+
+---
+
 ## [2.1.7.16] - 2026-10-07
 
 ### Highlights
