@@ -67,7 +67,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('AI backend')
-			.setDesc('Select Claudian (for claude and custom providers) or Obsidian Copilot (for OpenAI, gemini, ollama, etc.).')
+			.setDesc('Select Claudian (for Claude and custom providers) or Obsidian Copilot (for OpenAI, Gemini, Ollama, etc.).')
 			.addDropdown(dropdown => dropdown
 				.addOption('none', 'Select an AI backend...')
 				.addOption('claudian', 'Claudian')
@@ -160,7 +160,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 				text: 'Important note on computer sleep and scheduled tasks',
 			});
 			warningBody.createEl('p', {
-				text: 'Periodic reviews and scheduled AI tasks execute locally inside Obsidian on your computer. If your computer is turned off or in sleep mode at the scheduled time, the review will not trigger. To automatically run missed reviews when you reopen Obsidian, turn on the startup catch-up setting below.',
+				text: 'Periodic reviews and scheduled AI tasks execute locally inside Obsidian on your computer. If your computer is turned off or in sleep mode at the scheduled time, the review will not trigger. To automatically run missed reviews when you reopen Obsidian, turn on the setting to run missed jobs after startup below.',
 			});
 
 			new Setting(containerEl)
@@ -258,28 +258,39 @@ export class AssistantSettingTab extends PluginSettingTab {
 				if (cadence === 'weekly') {
 					const daysContainer = new Setting(containerEl)
 						.setName('Days of the week')
-						.setDesc('Select the days on which the review should run.');
-					
+						.setDesc('Select the days on which the review should run. At least one day stays selected.');
+					daysContainer.controlEl.addClass('ai-scheduler-day-toggles');
+
 					const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+					const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 					const selectedDays = new Set(this.plugin.settings.periodicReviewDays || [1]);
-					
+
 					dayLabels.forEach((label, idx) => {
-						daysContainer.addToggle(toggle => toggle
-							.setTooltip(label)
-							.setValue(selectedDays.has(idx))
-							.onChange(checked => {
-								void (async () => {
-									if (checked) {
-										selectedDays.add(idx);
-									} else {
-										selectedDays.delete(idx);
-										if (selectedDays.size === 0) selectedDays.add(idx); // keep at least one
-									}
-									this.plugin.settings.periodicReviewDays = Array.from(selectedDays).sort();
-									await this.plugin.ensurePeriodicReviewJob();
-									await this.plugin.saveState();
-								})();
-							}));
+						// Visible day name next to each toggle (they are otherwise indistinguishable).
+						daysContainer.controlEl.createSpan({ cls: 'ai-scheduler-day-toggle-label', text: label });
+						daysContainer.addToggle(toggle => {
+							toggle.toggleEl.setAttribute('aria-label', `Run review on ${dayNames[idx]}`);
+							toggle
+								.setTooltip(dayNames[idx])
+								.setValue(selectedDays.has(idx))
+								.onChange(checked => {
+									void (async () => {
+										if (checked) {
+											selectedDays.add(idx);
+										} else if (selectedDays.size === 1 && selectedDays.has(idx)) {
+											// Keep at least one day: switch this toggle back on.
+											toggle.setValue(true);
+											new Notice('Select at least one day for the weekly review.');
+											return;
+										} else {
+											selectedDays.delete(idx);
+										}
+										this.plugin.settings.periodicReviewDays = Array.from(selectedDays).sort((a, b) => a - b);
+										await this.plugin.ensurePeriodicReviewJob();
+										await this.plugin.saveState();
+									})();
+								});
+						});
 					});
 				}
 
@@ -384,7 +395,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('System desktop notifications')
-			.setDesc('Send native os desktop notifications (windows / macOS / linux) when tasks finish or fail.')
+			.setDesc('Send native OS desktop notifications (Windows / macOS / Linux) when tasks finish or fail.')
 			.addToggle(toggle => toggle.setValue(this.plugin.settings.systemNotifications).onChange(value => {
 				void (async () => {
 					this.plugin.settings.systemNotifications = value;

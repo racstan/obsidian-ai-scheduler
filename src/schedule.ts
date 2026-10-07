@@ -101,7 +101,8 @@ export function nextMonthlyRun(time: string, dayOfMonth = 1, everyMonths = 1, st
 	let year = from.getFullYear();
 	let month = from.getMonth();
 
-	for (let i = 0; i < 48; i++) {
+	// Enough months to reach the next step even for long "every N months" cadences.
+	for (let i = 0; i < 48 * stepMonths; i++) {
 		const daysInMonth = new Date(year, month + 1, 0).getDate();
 		const clampedDay = Math.min(targetDay, daysInMonth);
 		const candidate = new Date(year, month, clampedDay, clock.hour, clock.minute, 0, 0);
@@ -377,11 +378,13 @@ export function describeSchedule(job: { schedule?: TaskSchedule; nextRunAt?: str
 	} else if (schedule.kind === 'multi') {
 		desc = formatMultiRules(schedule.rules).replace(/\n/g, ' · ') || 'multiple times';
 	} else if (schedule.kind === 'hourly') {
-		desc = `every hour${schedule.time ? ` starting at ${schedule.time}` : ''}`;
+		desc = `every hour${schedule.time ? ` from ${schedule.time} each day` : ''}`;
 	} else if (schedule.kind === 'interval') {
 		const minutes = Number(schedule.intervalMinutes || legacyField(schedule, 'everyMinutes') || (Number(legacyField(schedule, 'everyHours') || 0) * 60) || 0);
 		const cadence = minutes % 60 === 0 ? `every ${minutes / 60} hour${minutes === 60 ? '' : 's'}` : `every ${minutes} minutes`;
-		desc = `${cadence}${schedule.time ? ` starting at ${schedule.time}` : schedule.startAt ? ` starting ${formatDate(schedule.startAt)}` : ''}`;
+		// With a start time the count restarts at that time every day (see
+		// getScheduleNextRun), so say so instead of implying a continuous cadence.
+		desc = `${cadence}${schedule.time ? ` from ${schedule.time} each day` : schedule.startAt ? ` starting ${formatDate(schedule.startAt)}` : ''}`;
 	} else if (schedule.kind === 'event') {
 		desc = `when ${schedule.event || 'the vault changes'}`;
 	} else if (schedule.kind === 'cron') {

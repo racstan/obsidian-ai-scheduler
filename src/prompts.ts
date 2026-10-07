@@ -2,7 +2,6 @@
  * contract between the AI and the scheduler; cron is offered as an advanced
  * kind for patterns the simple kinds cannot express. */
 import { Job } from './types';
-import { formatMultiRules } from './schedule';
 
 export const FOLLOW_UP_INSTRUCTION = 'If this work reveals a concrete future action, you may append at most three follow-up jobs using <assistant-scheduler>[{"title":"...","prompt":"...","schedule":{"kind":"once","at":"ISO-8601"}}]</assistant-scheduler>. Do not create follow-ups unless they are genuinely useful.';
 
@@ -71,8 +70,4 @@ export function reviewPrompt(kind: 'daily' | 'nightly', today: string, fileList:
 		'Return Markdown only, with these headings: ## Summary, ## Work Completed, ## Important Ideas, ## Open Loops, ## Suggested Next Steps.',
 		`Files modified today:\n${fileList}`,
 	].join('\n\n');
-}
-
-export function describeRulesForPrompt(rules: unknown): string {
-	return formatMultiRules(rules);
 }

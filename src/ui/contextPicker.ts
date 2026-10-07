@@ -3,7 +3,7 @@
  * Displays attached files/folders as visual chips and provides fuzzy search modals for quick attachments.
  */
 import { App, FuzzySuggestModal, Notice, TFile, TFolder } from 'obsidian';
-import { makeButton, makeCard } from './dom';
+import { makeButton, makeCard, makeClickable } from './dom';
 import { ContextOption } from '../context';
 
 export class FilePickerModal extends FuzzySuggestModal<TFile> {
@@ -73,7 +73,7 @@ export function createContextPicker(
 ): ContextPickerInstance {
 	const card = makeCard(parent, 'ai-scheduler-card-flush');
 	const header = card.createDiv({ cls: 'ai-scheduler-context-header' });
-	header.createDiv({ cls: 'ai-scheduler-form-label', text: '📎 Context & Attachments for this task' });
+	header.createDiv({ cls: 'ai-scheduler-form-label', text: '📎 Context and attachments for this task' });
 	header.createDiv({
 		cls: 'ai-scheduler-hint',
 		text: 'Attached notes and folders will be inspected and referenced by the AI when executing this task.',
@@ -99,7 +99,7 @@ export function createContextPicker(
 			chip.createSpan({ cls: 'ai-scheduler-chip-text', text: path });
 			const removeBtn = chip.createSpan({ cls: 'ai-scheduler-chip-remove', text: '✕' });
 			removeBtn.setAttribute('title', 'Remove attachment');
-			removeBtn.addEventListener('click', (e) => {
+			makeClickable(removeBtn, `Remove attachment ${path}`, (e) => {
 				e.stopPropagation();
 				pathsSet.delete(path);
 				renderChips();

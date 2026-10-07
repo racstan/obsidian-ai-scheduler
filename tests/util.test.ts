@@ -36,3 +36,17 @@ test('extractJson parses fenced json blocks and raw json strings', () => {
 	assert.equal(rawParsed.length, 1);
 	assert.equal(rawParsed[0].title, 'Raw Object');
 });
+
+test('extractJson skips bracketed prose and handles brackets inside strings', () => {
+	const reply = 'See [notes] first. {"title":"A [draft] {x}","prompt":"p","schedule":{"kind":"daily","time":"09:00"}} trailing } text';
+	const parsed = extractJson(reply);
+	assert.equal(parsed.length, 1);
+	assert.equal(parsed[0].title, 'A [draft] {x}');
+});
+
+test('extractJson stays fast on very long replies', () => {
+	const long = 'x'.repeat(200_000) + ' {"title":"T","prompt":"p","schedule":{"kind":"once","at":"2030-01-01T00:00:00Z"}} ' + '{'.repeat(2000);
+	const started = Date.now();
+	assert.equal(extractJson(long)[0].title, 'T');
+	assert.ok(Date.now() - started < 1000, 'parsing took too long');
+});

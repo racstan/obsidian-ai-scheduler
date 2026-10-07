@@ -55,8 +55,8 @@ export class AISchedulerPlugin extends Plugin {
 	pendingVaultEvents: string[] = [];
 	private lastTickAt = Date.now();
 	private unloaded = false;
-	/** Identifies each job's current run so a reply arriving after a reset is ignored. */
-	private activeRuns = new Map<string, symbol>();
+	/** Each job's current run: aborting it stops the backend, and a reply arriving after a reset is ignored. */
+	private activeRuns = new Map<string, AbortController>();
 	runningJobs = new Set<string>();
 	isPlanning = false;
 	activePlanningGoal: string | null = null;
@@ -374,6 +374,9 @@ export class AISchedulerPlugin extends Plugin {
 				// Earlier jobs can run for minutes; skip any deleted, disabled or
 				// rescheduled meanwhile.
 				if (!this.jobs.includes(job) || !job.enabled || !job.nextRunAt || new Date(job.nextRunAt).getTime() > Date.now()) continue;
+				// A manual review is in progress: leave the scheduled one due for the next tick
+				// instead of failing it with "already in progress".
+				if (isNightlyReviewJob(job) && this.reviewRunning) continue;
 				await this.executeJob(job);
 			}
 		} finally {
@@ -398,9 +401,9 @@ export class AISchedulerPlugin extends Plugin {
 	}
 
 	private async runJobBody(job: Job): Promise<void> {
-		const runId = Symbol(job.id);
-		this.activeRuns.set(job.id, runId);
-		const cancelled = () => this.activeRuns.get(job.id) !== runId;
+		const run = new AbortController();
+		this.activeRuns.set(job.id, run);
+		const cancelled = () => this.activeRuns.get(job.id) !== run;
 		job.status = 'running';
 		const previousRunAt = job.lastRunAt;
 		const outputBeforeRun = job.lastOutputPath;
@@ -436,8 +439,8 @@ export class AISchedulerPlugin extends Plugin {
 					job.source !== 'self-talk',
 				);
 			const reply = isReview
-				? await this.runDailyReview(false, execution, 'periodic', previousRunAt)
-				: await backends.sendToAI(this, prompt, execution, context);
+				? await this.runDailyReview(false, execution, 'periodic', previousRunAt, run.signal)
+				: await backends.sendToAI(this, prompt, execution, context, run.signal);
 			// Reset by the user while waiting: don't record, write or follow up.
 			if (cancelled()) return;
 			const trimmedReply = (reply || '').trim();
@@ -500,6 +503,9 @@ export class AISchedulerPlugin extends Plugin {
 			return;
 		}
 		if (this.running) {
+			// Edits made while an event-triggered job runs are most likely the agent's
+			// own; replaying them would let event jobs trigger each other endlessly.
+			if (this.jobs.some(job => this.runningJobs.has(job.id) && job.schedule.kind === 'event')) return;
 			if (!this.pendingVaultEvents.includes(file.path)) this.pendingVaultEvents.push(file.path);
 			return;
 		}
@@ -624,7 +630,7 @@ export class AISchedulerPlugin extends Plugin {
 		});
 	}
 
-	async runDailyReview(manual: boolean, execution: backends.ResolvedExecution | null = null, kind: 'daily' | 'nightly' | 'periodic' = 'periodic', since?: string | null): Promise<string> {
+	async runDailyReview(manual: boolean, execution: backends.ResolvedExecution | null = null, kind: 'daily' | 'nightly' | 'periodic' = 'periodic', since?: string | null, signal?: AbortSignal): Promise<string> {
 		if (this.reviewRunning) {
 			throw new Error('A review is already in progress.');
 		}
@@ -657,9 +663,11 @@ export class AISchedulerPlugin extends Plugin {
 				? await backends.resolveJobExecution(this, reviewJob)
 				: await backends.resolveModel(this, model, 'periodic review'));
 			const context = getPathsContext(this.app, files.map(file => file.path));
-			const reply = await backends.sendToAI(this, prompt, resolved, context);
+			const reply = await backends.sendToAI(this, prompt, resolved, context, signal);
 			const reportTitle = kind === 'daily' ? 'Daily Preview' : 'Periodic Vault Review';
-			const report = reply || `# ${reportTitle} - ${today}\n\nThe active AI backend did not return a report.`;
+			// An empty reply is a failure, not a "completed" review with placeholder text.
+			if (!(reply || '').trim()) throw new Error('The AI backend returned an empty review.');
+			const report = reply;
 			const timestamp = localTimestampKey(now);
 			const reportFolder = this.getPeriodicReviewFolder();
 			// writeOutput picks a free name if this timestamp is already taken.
@@ -798,37 +806,20 @@ export class AISchedulerPlugin extends Plugin {
 			const logPath = normalizePath(`${logFolder}/AI SCHEDULER LOGS.md`);
 			await this.ensureFolder(logFolder);
 			this.markSelfWrite(logPath);
-			const existing = this.app.vault.getAbstractFileByPath(logPath);
-			// Count existing rows to assign a serial number.
-			let serial = 1;
-			let currentContent = TASK_LOG_HEADER;
-			if (existing instanceof TFile) {
-				const raw = await this.app.vault.read(existing);
-				// Count table data rows (lines starting with '| ' that aren't the header or separator).
-				const dataRows = raw.split('\n').filter(line =>
+			// The serial number is the count of existing table data rows (not the header or separator).
+			const append = (raw: string) => {
+				const serial = raw.split('\n').filter(line =>
 					line.startsWith('| ') && !line.startsWith('| # ') && !line.startsWith('| ---'),
-				);
-				serial = dataRows.length + 1;
-				currentContent = raw;
-			}
-			const row = buildTaskLogRow(serial, job, status, outputFiles);
-			const newContent = existing instanceof TFile
-				? `${currentContent.trimEnd()}\n${row}`
-				: `${TASK_LOG_HEADER}\n${row}`;
+				).length + 1;
+				return `${raw.trimEnd()}\n${buildTaskLogRow(serial, job, status, outputFiles)}`;
+			};
+			const existing = this.app.vault.getAbstractFileByPath(logPath);
 			if (existing instanceof TFile) {
-				await this.app.vault.modify(existing, newContent);
+				// vault.process reads and writes atomically, so a concurrent edit of the
+				// log (by the user or another run) isn't lost.
+				await this.app.vault.process(existing, append);
 			} else {
-				try {
-					await this.app.vault.create(logPath, newContent);
-				} catch (err) {
-					const retryFile = this.app.vault.getAbstractFileByPath(logPath);
-					if (retryFile instanceof TFile) {
-						const raw = await this.app.vault.read(retryFile);
-						await this.app.vault.modify(retryFile, `${raw.trimEnd()}\n${row}`);
-					} else {
-						throw err;
-					}
-				}
+				await this.app.vault.create(logPath, append(TASK_LOG_HEADER));
 			}
 		} catch (err) {
 			console.warn('[ai-scheduler] Could not write to task log:', err);
@@ -1074,7 +1065,7 @@ export class AISchedulerPlugin extends Plugin {
 		new Notice('AI Scheduler notifications are working.');
 		const sentSystem = sendSystemNotification('AI Scheduler', 'AI Scheduler desktop notifications are working.');
 		if (!sentSystem && typeof window !== 'undefined' && typeof window.Notification !== 'undefined' && window.Notification.permission === 'denied') {
-			new Notice('System desktop notifications are blocked by windows/Obsidian permissions.', 6000);
+			new Notice('System desktop notifications are blocked by Windows/Obsidian permissions.', 6000);
 		}
 		this.logActivity('notification', 'Test notification sent');
 		void this.saveState();
@@ -1252,9 +1243,15 @@ export class AISchedulerPlugin extends Plugin {
 		job.schedule = Object.assign({}, job.schedule, changes.schedule || {});
 		job.schedule.maxIterations = normalizeMaxIterations(job.schedule.maxIterations);
 		job.nextRunAt = job.schedule.kind === 'event' ? null : getScheduleNextRun(job.schedule, new Date(Date.now() - 1000));
-		job.enabled = true;
-		job.status = 'scheduled';
 		job.lastError = null;
+		if (this.jobs.includes(job) && job.status === 'disabled') {
+			// Editing a task the user paused keeps it paused.
+			job.enabled = false;
+			job.nextRunAt = null;
+		} else {
+			job.enabled = true;
+			job.status = 'scheduled';
+		}
 		if (!this.jobs.includes(job)) {
 			// New tasks (e.g. from the calendar) are edited before they are registered.
 			if (job.schedule.kind !== 'event' && !job.nextRunAt) {
@@ -1281,7 +1278,9 @@ export class AISchedulerPlugin extends Plugin {
 
 	async resetRunningJob(job: Job): Promise<void> {
 		this.runningJobs.delete(job.id);
-		this.activeRuns.delete(job.id); // the in-flight reply, if it ever arrives, is discarded
+		// Stop the backend call; if a reply still arrives it is discarded.
+		this.activeRuns.get(job.id)?.abort();
+		this.activeRuns.delete(job.id);
 		job.status = 'failed';
 		job.lastStatus = 'cancelled';
 		job.lastError = 'Cancelled or reset by user';

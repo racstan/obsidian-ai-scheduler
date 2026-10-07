@@ -197,6 +197,11 @@ function fakeApp() {
 				for (const listener of eventListeners.modify) listener(file);
 			},
 			read: async (file) => file._content || '',
+			process: async (file, fn) => {
+				file._content = fn(file._content || '');
+				for (const listener of eventListeners.modify) listener(file);
+				return file._content;
+			},
 			configDir: '.obsidian',
 			adapter: { getBasePath: () => '/fake/vault' },
 		},
@@ -373,6 +378,17 @@ async function main() {
 	recurring.nextRunAt = iso(3_600_000);
 	await second.runJobNow(recurring);
 	assert.equal(recurring.runCount, runsBefore + 1, 'run now executes a recurring job');
+
+	// The task log appends one numbered row per run, and lists only that run's output.
+	second.settings.taskLoggingEnabled = true;
+	await second.runJobNow(recurring);
+	await second.runJobNow(recurring);
+	const logFile = [...app.vault.getMarkdownFiles()].find(f => f.path.endsWith('AI SCHEDULER LOGS.md'));
+	assert.ok(logFile, 'task log created');
+	const rows = logFile._content.split(String.fromCharCode(10)).filter(line => /^[|] [0-9]+ [|]/.test(line));
+	assert.equal(rows.length, 2, 'one log row per run');
+	assert.ok(rows[1].startsWith('| 2 |'), 'rows are numbered');
+	second.settings.taskLoggingEnabled = false;
 
 	// Re-ensuring the periodic review with unchanged settings keeps its next run.
 	const review = second.jobs.find(j => j.routine === 'periodic-review');

@@ -69,7 +69,7 @@ export class ScheduleNotesSync {
 		return path === folder || path.startsWith(`${folder}/`);
 	}
 
-	notePathFor(job: Job): string {
+	async notePathFor(job: Job): Promise<string> {
 		if (job.notePath && ScheduleNotesSync.isInside(this.folder, job.notePath)) {
 			return job.notePath;
 		}
@@ -85,9 +85,13 @@ export class ScheduleNotesSync {
 		if (job.notePath && !ScheduleNotesSync.isInside(this.folder, job.notePath)) {
 			const oldFile = this.plugin.app.vault.getAbstractFileByPath(job.notePath);
 			if (oldFile instanceof TFile) {
+				// Awaited so a failure is actually caught (and the move finishes before the
+				// caller writes to the new path).
 				try {
-					void this.plugin.app.fileManager.renameFile(oldFile, candidate);
-				} catch { /* if rename fails, sync will recreate */ }
+					await this.plugin.app.fileManager.renameFile(oldFile, candidate);
+				} catch (error) {
+					console.warn('[ai-scheduler] Could not move schedule note:', error);
+				}
 			}
 		}
 		return candidate;
@@ -185,7 +189,7 @@ export class ScheduleNotesSync {
 	async writeNoteFor(job: Job): Promise<void> {
 		if (!this.plugin.settings.scheduleNotesEnabled) return;
 		await this.plugin.ensureFolder(this.folder);
-		const path = this.notePathFor(job);
+		const path = await this.notePathFor(job);
 		job.notePath = path;
 		await this.writeFile(path, this.renderNote(job));
 	}
@@ -264,7 +268,7 @@ export class ScheduleNotesSync {
 			}
 			if (written) await this.plugin.saveState();
 			for (const job of [...this.plugin.jobs]) {
-				const path = this.notePathFor(job);
+				const path = await this.notePathFor(job);
 				const content = this.renderNote(job);
 				const existing = this.plugin.app.vault.getAbstractFileByPath(path);
 				if (existing instanceof TFile) {

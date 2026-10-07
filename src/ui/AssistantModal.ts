@@ -2,7 +2,7 @@ import { App, Modal, Notice, Setting } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
 import { formatDate, formatDuration, describeBinding, isDisabledTask, isNightlyReviewJob, summarizeTasks } from '../util';
 import { describeSchedule, getScheduleNextRun } from '../schedule';
-import { closeExistingSchedulerModals, liveRefresh, makeButton, makeCard } from './dom';
+import { closeExistingSchedulerModals, liveRefresh, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
 import { JobModal } from './JobModal';
 import { PlannerModal } from './PlannerModal';
 import { TaskViewModal } from './TaskViewModal';
@@ -12,14 +12,14 @@ import { Job } from '../types';
 function appendTaskIdBadge(container: HTMLElement, id: string): void {
 	const idBadge = container.createSpan({ cls: 'ai-scheduler-task-id-badge', text: `ID: ${id}` });
 	idBadge.setAttribute('title', 'Click to copy task ID');
-	idBadge.onclick = (e) => {
+	makeClickable(idBadge, `Copy task ID ${id}`, (e) => {
 		e.stopPropagation();
 		if (typeof navigator !== 'undefined' && navigator.clipboard) {
 			void navigator.clipboard.writeText(id).then(() => {
-				new Notice(`Copied Task ID: ${id}`);
+				new Notice(`Copied task ID: ${id}`);
 			});
 		}
-	};
+	});
 }
 
 export class ConfirmModal extends Modal {
@@ -64,7 +64,7 @@ export class PastDuePromptModal extends Modal {
 		const desc = this.contentEl.createDiv({ cls: 'ai-scheduler-past-due-desc' });
 		const timeStr = this.pastTime ? formatDate(this.pastTime) : 'earlier';
 		desc.createEl('p', {
-			text: `The scheduled run time for Task #${this.job.taskNumber} (${this.job.title}) was set for ${timeStr}, which is in the past.`
+			text: `The scheduled run time for task #${this.job.taskNumber} (${this.job.title}) was set for ${timeStr}, which is in the past.`
 		});
 		desc.createEl('p', {
 			text: 'Would you like to execute this task immediately now, or edit the schedule to pick a new date and time?'
@@ -205,12 +205,12 @@ export class AssistantModal extends Modal {
 		// Stat 1: Active tasks
 		const statActive = makeCard(stats, 'ai-scheduler-card-stat');
 		statActive.createDiv({ cls: 'ai-scheduler-stat-value', text: String(activeCount) });
-		statActive.createDiv({ cls: 'ai-scheduler-stat-label', text: 'ACTIVE TASKS' });
+		statActive.createDiv({ cls: 'ai-scheduler-stat-label', text: 'Active tasks' });
 
 		// Stat 2: Paused / Past
 		const statPaused = makeCard(stats, 'ai-scheduler-card-stat');
 		statPaused.createDiv({ cls: 'ai-scheduler-stat-value', text: String(pausedCount) });
-		statPaused.createDiv({ cls: 'ai-scheduler-stat-label', text: 'PAUSED / PAST' });
+		statPaused.createDiv({ cls: 'ai-scheduler-stat-label', text: 'Paused / past' });
 
 		// Stat 3: Next run
 		const statNext = makeCard(stats, 'ai-scheduler-card-stat');
@@ -218,7 +218,7 @@ export class AssistantModal extends Modal {
 			? 'Running now'
 			: (next && next.nextRunAt ? formatDate(next.nextRunAt) : 'None');
 		statNext.createDiv({ cls: 'ai-scheduler-stat-value ai-scheduler-stat-sm', text: nextRunDisplay });
-		statNext.createDiv({ cls: 'ai-scheduler-stat-label', text: 'NEXT RUN' });
+		statNext.createDiv({ cls: 'ai-scheduler-stat-label', text: 'Next run' });
 
 		if (userJobs.length > 1) {
 			const bulkSection = shell.createDiv('ai-scheduler-bulk-section');
@@ -494,7 +494,7 @@ export class AssistantModal extends Modal {
 				const titleRow = copy.createDiv({ cls: 'ai-scheduler-task-header' });
 				titleRow.createDiv({ cls: 'ai-scheduler-task-title', text: `#${job.taskNumber} · ${job.title}` });
 				appendTaskIdBadge(titleRow, job.id);
-				titleRow.createSpan({ cls: 'ai-scheduler-act-badge ai-scheduler-act-deleted', text: 'TRASH' });
+				titleRow.createSpan({ cls: 'ai-scheduler-act-badge ai-scheduler-act-deleted', text: 'Trash' });
 
 				copy.createDiv({ cls: 'ai-scheduler-task-meta', text: `${describeBinding(job)} · ${describeSchedule(job)}` });
 				if (job.prompt) {
@@ -547,7 +547,7 @@ export class AssistantModal extends Modal {
 				if (event.jobId) {
 					const idBadge = left.createSpan({ cls: 'ai-scheduler-task-id-badge is-clickable', text: `ID: ${event.jobId}` });
 					idBadge.setAttribute('title', 'Click to view task details and files');
-					idBadge.onclick = (e) => {
+					makeClickable(idBadge, `View task ${event.jobId}`, (e) => {
 						e.stopPropagation();
 						const target = this.plugin.jobs.find(j => j.id === event.jobId) || this.plugin.deletedJobs.find(j => j.id === event.jobId);
 						if (target) {
@@ -560,7 +560,7 @@ export class AssistantModal extends Modal {
 						} else {
 							new Notice(`Task ${event.jobId} is no longer available.`);
 						}
-					};
+					});
 				}
 				row.createSpan({ text: formatDate(event.at) }).addClass('ai-scheduler-activity-time');
 			}
@@ -569,15 +569,15 @@ export class AssistantModal extends Modal {
 
 	private getActivityTypeLabel(type: string): string {
 		switch (type) {
-			case 'running': return 'RUNNING';
-			case 'completed': return 'DONE';
-			case 'failed': return 'FAILED';
-			case 'planned': return 'PLANNED';
-			case 'cancelled': return 'RESET';
-			case 'deleted': return 'DELETED';
-			case 'restored': return 'RESTORED';
-			case 'status': return 'STATUS';
-			default: return 'LOG';
+			case 'running': return 'Running';
+			case 'completed': return 'Done';
+			case 'failed': return 'Failed';
+			case 'planned': return 'Planned';
+			case 'cancelled': return 'Reset';
+			case 'deleted': return 'Deleted';
+			case 'restored': return 'Restored';
+			case 'status': return 'Status';
+			default: return 'Log';
 		}
 	}
 
@@ -593,6 +593,7 @@ export class AssistantModal extends Modal {
 			window.clearInterval(this.refreshTimer);
 			this.refreshTimer = null;
 		}
+		releaseSchedulerModal(this);
 		this.contentEl.empty();
 	}
 }

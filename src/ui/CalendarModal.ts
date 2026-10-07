@@ -1,10 +1,10 @@
-import { App, Modal, Notice } from 'obsidian';
+import { App, Modal, Notice, TFile, normalizePath } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
 import { Job } from '../types';
 import { normalizeJob } from '../settings';
 import { describeBinding, formatDate, isNightlyReviewJob } from '../util';
 import { describeSchedule, getScheduleOccurrencesInRange, DAY_SHORT_NAMES, DAY_NAMES, MONTH_NAMES, MONTH_SHORT_NAMES } from '../schedule';
-import { closeExistingSchedulerModals, liveRefresh, makeButton, makeCard } from './dom';
+import { closeExistingSchedulerModals, liveRefresh, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
 import { JobModal } from './JobModal';
 import { PlannerModal } from './PlannerModal';
 import { TaskViewModal } from './TaskViewModal';
@@ -26,12 +26,9 @@ function toLocalDateKey(d: Date): string {
 	return `${y}-${m}-${day}`;
 }
 
+/** Clock time in the user's locale (12- or 24-hour as the system prefers). */
 function formatClockTime(d: Date): string {
-	const h = d.getHours();
-	const m = String(d.getMinutes()).padStart(2, '0');
-	const ampm = h >= 12 ? 'PM' : 'AM';
-	const hour12 = h % 12 === 0 ? 12 : h % 12;
-	return `${hour12}:${m} ${ampm}`;
+	return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 function getRelativeDayLabel(date: Date): { text: string; cls: string; isToday: boolean } {
@@ -99,6 +96,7 @@ export class CalendarModal extends Modal {
 			window.clearInterval(this.refreshTimer);
 			this.refreshTimer = null;
 		}
+		releaseSchedulerModal(this);
 		this.contentEl.empty();
 	}
 
@@ -196,7 +194,7 @@ export class CalendarModal extends Modal {
 			window.setTimeout(() => {
 				new JobModal(this.app, this.plugin, normalizeJob({ prompt: '', title: '' }), () => {
 					new CalendarModal(this.app, this.plugin, this.selectedDate, this.viewMode).open();
-				}).open();
+				}, 'Back to calendar').open();
 			}, 50);
 		}, true);
 
@@ -205,7 +203,7 @@ export class CalendarModal extends Modal {
 
 		// Left: Month Navigation
 		const navGroup = controlsBar.createDiv({ cls: 'ai-scheduler-cal-nav' });
-		const prevBtn = navGroup.createEl('button', { text: '‹', cls: 'ai-scheduler-cal-nav-btn' });
+		const prevBtn = navGroup.createEl('button', { text: '‹', cls: 'ai-scheduler-cal-nav-btn', attr: { 'aria-label': 'Previous month' } });
 		prevBtn.setAttribute('title', 'Previous month');
 		prevBtn.onclick = () => {
 			if (this.currentMonth === 0) {
@@ -222,7 +220,7 @@ export class CalendarModal extends Modal {
 			text: `${MONTH_NAMES[this.currentMonth + 1]} ${this.currentYear}`,
 		});
 
-		const nextBtn = navGroup.createEl('button', { text: '›', cls: 'ai-scheduler-cal-nav-btn' });
+		const nextBtn = navGroup.createEl('button', { text: '›', cls: 'ai-scheduler-cal-nav-btn', attr: { 'aria-label': 'Next month' } });
 		nextBtn.setAttribute('title', 'Next month');
 		nextBtn.onclick = () => {
 			if (this.currentMonth === 11) {
@@ -246,7 +244,7 @@ export class CalendarModal extends Modal {
 		// Right: Filter & View Mode toggles
 		const filterGroup = controlsBar.createDiv({ cls: 'ai-scheduler-cal-filter-group' });
 
-		const filterSelect = filterGroup.createEl('select', { cls: 'dropdown ai-scheduler-cal-select' });
+		const filterSelect = filterGroup.createEl('select', { cls: 'dropdown ai-scheduler-cal-select', attr: { 'aria-label': 'Filter tasks' } });
 		filterSelect.createEl('option', { text: 'All tasks', value: 'all' });
 		filterSelect.createEl('option', { text: 'Active tasks only', value: 'active' });
 		filterSelect.createEl('option', { text: 'Paused / disabled', value: 'paused' });
@@ -372,7 +370,7 @@ export class CalendarModal extends Modal {
 				});
 				new JobModal(this.app, this.plugin, defaultJob, () => {
 					new CalendarModal(this.app, this.plugin, this.selectedDate, 'day').open();
-				}).open();
+				}, 'Back to calendar').open();
 			}, 50);
 		}, true);
 
@@ -399,7 +397,7 @@ export class CalendarModal extends Modal {
 			this.render();
 		};
 
-		const nextDayBtn = navGroup.createEl('button', { text: 'Next day', cls: 'ai-scheduler-cal-day-nav-btn' });
+		const nextDayBtn = navGroup.createEl('button', { text: 'Next day', cls: 'ai-scheduler-cal-day-nav-btn', attr: { 'aria-label': 'Next day' } });
 		nextDayBtn.onclick = () => {
 			const next = new Date(this.selectedDate);
 			next.setDate(next.getDate() + 1);
@@ -412,7 +410,7 @@ export class CalendarModal extends Modal {
 		// Right controls: Filter & View Toggle
 		const filterGroup = controlsBar.createDiv({ cls: 'ai-scheduler-cal-filter-group' });
 
-		const filterSelect = filterGroup.createEl('select', { cls: 'dropdown ai-scheduler-cal-select' });
+		const filterSelect = filterGroup.createEl('select', { cls: 'dropdown ai-scheduler-cal-select', attr: { 'aria-label': 'Filter tasks' } });
 		filterSelect.createEl('option', { text: 'All tasks', value: 'all' });
 		filterSelect.createEl('option', { text: 'Active tasks only', value: 'active' });
 		filterSelect.createEl('option', { text: 'Paused / disabled', value: 'paused' });
@@ -461,7 +459,7 @@ export class CalendarModal extends Modal {
 
 			const stat1 = statsGrid.createDiv({ cls: 'ai-scheduler-cal-day-stat-card' });
 			stat1.createDiv({ cls: 'ai-scheduler-cal-day-stat-num', text: String(occurrences.length) });
-			stat1.createDiv({ cls: 'ai-scheduler-cal-day-stat-label', text: 'Total Runs' });
+			stat1.createDiv({ cls: 'ai-scheduler-cal-day-stat-label', text: 'Total runs' });
 
 			const stat2 = statsGrid.createDiv({ cls: 'ai-scheduler-cal-day-stat-card' });
 			stat2.createDiv({ cls: 'ai-scheduler-cal-day-stat-num is-completed', text: String(completedCount) });
@@ -469,7 +467,7 @@ export class CalendarModal extends Modal {
 
 			const stat3 = statsGrid.createDiv({ cls: 'ai-scheduler-cal-day-stat-card' });
 			stat3.createDiv({ cls: 'ai-scheduler-cal-day-stat-num is-pending', text: String(Math.max(0, pendingCount)) });
-			stat3.createDiv({ cls: 'ai-scheduler-cal-day-stat-label', text: 'Pending / Due' });
+			stat3.createDiv({ cls: 'ai-scheduler-cal-day-stat-label', text: 'Pending / due' });
 
 			const stat4 = statsGrid.createDiv({ cls: 'ai-scheduler-cal-day-stat-card' });
 			stat4.createDiv({ cls: 'ai-scheduler-cal-day-stat-num is-paused', text: String(pausedCount) });
@@ -500,7 +498,7 @@ export class CalendarModal extends Modal {
 					});
 					new JobModal(this.app, this.plugin, defaultJob, () => {
 						new CalendarModal(this.app, this.plugin, this.selectedDate, 'day').open();
-					}).open();
+					}, 'Back to calendar').open();
 				}, 50);
 			}, true);
 			makeButton(emptyActions, '⚡ Ask AI to plan', () => {
@@ -527,13 +525,13 @@ export class CalendarModal extends Modal {
 			// Left column: Time and cadence
 			const timeCol = card.createDiv({ cls: 'ai-scheduler-cal-day-time-col' });
 			timeCol.createSpan({ cls: 'ai-scheduler-cal-day-time-badge', text: occ.timeStr });
-			timeCol.createDiv({ cls: 'ai-scheduler-cal-day-kind-tag', text: job.schedule?.kind ? String(job.schedule.kind).toUpperCase() : 'TASK' });
+			timeCol.createDiv({ cls: 'ai-scheduler-cal-day-kind-tag', text: job.schedule?.kind ? String(job.schedule.kind) : 'task' });
 
 			// Middle column: Main details
 			const body = card.createDiv({ cls: 'ai-scheduler-cal-day-body' });
 			const headRow = body.createDiv({ cls: 'ai-scheduler-cal-day-card-head' });
 
-			const titleText = occ.isReview ? 'Periodic Review' : `#${job.taskNumber ?? '?'} ${job.title}`;
+			const titleText = occ.isReview ? 'Periodic review' : `#${job.taskNumber ?? '?'} ${job.title}`;
 			headRow.createEl('h3', {
 				text: titleText,
 				cls: `ai-scheduler-cal-day-card-title ${occ.isCompleted ? 'is-completed-title' : ''}`,
@@ -566,7 +564,7 @@ export class CalendarModal extends Modal {
 			// Prompt preview
 			if (job.prompt && !occ.isReview) {
 				const promptBox = body.createDiv({ cls: 'ai-scheduler-cal-day-prompt-box' });
-				promptBox.createDiv({ cls: 'ai-scheduler-cal-day-prompt-label', text: 'Prompt / Instruction:' });
+				promptBox.createDiv({ cls: 'ai-scheduler-cal-day-prompt-label', text: 'Prompt / instruction:' });
 				const promptSnippet = job.prompt.length > 220 ? `${job.prompt.slice(0, 220)}...` : job.prompt;
 				promptBox.createDiv({ cls: 'ai-scheduler-cal-day-prompt-text', text: promptSnippet });
 			}
@@ -585,7 +583,7 @@ export class CalendarModal extends Modal {
 			const actions = card.createDiv({ cls: 'ai-scheduler-cal-day-actions' });
 			makeButton(actions, occ.isCompleted ? '▶ Run again' : '▶ Run now', () => {
 				void (async () => {
-					new Notice(`Starting Task #${job.taskNumber ?? ''} (${job.title})...`);
+					new Notice(`Starting task #${job.taskNumber ?? ''} (${job.title})...`);
 					await this.plugin.runJobNow(job);
 					this.render();
 				})();
@@ -607,7 +605,7 @@ export class CalendarModal extends Modal {
 				window.setTimeout(() => {
 					new JobModal(this.app, this.plugin, job, () => {
 						new CalendarModal(this.app, this.plugin, this.selectedDate, 'day').open();
-					}).open();
+					}, 'Back to calendar').open();
 				}, 50);
 			});
 
@@ -616,20 +614,26 @@ export class CalendarModal extends Modal {
 				window.setTimeout(() => {
 					new TaskViewModal(this.app, this.plugin, job, () => {
 						new CalendarModal(this.app, this.plugin, this.selectedDate, 'day').open();
-					}).open();
+					}, 'Back to calendar').open();
 				}, 50);
 			});
 
-			// If note output folder exists, check for generated notes
-			if (job.output?.folder) {
-				const outputFolder = job.output.folder.trim();
+			// Open the note the last run produced, if it is still in the vault.
+			if (job.output?.folder || job.lastOutputPath) {
 				makeButton(actions, '📄 Vault output', () => {
-					const folder = this.app.vault.getAbstractFileByPath(outputFolder);
-					if (folder) {
-						new Notice(`Output location: ${outputFolder}`);
-					} else {
-						new Notice(`Output folder "${outputFolder}" configured for task.`);
+					const outputPath = job.lastOutputPath
+						? normalizePath(job.lastOutputPath.trim().replace(/^\[\[|\]\]$/g, ''))
+						: '';
+					const file = outputPath ? this.app.vault.getAbstractFileByPath(outputPath) : null;
+					if (file instanceof TFile) {
+						this.close();
+						void this.app.workspace.getLeaf(true).openFile(file);
+						return;
 					}
+					const folder = job.output?.folder?.trim();
+					new Notice(outputPath
+						? `The last output "${outputPath}" is no longer in the vault.`
+						: `No output yet for task #${job.taskNumber ?? ''}.${folder ? ` Results will be saved in "${folder}".` : ''}`);
 				});
 			}
 		}
@@ -667,7 +671,7 @@ export class CalendarModal extends Modal {
 			const cell = daysGrid.createDiv({
 				cls: `ai-scheduler-cal-day-cell ${isCurrentMonth ? '' : 'is-outside'} ${isToday ? 'is-today' : ''} ${isSelected ? 'is-selected' : ''}`,
 			});
-			cell.setAttribute('title', `Click to open full Day View for ${MONTH_SHORT_NAMES[cellDate.getMonth() + 1]} ${cellDate.getDate()}`);
+			cell.setAttribute('title', `Click to open the day view for ${MONTH_SHORT_NAMES[cellDate.getMonth() + 1]} ${cellDate.getDate()}`);
 
 			const cellTop = cell.createDiv({ cls: 'ai-scheduler-cal-cell-top' });
 			cellTop.createSpan({ cls: 'ai-scheduler-cal-day-num', text: String(cellDate.getDate()) });
@@ -692,16 +696,17 @@ export class CalendarModal extends Modal {
 					chip.createSpan({ cls: 'ai-scheduler-cal-chip-check', text: '✓' });
 				}
 				chip.createSpan({ cls: 'ai-scheduler-cal-chip-time', text: occ.timeStr });
-				const titleText = occ.isReview ? 'Periodic Review' : `#${occ.job.taskNumber ?? ''} ${occ.job.title}`;
+				const titleText = occ.isReview ? 'Periodic review' : `#${occ.job.taskNumber ?? ''} ${occ.job.title}`;
 				chip.createSpan({ cls: 'ai-scheduler-cal-chip-title', text: titleText });
 				chip.setAttribute('title', `${occ.isCompleted ? '[Completed] ' : ''}${occ.timeStr} — ${titleText} (${describeSchedule(occ.job)})`);
 			}
 
-			cell.onclick = () => {
+			const cellLabel = `${DAY_NAMES[cellDate.getDay()]}, ${MONTH_NAMES[cellDate.getMonth() + 1]} ${cellDate.getDate()}: ${occurrences.length} task run${occurrences.length === 1 ? '' : 's'}`;
+			makeClickable(cell, cellLabel, () => {
 				this.selectedDate = cellDate;
 				this.viewMode = 'day';
 				this.render();
-			};
+			});
 
 			cur.setDate(cur.getDate() + 1);
 		}
@@ -714,7 +719,7 @@ export class CalendarModal extends Modal {
 	): void {
 		const key = toLocalDateKey(date);
 		const occurrences = occurrencesMap.get(key) || [];
-		const dateFormatted = formatDate(date.toISOString()).split(' at ')[0] || `${MONTH_NAMES[date.getMonth() + 1]} ${date.getDate()}, ${date.getFullYear()}`;
+		const dateFormatted = `${MONTH_NAMES[date.getMonth() + 1]} ${date.getDate()}, ${date.getFullYear()}`;
 
 		const panel = makeCard(container, 'ai-scheduler-cal-day-panel');
 		const panelHead = panel.createDiv({ cls: 'ai-scheduler-cal-panel-header' });
@@ -730,12 +735,12 @@ export class CalendarModal extends Modal {
 
 		const headActions = panelHead.createDiv({ cls: 'ai-scheduler-cal-panel-actions' });
 
-		makeButton(headActions, '🗓 Open Day View Page', () => {
+		makeButton(headActions, '🗓 Open day view', () => {
 			this.viewMode = 'day';
 			this.render();
 		}, true);
 
-		makeButton(headActions, '+ Schedule Task', () => {
+		makeButton(headActions, '+ Schedule task', () => {
 			this.close();
 			window.setTimeout(() => {
 				const defaultJob = normalizeJob({
@@ -748,7 +753,7 @@ export class CalendarModal extends Modal {
 				});
 				new JobModal(this.app, this.plugin, defaultJob, () => {
 					new CalendarModal(this.app, this.plugin, this.selectedDate, this.viewMode).open();
-				}).open();
+				}, 'Back to calendar').open();
 			}, 50);
 		});
 
@@ -757,7 +762,7 @@ export class CalendarModal extends Modal {
 			empty.createDiv({ cls: 'ai-scheduler-empty-title', text: 'No tasks scheduled on this day' });
 			empty.createDiv({
 				cls: 'ai-scheduler-empty-desc',
-				text: 'Click "Open Day View Page" or create a new scheduled task to plan ahead.',
+				text: 'Open the day view or create a new scheduled task to plan ahead.',
 			});
 			return;
 		}
@@ -780,7 +785,7 @@ export class CalendarModal extends Modal {
 			const row = body.createDiv({ cls: 'ai-scheduler-cal-timeline-top' });
 
 			const title = occ.isReview
-				? 'Periodic Review'
+				? 'Periodic review'
 				: `#${job.taskNumber ?? '?'} ${job.title}`;
 			row.createEl('h4', { text: title, cls: `ai-scheduler-cal-item-title ${occ.isCompleted ? 'is-completed-title' : ''}` });
 
@@ -804,7 +809,7 @@ export class CalendarModal extends Modal {
 			const actions = card.createDiv({ cls: 'ai-scheduler-cal-timeline-actions' });
 			makeButton(actions, occ.isCompleted ? '▶ Run again' : '▶ Run now', () => {
 				void (async () => {
-					new Notice(`Starting Task #${job.taskNumber ?? ''} (${job.title})...`);
+					new Notice(`Starting task #${job.taskNumber ?? ''} (${job.title})...`);
 					await this.plugin.runJobNow(job);
 					this.render();
 				})();
@@ -814,7 +819,7 @@ export class CalendarModal extends Modal {
 				window.setTimeout(() => {
 					new JobModal(this.app, this.plugin, job, () => {
 						new CalendarModal(this.app, this.plugin, this.selectedDate, this.viewMode).open();
-					}).open();
+					}, 'Back to calendar').open();
 				}, 50);
 			});
 			makeButton(actions, '👁 Details', () => {
@@ -822,7 +827,7 @@ export class CalendarModal extends Modal {
 				window.setTimeout(() => {
 					new TaskViewModal(this.app, this.plugin, job, () => {
 						new CalendarModal(this.app, this.plugin, this.selectedDate, this.viewMode).open();
-					}).open();
+					}, 'Back to calendar').open();
 				}, 50);
 			});
 		}
@@ -836,7 +841,7 @@ export class CalendarModal extends Modal {
 	): void {
 		const agendaCard = makeCard(container, 'ai-scheduler-cal-card');
 		agendaCard.createEl('h3', {
-			text: `Upcoming Task Schedule — ${MONTH_NAMES[this.currentMonth + 1]} ${this.currentYear}`,
+			text: `Upcoming task schedule — ${MONTH_NAMES[this.currentMonth + 1]} ${this.currentYear}`,
 			cls: 'ai-scheduler-cal-panel-title',
 		});
 
@@ -884,7 +889,7 @@ export class CalendarModal extends Modal {
 			row.createSpan({ cls: 'ai-scheduler-cal-agenda-time', text: occ.timeStr });
 
 			const mainCol = row.createDiv({ cls: 'ai-scheduler-cal-agenda-main' });
-			const titleText = occ.isReview ? 'Periodic Review' : `#${job.taskNumber ?? '?'} ${job.title}`;
+			const titleText = occ.isReview ? 'Periodic review' : `#${job.taskNumber ?? '?'} ${job.title}`;
 			mainCol.createDiv({
 				cls: `ai-scheduler-cal-agenda-title ${occ.isCompleted ? 'is-completed-title' : ''}`,
 				text: occ.isCompleted ? `✓ ${titleText}` : titleText,
@@ -894,7 +899,7 @@ export class CalendarModal extends Modal {
 			const actions = row.createDiv({ cls: 'ai-scheduler-cal-agenda-actions' });
 			makeButton(actions, '▶ Run', () => {
 				void (async () => {
-					new Notice(`Starting Task #${job.taskNumber ?? ''}...`);
+					new Notice(`Starting task #${job.taskNumber ?? ''}...`);
 					await this.plugin.runJobNow(job);
 					this.render();
 				})();
@@ -909,7 +914,7 @@ export class CalendarModal extends Modal {
 				window.setTimeout(() => {
 					new TaskViewModal(this.app, this.plugin, job, () => {
 						new CalendarModal(this.app, this.plugin, this.selectedDate, this.viewMode).open();
-					}).open();
+					}, 'Back to calendar').open();
 				}, 50);
 			});
 		}
@@ -921,7 +926,7 @@ export class CalendarModal extends Modal {
 
 		const card = makeCard(container, 'ai-scheduler-cal-event-card');
 		const head = card.createDiv({ cls: 'ai-scheduler-cal-event-head' });
-		head.createEl('h4', { text: `⚡ Event-Triggered Tasks (${eventJobs.length})` });
+		head.createEl('h4', { text: `⚡ Event-triggered tasks (${eventJobs.length})` });
 		head.createDiv({
 			cls: 'ai-scheduler-cal-event-desc',
 			text: 'These tasks execute automatically whenever vault files change, rather than at a fixed calendar time.',
@@ -944,7 +949,7 @@ export class CalendarModal extends Modal {
 			const actions = item.createDiv({ cls: 'ai-scheduler-cal-event-actions' });
 			makeButton(actions, '▶ Run now', () => {
 				void (async () => {
-					new Notice(`Starting Task #${job.taskNumber ?? ''}...`);
+					new Notice(`Starting task #${job.taskNumber ?? ''}...`);
 					await this.plugin.runJobNow(job);
 					this.render();
 				})();
@@ -954,7 +959,7 @@ export class CalendarModal extends Modal {
 				window.setTimeout(() => {
 					new JobModal(this.app, this.plugin, job, () => {
 						new CalendarModal(this.app, this.plugin, this.selectedDate, this.viewMode).open();
-					}).open();
+					}, 'Back to calendar').open();
 				}, 50);
 			});
 		}

@@ -8,7 +8,7 @@ import { AISchedulerPlugin } from '../main';
 import { errorText, formatDate } from '../util';
 import { cronFormFor, describeSchedule, previewSchedule } from '../schedule';
 import { createContextPicker } from './contextPicker';
-import { closeExistingSchedulerModals, makeButton, makeCard } from './dom';
+import { closeExistingSchedulerModals, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
 import { AssistantModal } from './AssistantModal';
 import { Job } from '../types';
 import { attachMentionSuggest } from './mentionSuggest';
@@ -17,19 +17,20 @@ import { JobModal } from './JobModal';
 function appendTaskIdBadge(container: HTMLElement, id: string): void {
 	const idBadge = container.createSpan({ cls: 'ai-scheduler-task-id-badge', text: `ID: ${id}` });
 	idBadge.setAttribute('title', 'Click to copy task ID');
-	idBadge.onclick = (e) => {
+	makeClickable(idBadge, `Copy task ID ${id}`, (e) => {
 		e.stopPropagation();
 		if (typeof navigator !== 'undefined' && navigator.clipboard) {
 			void navigator.clipboard.writeText(id).then(() => {
-				new Notice(`Copied Task ID: ${id}`);
+				new Notice(`Copied task ID: ${id}`);
 			});
 		}
-	};
+	});
 }
 
 export class PlannerModal extends Modal {
 	plugin: AISchedulerPlugin;
 	private plannedJobs: Job[] | null = null;
+	private detachMention: (() => void) | null = null;
 
 	constructor(app: AISchedulerPlugin['app'], plugin: AISchedulerPlugin, plannedJobs: Job[] | null = null) {
 		super(app);
@@ -54,7 +55,7 @@ export class PlannerModal extends Modal {
 		const navBar = shell.createDiv({ cls: 'ai-scheduler-modal-nav' });
 		const backBtn = navBar.createEl('button', {
 			cls: 'ai-scheduler-back-btn',
-			text: '← back to dashboard',
+			text: 'Back to dashboard',
 		});
 		backBtn.onclick = () => {
 			this.close();
@@ -65,7 +66,7 @@ export class PlannerModal extends Modal {
 
 		shell.createDiv({ cls: 'ai-scheduler-eyebrow', text: 'AI Planner' });
 		shell.createEl('h1', { text: 'Plan scheduled work', cls: 'ai-scheduler-title ai-scheduler-title-sm' });
-		shell.createEl('p', { text: 'Describe your goal in plain english. Your active AI backend will design and configure the scheduled jobs.', cls: 'ai-scheduler-subtitle' });
+		shell.createEl('p', { text: 'Describe your goal in plain English. Your active AI backend will design and configure the scheduled jobs.', cls: 'ai-scheduler-subtitle' });
 
 		const readiness = this.plugin.getBackendReadiness();
 		if (!readiness.ok) {
@@ -85,16 +86,17 @@ export class PlannerModal extends Modal {
 		}
 
 		shell.createDiv({ cls: 'ai-scheduler-form-label', text: 'What would you like AI Scheduler to do?' });
-		const textarea = shell.createEl('textarea', { cls: 'ai-scheduler-textarea ai-scheduler-textarea-tall' });
+		const textarea = shell.createEl('textarea', { cls: 'ai-scheduler-textarea ai-scheduler-textarea-tall', attr: { 'aria-label': 'What would you like AI Scheduler to do?' } });
 		textarea.placeholder = 'E.g. Every weekday at 9:00 am, review notes modified in the last 24 hours, extract action items, and create an executive summary in AI reviews (type @ to attach files)...';
 		shell.createDiv({ cls: 'ai-scheduler-hint ai-scheduler-hint-gap', text: 'Tip: Type @ in the box above to quickly search and attach vault notes/files.' });
 
 		shell.createDiv({ cls: 'ai-scheduler-form-label', text: 'Default result folder (optional)' });
-		const resultFolder = shell.createEl('input', { type: 'text', cls: 'ai-scheduler-input ai-scheduler-form-gap', placeholder: 'Optional result folder, e.g. AI Reviews or Projects/Notes' });
+		const resultFolder = shell.createEl('input', { type: 'text', cls: 'ai-scheduler-input ai-scheduler-form-gap', attr: { 'aria-label': 'Default result folder (optional)' }, placeholder: 'Optional result folder, e.g. AI Reviews or Projects/Notes' });
 
 		const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), [], this.app);
 
-		attachMentionSuggest({
+		this.detachMention?.();
+		this.detachMention = attachMentionSuggest({
 			textarea,
 			app: this.app,
 			onSelect: file => {
@@ -139,6 +141,8 @@ export class PlannerModal extends Modal {
 	/* After planning, show the created schedules in editable cards where the user
 	 * can edit, delete, or discard tasks before proceeding. */
 	private renderResults(): void {
+		this.detachMention?.();
+		this.detachMention = null;
 		const { contentEl } = this;
 		this.modalEl.addClass('ai-scheduler-modal');
 		this.modalEl.addClass('ai-scheduler-modal-lg');
@@ -149,7 +153,7 @@ export class PlannerModal extends Modal {
 		const navBar = shell.createDiv({ cls: 'ai-scheduler-modal-nav' });
 		const backBtn = navBar.createEl('button', {
 			cls: 'ai-scheduler-back-btn',
-			text: '← back to dashboard',
+			text: 'Back to dashboard',
 		});
 		backBtn.onclick = () => {
 			this.close();
@@ -193,7 +197,7 @@ export class PlannerModal extends Modal {
 				window.setTimeout(() => {
 					new JobModal(this.app, this.plugin, job, () => {
 						new PlannerModal(this.app, this.plugin, this.plannedJobs).open();
-					}).open();
+					}, 'Back to planner').open();
 				}, 50);
 			});
 			makeButton(actions, 'Discard', async () => {
@@ -213,7 +217,7 @@ export class PlannerModal extends Modal {
 				const content = doubtBanner.createDiv({ cls: 'ai-scheduler-alert-content' });
 				content.createSpan({ cls: 'ai-scheduler-alert-icon', text: '💡' });
 				const textCol = content.createDiv();
-				textCol.createDiv({ cls: 'ai-scheduler-alert-title', text: 'AI Planning Note & Unspecified Fields' });
+				textCol.createDiv({ cls: 'ai-scheduler-alert-title', text: 'AI planning note and unspecified fields' });
 				textCol.createDiv({ cls: 'ai-scheduler-alert-desc', text: `${job.doubt} Default values were populated. Click 'Edit' if you wish to adjust any parameters.` });
 			}
 
@@ -254,6 +258,9 @@ export class PlannerModal extends Modal {
 	}
 
 	onClose(): void {
+		this.detachMention?.();
+		this.detachMention = null;
+		releaseSchedulerModal(this);
 		this.contentEl.empty();
 	}
 }

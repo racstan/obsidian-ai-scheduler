@@ -1,7 +1,7 @@
 /* Settings, job normalization, and stored-data parsing (faithful port of the
  * original onload migration logic), plus the two new opt-in note settings. */
 import { ActivityEntry, AISettings, Job, JobOutput, SCHEDULE_KINDS, TaskSchedule } from './types';
-import { getScheduleNextRun } from './schedule';
+import { getScheduleNextRun, normalizeMaxIterations } from './schedule';
 import { id, localDateKey } from './util';
 
 export const DEFAULT_SETTINGS: AISettings = {
@@ -53,11 +53,14 @@ export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date(
 		time: typeof scheduleRaw.time === 'string' ? scheduleRaw.time : undefined,
 		days: Array.isArray(scheduleRaw.days) ? scheduleRaw.days.map(Number).filter(d => Number.isInteger(d) && d >= 0 && d <= 6) : undefined,
 		rules: scheduleRaw.rules as TaskSchedule['rules'],
-		event: typeof scheduleRaw.event === 'string' ? scheduleRaw.event : undefined,
+		// Only vault modify/create events exist; anything else silently never fired.
+		event: typeof scheduleRaw.event === 'string'
+			? (['modify', 'vault-change'].includes(scheduleRaw.event) ? scheduleRaw.event : 'modify')
+			: undefined,
 		intervalMinutes: Number.isFinite(Number(scheduleRaw.intervalMinutes || scheduleRaw.everyMinutes || (Number(scheduleRaw.everyHours || 0) * 60)))
 			? Number(scheduleRaw.intervalMinutes || scheduleRaw.everyMinutes || (Number(scheduleRaw.everyHours || 0) * 60))
 			: null,
-		maxIterations: normalizeMaxIterationsField(scheduleRaw.maxIterations || scheduleRaw.maxRuns || scheduleRaw.iterations),
+		maxIterations: normalizeMaxIterations(scheduleRaw.maxIterations || scheduleRaw.maxRuns || scheduleRaw.iterations),
 		expression: typeof scheduleRaw.expression === 'string' ? scheduleRaw.expression : undefined,
 		startAt: typeof scheduleRaw.startAt === 'string' && !Number.isNaN(new Date(scheduleRaw.startAt).getTime()) ? scheduleRaw.startAt : undefined,
 		everyDays: intInRange(scheduleRaw.everyDays, 1, Number.MAX_SAFE_INTEGER),
@@ -66,6 +69,12 @@ export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date(
 		dayOfMonth: intInRange(scheduleRaw.dayOfMonth, 1, 31),
 		month: intInRange(scheduleRaw.month, 1, 12),
 	};
+	// A weekly schedule with no days used "whatever weekday it is now" on every
+	// reschedule, so it drifted. Pin it to the weekday the job was created.
+	if (normalizedSchedule.kind === 'weekly' && !normalizedSchedule.days?.length) {
+		const created = typeof raw.createdAt === 'string' && !Number.isNaN(new Date(raw.createdAt).getTime()) ? new Date(raw.createdAt) : now;
+		normalizedSchedule.days = [created.getDay()];
+	}
 	// "Every N days/weeks/months" needs an anchor to count from; without one the
 	// step was ignored (weeks/months) or restarted on every reschedule (days).
 	// Default it to the day the job was created, which is then persisted.
@@ -142,11 +151,6 @@ function intInRange(value: unknown, min: number, max: number): number | undefine
 	if (value === undefined || value === null || value === '') return undefined;
 	const number = Number(value);
 	return Number.isInteger(number) && number >= min && number <= max ? number : undefined;
-}
-
-function normalizeMaxIterationsField(value: unknown): number | null {
-	const number = Number(value);
-	return Number.isInteger(number) && number > 0 ? number : null;
 }
 
 /** Parses data.json contents into settings/jobs/activity with all legacy migrations. */

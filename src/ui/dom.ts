@@ -1,3 +1,5 @@
+import { Modal } from 'obsidian';
+
 export function makeButton(parent: HTMLElement, label: string, onClick: (button: HTMLButtonElement) => void | Promise<void>, primary = false, danger = false): HTMLButtonElement {
 	const button = parent.createEl('button', { text: label });
 	if (primary) button.addClass('mod-cta');
@@ -44,21 +46,41 @@ export function liveRefresh(root: HTMLElement, signature: () => string, render: 
 	};
 }
 
-export function closeExistingSchedulerModals(currentModal?: { modalEl?: HTMLElement; contentEl?: HTMLElement }): void {
-	if (typeof document === 'undefined') return;
-	document.querySelectorAll('.ai-scheduler-modal').forEach(el => {
-		if (currentModal && currentModal.modalEl && (el === currentModal.modalEl || el.contains(currentModal.modalEl))) {
-			return;
-		}
-		const container = el.closest('.modal-container');
-		if (container && currentModal && currentModal.contentEl && container.contains(currentModal.contentEl)) {
-			return;
-		}
-		if (container) {
-			const closeBtn = container.querySelector('.modal-close-button') as HTMLElement;
-			if (closeBtn) closeBtn.click();
-			else container.remove();
+/**
+ * Makes a non-button element (badge, cell, chip) behave like a button for
+ * keyboard and screen-reader users: focusable, labelled, and activated with
+ * Enter or Space as well as by click.
+ */
+export function makeClickable(el: HTMLElement, label: string, onActivate: (event: Event) => void): void {
+	el.setAttribute('role', 'button');
+	el.setAttribute('tabindex', '0');
+	el.setAttribute('aria-label', label);
+	el.addEventListener('click', onActivate);
+	el.addEventListener('keydown', (event: KeyboardEvent) => {
+		// Ignore keys bubbling up from real controls nested inside (e.g. a button).
+		if (event.target === el && (event.key === 'Enter' || event.key === ' ')) {
+			event.preventDefault();
+			onActivate(event);
 		}
 	});
 }
 
+/** The scheduler modal currently on screen; only one is shown at a time. */
+let activeSchedulerModal: Modal | null = null;
+
+/**
+ * Closes the previously opened scheduler modal (through its own `close()`, so
+ * its `onClose` cleanup runs) and registers `currentModal` as the active one.
+ */
+export function closeExistingSchedulerModals(currentModal?: Modal): void {
+	const previous = activeSchedulerModal;
+	activeSchedulerModal = currentModal ?? null;
+	if (previous && previous !== currentModal && previous.modalEl.isConnected) {
+		previous.close();
+	}
+}
+
+/** Called from a scheduler modal's `onClose` to drop it from the registry. */
+export function releaseSchedulerModal(modal: Modal): void {
+	if (activeSchedulerModal === modal) activeSchedulerModal = null;
+}

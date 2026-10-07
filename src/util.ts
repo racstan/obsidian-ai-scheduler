@@ -72,19 +72,42 @@ export function contentFromMessage(message: unknown): string {
 	return '';
 }
 
+/** Index just past the bracket that closes the one at `start`, or -1 (string-aware). */
+function matchingBracketEnd(text: string, start: number): number {
+	let depth = 0;
+	let inString = false;
+	for (let i = start; i < text.length; i++) {
+		const ch = text[i];
+		if (inString) {
+			if (ch === '\\') i++;
+			else if (ch === '"') inString = false;
+		} else if (ch === '"') {
+			inString = true;
+		} else if (ch === '[' || ch === '{') {
+			depth++;
+		} else if (ch === ']' || ch === '}') {
+			depth--;
+			if (depth === 0) return i + 1;
+		}
+	}
+	return -1;
+}
+
+/* Finds the first JSON object/array in the text. Each candidate start is
+ * matched to its closing bracket in one linear scan (trying JSON.parse on every
+ * prefix was quadratic and froze the UI on long replies). */
 function parseJsonCandidate(candidate: string): Record<string, unknown>[] {
-	const trimmed = candidate.trim();
-	const a = trimmed.indexOf('[');
-	const o = trimmed.indexOf('{');
-	const start = a < 0 ? o : o < 0 ? a : Math.min(a, o);
-	if (start < 0) return [];
-	for (let end = trimmed.length; end > start; end--) {
+	const text = candidate.trim();
+	for (let start = 0; start < text.length; start++) {
+		if (text[start] !== '[' && text[start] !== '{') continue;
+		const end = matchingBracketEnd(text, start);
+		if (end < 0) continue;
 		try {
-			const parsed = JSON.parse(trimmed.slice(start, end)) as unknown;
+			const parsed = JSON.parse(text.slice(start, end)) as unknown;
 			if (parsed && typeof parsed === 'object') {
 				return (Array.isArray(parsed) ? parsed : [parsed]) as Record<string, unknown>[];
 			}
-		} catch { /* keep looking for the end of the JSON value */ }
+		} catch { /* not JSON (e.g. "[link]" prose); try the next bracket */ }
 	}
 	return [];
 }
