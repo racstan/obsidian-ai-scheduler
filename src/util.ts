@@ -110,8 +110,10 @@ export function extractJson(text: string): Record<string, unknown>[] {
 }
 
 export function isNightlyReviewJob(job: Job): boolean {
-	return Boolean(job && job.routine === 'daily-review');
+	return Boolean(job && (job.routine === 'daily-review' || job.routine === 'periodic-review' || job.id === 'nightly-daily-review' || job.id === 'periodic-vault-review'));
 }
+
+export const isPeriodicReviewJob = isNightlyReviewJob;
 
 export function isDisabledTask(job: Job): boolean {
 	return Boolean(job && !isNightlyReviewJob(job) && !job.enabled

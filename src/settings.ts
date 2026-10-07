@@ -11,9 +11,13 @@ export const DEFAULT_SETTINGS: AISettings = {
 	executionModel: '',
 	dailyReviewModel: '',
 	nightlyReviewModel: '',
-	reportFolder: 'AI Reviews',
+	reportFolder: '',
 	reviewTime: '22:00',
 	nightlyReviewEnabled: false,
+	periodicReviewCadence: 'daily',
+	periodicReviewDays: [1],
+	periodicReviewEveryDays: 2,
+	periodicReviewHours: 12,
 	notifyOnCompletion: true,
 	systemNotifications: true,
 	catchUpOnStart: false,
@@ -159,6 +163,12 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 	if (typeof settings.defaultOutputFolder !== 'string') settings.defaultOutputFolder = '';
 	if (typeof settings.taskLoggingEnabled !== 'boolean') settings.taskLoggingEnabled = false;
 	if (typeof settings.taskLogFolder !== 'string') settings.taskLogFolder = '';
+	if (!['daily', 'weekly', 'every-n-days', 'hourly'].includes(settings.periodicReviewCadence as string)) {
+		settings.periodicReviewCadence = 'daily';
+	}
+	if (!Array.isArray(settings.periodicReviewDays)) settings.periodicReviewDays = [5];
+	if (typeof settings.periodicReviewEveryDays !== 'number' || settings.periodicReviewEveryDays < 1) settings.periodicReviewEveryDays = 2;
+	if (typeof settings.periodicReviewHours !== 'number' || settings.periodicReviewHours < 1) settings.periodicReviewHours = 12;
 
 	const legacyTasks = stored.tasks as Array<Record<string, unknown>> | undefined;
 	const jobs = Array.isArray(stored.jobs)

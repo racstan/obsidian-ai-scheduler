@@ -101,6 +101,10 @@ export interface AISettings {
 	reportFolder: string;
 	reviewTime: string;
 	nightlyReviewEnabled: boolean;
+	periodicReviewCadence?: 'daily' | 'weekly' | 'every-n-days' | 'hourly';
+	periodicReviewDays?: number[];
+	periodicReviewEveryDays?: number;
+	periodicReviewHours?: number;
 	notifyOnCompletion: boolean;
 	systemNotifications: boolean;
 	catchUpOnStart: boolean;

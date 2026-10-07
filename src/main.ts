@@ -17,7 +17,6 @@ import { ActivityEntry, AISettings, BACKEND_INFO, Job, JobOutput, ScheduleKind, 
 import { DEFAULT_SETTINGS, normalizeJob, parseStoredData } from './settings';
 import {
 	getScheduleNextRun,
-	nextDailyRun,
 	normalizeMaxIterations,
 	validClock,
 } from './schedule';
@@ -113,37 +112,37 @@ export class AISchedulerPlugin extends Plugin {
 		});
 		this.addCommand({
 			id: 'run-nightly-review',
-			name: 'Run AI nightly review now',
-			callback: () => this.startReviewRun(true, 'nightly'),
+			name: 'Run AI periodic review now',
+			callback: () => this.startReviewRun(true, 'periodic'),
 		});
 		this.addCommand({
 			id: 'enable-nightly-review',
-			name: 'Enable nightly AI review',
+			name: 'Enable periodic AI review',
 			callback: async () => {
 				this.settings.nightlyReviewEnabled = true;
-				await this.ensureNightlyReviewJob();
+				await this.ensurePeriodicReviewJob();
 				await this.saveState();
-				new Notice('Nightly AI review enabled');
+				new Notice('Periodic AI review enabled');
 			},
 		});
 		this.addCommand({
 			id: 'disable-nightly-review',
-			name: 'Disable nightly AI review',
+			name: 'Disable periodic AI review',
 			callback: async () => {
 				this.settings.nightlyReviewEnabled = false;
-				await this.ensureNightlyReviewJob();
+				await this.ensurePeriodicReviewJob();
 				await this.saveState();
-				new Notice('Nightly AI review disabled');
+				new Notice('Periodic AI review disabled');
 			},
 		});
 		this.addCommand({
 			id: 'toggle-nightly-review',
-			name: 'Toggle nightly AI review',
+			name: 'Toggle periodic AI review',
 			callback: async () => {
 				this.settings.nightlyReviewEnabled = !this.settings.nightlyReviewEnabled;
-				await this.ensureNightlyReviewJob();
+				await this.ensurePeriodicReviewJob();
 				await this.saveState();
-				new Notice(this.settings.nightlyReviewEnabled ? 'Nightly AI review enabled' : 'Nightly AI review disabled');
+				new Notice(this.settings.nightlyReviewEnabled ? 'Periodic AI review enabled' : 'Periodic AI review disabled');
 			},
 		});
 		this.addCommand({
@@ -223,7 +222,7 @@ export class AISchedulerPlugin extends Plugin {
 			void this.notesSync.handleVaultChange(file, 'rename', oldPath);
 		}));
 
-		if (this.settings.nightlyReviewEnabled) await this.ensureNightlyReviewJob();
+		if (this.settings.nightlyReviewEnabled) await this.ensurePeriodicReviewJob();
 		await this.saveState();
 
 		// Check for changelog notification on update (only fires once per update when layout is ready)
@@ -384,11 +383,12 @@ export class AISchedulerPlugin extends Plugin {
 			});
 			await this.saveState();
 			const context = this.getJobContext(job);
-			const prompt = job.routine === 'daily-review'
+			const isReview = job.routine === 'daily-review' || job.routine === 'periodic-review';
+			const prompt = isReview
 				? ''
 				: executionPrompt(job.prompt, context.paths);
-			const reply = job.routine === 'daily-review'
-				? await this.runDailyReview(false, execution, 'nightly')
+			const reply = isReview
+				? await this.runDailyReview(false, execution, 'periodic')
 				: await backends.sendToAI(this, prompt, execution, context);
 			const trimmedReply = (reply || '').trim();
 			if (!trimmedReply) {
@@ -446,7 +446,7 @@ export class AISchedulerPlugin extends Plugin {
 		if (!file || !file.path) return;
 		const normPath = normalizePath(file.path);
 		if (this.selfWrites.has(normPath)) return;
-		const normReport = normalizePath(this.settings.reportFolder || 'AI Reviews');
+		const normReport = this.getPeriodicReviewFolder();
 		const normSchedule = normalizePath(this.settings.scheduleFolder || 'AI Schedules');
 		if (ScheduleNotesSync.isInside(normReport, normPath) || ScheduleNotesSync.isInside(normSchedule, normPath)) {
 			return;
@@ -480,8 +480,15 @@ export class AISchedulerPlugin extends Plugin {
 		return job;
 	}
 
-	async ensureNightlyReviewJob(): Promise<void> {
-		let job = this.jobs.find(candidate => candidate.routine === 'daily-review');
+	getPeriodicReviewFolder(): string {
+		if (this.settings.reportFolder && this.settings.reportFolder.trim()) {
+			return normalizePath(this.settings.reportFolder.trim());
+		}
+		return normalizePath(`${this.getDefaultOutputFolder()}/Periodic Reviews`);
+	}
+
+	async ensurePeriodicReviewJob(): Promise<void> {
+		let job = this.jobs.find(candidate => candidate.routine === 'daily-review' || candidate.routine === 'periodic-review');
 		if (!this.settings.nightlyReviewEnabled) {
 			if (job) {
 				job.enabled = false;
@@ -491,37 +498,63 @@ export class AISchedulerPlugin extends Plugin {
 			}
 			return;
 		}
-		if (!validClock(this.settings.reviewTime)) {
-			new Notice('AI Scheduler: review time is invalid, nightly review not scheduled.');
-			return;
+
+		const cadence = this.settings.periodicReviewCadence || 'daily';
+		let schedule: TaskSchedule;
+
+		if (cadence === 'hourly') {
+			const hours = Math.max(1, Number(this.settings.periodicReviewHours) || 12);
+			schedule = { kind: 'interval', intervalMinutes: hours * 60 };
+		} else if (cadence === 'every-n-days') {
+			const everyDays = Math.max(1, Number(this.settings.periodicReviewEveryDays) || 2);
+			const time = validClock(this.settings.reviewTime) ? this.settings.reviewTime : '22:00';
+			schedule = { kind: 'daily', time, everyDays };
+		} else if (cadence === 'weekly') {
+			const days = Array.isArray(this.settings.periodicReviewDays) && this.settings.periodicReviewDays.length
+				? this.settings.periodicReviewDays
+				: [1];
+			const time = validClock(this.settings.reviewTime) ? this.settings.reviewTime : '22:00';
+			schedule = { kind: 'weekly', time, days };
+		} else {
+			// daily
+			const time = validClock(this.settings.reviewTime) ? this.settings.reviewTime : '22:00';
+			schedule = { kind: 'daily', time };
 		}
+
 		if (!job) {
 			job = normalizeJob({
-				id: 'nightly-daily-review',
-				title: 'Nightly daily review',
+				id: 'periodic-vault-review',
+				title: 'Periodic vault review',
 				prompt: '',
 				tab: this.settings.assistantTab,
-				routine: 'daily-review',
-				schedule: { kind: 'daily', time: this.settings.reviewTime },
+				routine: 'periodic-review',
+				schedule,
 				notify: true,
 			});
 			this.jobs.push(job);
 		} else {
+			job.title = 'Periodic vault review';
+			job.routine = 'periodic-review';
 			job.enabled = true;
 			job.status = 'scheduled';
 			job.lastStatus = null;
 			job.tab = this.settings.assistantTab;
-			job.schedule = { kind: 'daily', time: this.settings.reviewTime };
-			job.nextRunAt = nextDailyRun(this.settings.reviewTime);
+			job.schedule = schedule;
+			job.nextRunAt = getScheduleNextRun(schedule);
 		}
 	}
 
-	async startReviewRun(manual = true, kind: 'daily' | 'nightly' = 'daily'): Promise<void> {
+	async ensureNightlyReviewJob(): Promise<void> {
+		return this.ensurePeriodicReviewJob();
+	}
+
+	async startReviewRun(manual = true, kind: 'daily' | 'nightly' | 'periodic' = 'periodic'): Promise<void> {
 		if (this.reviewRunning) {
 			new Notice('A review is already running. You can keep using Obsidian while it finishes.', 5000);
 			return;
 		}
-		new Notice(`${kind === 'nightly' ? 'Nightly' : 'Daily'} review started. It will create ${this.settings.reportFolder}/${localTimestampKey()}.md. You can keep using Obsidian.`, 7000);
+		const folder = this.getPeriodicReviewFolder();
+		new Notice(`Periodic review started. It will create ${folder}/${localTimestampKey()}.md. You can keep using Obsidian.`, 7000);
 		void this.runDailyReview(manual, null, kind).catch(error => {
 			this.logActivity('failed', `Review failed: ${errorText(error)}`);
 			new Notice(`Review failed: ${errorText(error)}`, 8000);
@@ -529,7 +562,7 @@ export class AISchedulerPlugin extends Plugin {
 		});
 	}
 
-	async runDailyReview(manual: boolean, execution: backends.ResolvedExecution | null = null, kind: 'daily' | 'nightly' = 'daily'): Promise<string> {
+	async runDailyReview(manual: boolean, execution: backends.ResolvedExecution | null = null, kind: 'daily' | 'nightly' | 'periodic' = 'periodic'): Promise<string> {
 		if (this.reviewRunning) {
 			throw new Error('A review is already in progress.');
 		}
@@ -544,33 +577,34 @@ export class AISchedulerPlugin extends Plugin {
 				.filter(file => this.includeReviewFile(file, start))
 				.sort((a, b) => b.stat.mtime - a.stat.mtime);
 			const fileList = files.length ? files.map(file => `- ${file.path}`).join('\n') : '- No Markdown files were created or modified today.';
-			const prompt = reviewPrompt(kind, today, fileList);
-			const nightlyJob = this.jobs.find(candidate => candidate.routine === 'daily-review');
-			const model = kind === 'nightly' ? this.settings.nightlyReviewModel : this.settings.dailyReviewModel;
-			const resolved = execution || (nightlyJob && kind === 'nightly'
-				? await backends.resolveJobExecution(this, nightlyJob)
-				: await backends.resolveModel(this, model, kind === 'nightly' ? 'nightly review' : 'daily preview'));
+			const prompt = reviewPrompt(kind === 'daily' ? 'daily' : 'nightly', today, fileList);
+			const reviewJob = this.jobs.find(candidate => candidate.routine === 'daily-review' || candidate.routine === 'periodic-review');
+			const model = this.settings.nightlyReviewModel || this.settings.dailyReviewModel;
+			const resolved = execution || (reviewJob
+				? await backends.resolveJobExecution(this, reviewJob)
+				: await backends.resolveModel(this, model, 'periodic review'));
 			const context = getPathsContext(this.app, files.map(file => file.path));
 			const reply = await backends.sendToAI(this, prompt, resolved, context);
-			const reportTitle = kind === 'nightly' ? 'Nightly Review' : 'Daily Preview';
+			const reportTitle = kind === 'daily' ? 'Daily Preview' : 'Periodic Vault Review';
 			const report = reply || `# ${reportTitle} - ${today}\n\nThe active AI backend did not return a report.`;
 			const timestamp = localTimestampKey(now);
+			const reportFolder = this.getPeriodicReviewFolder();
 			let filename = `${timestamp}.md`;
 			let suffix = 2;
-			while (this.app.vault.getAbstractFileByPath(normalizePath(`${this.settings.reportFolder}/${filename}`))) {
+			while (this.app.vault.getAbstractFileByPath(normalizePath(`${reportFolder}/${filename}`))) {
 				filename = `${timestamp}-${suffix}.md`;
 				suffix += 1;
 			}
-			const path = `${this.settings.reportFolder}/${filename}`;
-			await this.writeOutput(this.settings.reportFolder, filename, `# ${reportTitle} - ${today}\n\nGenerated: ${formatDate(now.toISOString())}\n\n${report}`);
-			if (nightlyJob) {
-				nightlyJob.lastOutputPath = path;
-				if (!nightlyJob.lastOutputFiles) nightlyJob.lastOutputFiles = [];
-				if (!nightlyJob.lastOutputFiles.includes(path)) {
-					nightlyJob.lastOutputFiles.push(path);
+			const path = `${reportFolder}/${filename}`;
+			await this.writeOutput(reportFolder, filename, `# ${reportTitle} - ${today}\n\nGenerated: ${formatDate(now.toISOString())}\n\n${report}`);
+			if (reviewJob) {
+				reviewJob.lastOutputPath = path;
+				if (!reviewJob.lastOutputFiles) reviewJob.lastOutputFiles = [];
+				if (!reviewJob.lastOutputFiles.includes(path)) {
+					reviewJob.lastOutputFiles.push(path);
 				}
 			}
-			this.logActivity('review', `Daily review written to ${path}`);
+			this.logActivity('review', `Periodic review written to ${path}`);
 			if (manual || this.settings.notifyOnCompletion) {
 				new Notice(`Review written to ${path}`, 6000);
 			}
@@ -588,7 +622,7 @@ export class AISchedulerPlugin extends Plugin {
 	includeReviewFile(file: { path: string; stat: { mtime: number } }, start: Date): boolean {
 		if (!file || !file.path) return false;
 		const normPath = normalizePath(file.path);
-		const normReport = normalizePath(this.settings.reportFolder || 'AI Reviews');
+		const normReport = this.getPeriodicReviewFolder();
 		const normSchedule = normalizePath(this.settings.scheduleFolder || 'AI Schedules');
 		if (ScheduleNotesSync.isInside(normReport, normPath) || ScheduleNotesSync.isInside(normSchedule, normPath)) {
 			return false;

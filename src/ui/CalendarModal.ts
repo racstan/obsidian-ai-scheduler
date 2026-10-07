@@ -15,6 +15,7 @@ export interface CalendarOccurrence {
 	date: Date;
 	timeStr: string;
 	isPast: boolean;
+	isCompleted: boolean;
 	isReview?: boolean;
 }
 
@@ -86,11 +87,17 @@ export class CalendarModal extends Modal {
 			for (const d of dates) {
 				const key = toLocalDateKey(d);
 				if (!map.has(key)) map.set(key, []);
+				const isJobCompleted = job.status === 'completed';
+				const isOnceCompleted = job.schedule?.kind === 'once' && (job.status === 'completed' || Boolean(job.lastRunAt));
+				const isPastCompleted = (d < now) && job.status !== 'failed' && job.status !== 'running';
+				const isCompleted = isJobCompleted || isOnceCompleted || isPastCompleted;
+
 				map.get(key)!.push({
 					job,
 					date: d,
 					timeStr: formatClockTime(d),
 					isPast: d < now,
+					isCompleted,
 					isReview: isNightlyReviewJob(job),
 				});
 			}
@@ -289,27 +296,21 @@ export class CalendarModal extends Modal {
 				countBadge.setAttribute('title', `${occurrences.length} task(s) on this day`);
 			}
 
-			// Task chips inside cell (up to 3 visible)
+			// Task chips inside cell (fully scrollable within the fixed window)
 			const chipsContainer = cell.createDiv({ cls: 'ai-scheduler-cal-chips' });
-			const visibleOccurrences = occurrences.slice(0, 3);
 
-			for (const occ of visibleOccurrences) {
+			for (const occ of occurrences) {
 				const isRunning = occ.job.status === 'running' || this.plugin.runningJobs.has(occ.job.id);
 				const chip = chipsContainer.createDiv({
-					cls: `ai-scheduler-cal-chip ${occ.isReview ? 'is-review' : ''} ${isRunning ? 'is-running' : ''} ${!occ.job.enabled ? 'is-paused' : ''}`,
+					cls: `ai-scheduler-cal-chip ${occ.isReview ? 'is-review' : ''} ${isRunning ? 'is-running' : ''} ${occ.isCompleted ? 'is-completed' : ''} ${!occ.job.enabled ? 'is-paused' : ''}`,
 				});
+				if (occ.isCompleted) {
+					chip.createSpan({ cls: 'ai-scheduler-cal-chip-check', text: '✓' });
+				}
 				chip.createSpan({ cls: 'ai-scheduler-cal-chip-time', text: occ.timeStr });
-				const titleText = occ.isReview ? 'Nightly Review' : `#${occ.job.taskNumber ?? ''} ${occ.job.title}`;
+				const titleText = occ.isReview ? 'Periodic Review' : `#${occ.job.taskNumber ?? ''} ${occ.job.title}`;
 				chip.createSpan({ cls: 'ai-scheduler-cal-chip-title', text: titleText });
-				chip.setAttribute('title', `${occ.timeStr} — ${titleText} (${describeSchedule(occ.job)})`);
-			}
-
-			if (occurrences.length > 3) {
-				const moreEl = chipsContainer.createDiv({
-					cls: 'ai-scheduler-cal-chip-more',
-					text: `+${occurrences.length - 3} more`,
-				});
-				moreEl.setAttribute('title', `${occurrences.length - 3} additional task(s)`);
+				chip.setAttribute('title', `${occ.isCompleted ? '[Completed] ' : ''}${occ.timeStr} — ${titleText} (${describeSchedule(occ.job)})`);
 			}
 
 			cell.onclick = () => {
@@ -376,7 +377,7 @@ export class CalendarModal extends Modal {
 			const job = occ.job;
 			const isRunning = job.status === 'running' || this.plugin.runningJobs.has(job.id);
 			const card = list.createDiv({
-				cls: `ai-scheduler-cal-timeline-item ${isRunning ? 'is-running' : ''} ${!job.enabled ? 'is-paused' : ''}`,
+				cls: `ai-scheduler-cal-timeline-item ${isRunning ? 'is-running' : ''} ${occ.isCompleted ? 'is-completed' : ''} ${!job.enabled ? 'is-paused' : ''}`,
 			});
 
 			// Left time pillar
@@ -388,11 +389,14 @@ export class CalendarModal extends Modal {
 			const row = body.createDiv({ cls: 'ai-scheduler-cal-timeline-top' });
 
 			const title = occ.isReview
-				? 'Nightly Review'
+				? 'Periodic Review'
 				: `#${job.taskNumber ?? '?'} ${job.title}`;
-			row.createEl('h4', { text: title, cls: 'ai-scheduler-cal-item-title' });
+			row.createEl('h4', { text: title, cls: `ai-scheduler-cal-item-title ${occ.isCompleted ? 'is-completed-title' : ''}` });
 
 			const metaRow = body.createDiv({ cls: 'ai-scheduler-cal-timeline-meta' });
+			if (occ.isCompleted) {
+				metaRow.createSpan({ cls: 'ai-scheduler-badge ai-scheduler-badge-completed', text: '✓ Completed' });
+			}
 			metaRow.createSpan({ cls: 'ai-scheduler-badge', text: describeSchedule(job) });
 			metaRow.createSpan({ cls: 'ai-scheduler-badge ai-scheduler-badge-backend', text: describeBinding(job) });
 
@@ -407,7 +411,7 @@ export class CalendarModal extends Modal {
 
 			// Actions
 			const actions = card.createDiv({ cls: 'ai-scheduler-cal-timeline-actions' });
-			makeButton(actions, '▶ Run now', () => {
+			makeButton(actions, occ.isCompleted ? '▶ Run again' : '▶ Run now', () => {
 				void (async () => {
 					new Notice(`Starting Task #${job.taskNumber ?? ''} (${job.title})...`);
 					await this.plugin.retryJob(job);
@@ -483,14 +487,17 @@ export class CalendarModal extends Modal {
 			const job = occ.job;
 			const isRunning = job.status === 'running' || this.plugin.runningJobs.has(job.id);
 			const row = timeline.createDiv({
-				cls: `ai-scheduler-cal-agenda-row ${isRunning ? 'is-running' : ''} ${!job.enabled ? 'is-paused' : ''}`,
+				cls: `ai-scheduler-cal-agenda-row ${isRunning ? 'is-running' : ''} ${occ.isCompleted ? 'is-completed' : ''} ${!job.enabled ? 'is-paused' : ''}`,
 			});
 
 			row.createSpan({ cls: 'ai-scheduler-cal-agenda-time', text: occ.timeStr });
 
 			const mainCol = row.createDiv({ cls: 'ai-scheduler-cal-agenda-main' });
-			const titleText = occ.isReview ? 'Nightly Review' : `#${job.taskNumber ?? '?'} ${job.title}`;
-			mainCol.createDiv({ cls: 'ai-scheduler-cal-agenda-title', text: titleText });
+			const titleText = occ.isReview ? 'Periodic Review' : `#${job.taskNumber ?? '?'} ${job.title}`;
+			mainCol.createDiv({
+				cls: `ai-scheduler-cal-agenda-title ${occ.isCompleted ? 'is-completed-title' : ''}`,
+				text: occ.isCompleted ? `✓ ${titleText}` : titleText,
+			});
 			mainCol.createDiv({ cls: 'ai-scheduler-cal-agenda-sub', text: `${describeBinding(job)} · ${describeSchedule(job)}` });
 
 			const actions = row.createDiv({ cls: 'ai-scheduler-cal-agenda-actions' });

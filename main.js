@@ -466,7 +466,7 @@ function extractJson(text) {
   return parseJsonCandidate(source);
 }
 function isNightlyReviewJob(job) {
-  return Boolean(job && job.routine === "daily-review");
+  return Boolean(job && (job.routine === "daily-review" || job.routine === "periodic-review" || job.id === "nightly-daily-review" || job.id === "periodic-vault-review"));
 }
 function isDisabledTask(job) {
   return Boolean(job && !isNightlyReviewJob(job) && !job.enabled && (job.status === "disabled" || job.lastStatus === "disabled"));
@@ -917,9 +917,13 @@ var DEFAULT_SETTINGS = {
   executionModel: "",
   dailyReviewModel: "",
   nightlyReviewModel: "",
-  reportFolder: "AI Reviews",
+  reportFolder: "",
   reviewTime: "22:00",
   nightlyReviewEnabled: false,
+  periodicReviewCadence: "daily",
+  periodicReviewDays: [1],
+  periodicReviewEveryDays: 2,
+  periodicReviewHours: 12,
   notifyOnCompletion: true,
   systemNotifications: true,
   catchUpOnStart: false,
@@ -1029,6 +1033,12 @@ function parseStoredData(data) {
   if (typeof settings.defaultOutputFolder !== "string") settings.defaultOutputFolder = "";
   if (typeof settings.taskLoggingEnabled !== "boolean") settings.taskLoggingEnabled = false;
   if (typeof settings.taskLogFolder !== "string") settings.taskLogFolder = "";
+  if (!["daily", "weekly", "every-n-days", "hourly"].includes(settings.periodicReviewCadence)) {
+    settings.periodicReviewCadence = "daily";
+  }
+  if (!Array.isArray(settings.periodicReviewDays)) settings.periodicReviewDays = [5];
+  if (typeof settings.periodicReviewEveryDays !== "number" || settings.periodicReviewEveryDays < 1) settings.periodicReviewEveryDays = 2;
+  if (typeof settings.periodicReviewHours !== "number" || settings.periodicReviewHours < 1) settings.periodicReviewHours = 12;
   const legacyTasks = stored.tasks;
   const jobs = Array.isArray(stored.jobs) ? stored.jobs.map((job) => normalizeJob(job)) : Array.isArray(legacyTasks) ? legacyTasks.map((task) => normalizeJob({
     ...task,
@@ -3133,6 +3143,7 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
     return jobs;
   }
   buildOccurrencesMap(start, end) {
+    var _a;
     const map = /* @__PURE__ */ new Map();
     const now = /* @__PURE__ */ new Date();
     const jobs = this.getRelevantJobs();
@@ -3141,11 +3152,16 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
       for (const d of dates) {
         const key = toLocalDateKey(d);
         if (!map.has(key)) map.set(key, []);
+        const isJobCompleted = job.status === "completed";
+        const isOnceCompleted = ((_a = job.schedule) == null ? void 0 : _a.kind) === "once" && (job.status === "completed" || Boolean(job.lastRunAt));
+        const isPastCompleted = d < now && job.status !== "failed" && job.status !== "running";
+        const isCompleted = isJobCompleted || isOnceCompleted || isPastCompleted;
         map.get(key).push({
           job,
           date: d,
           timeStr: formatClockTime(d),
           isPast: d < now,
+          isCompleted,
           isReview: isNightlyReviewJob(job)
         });
       }
@@ -3302,23 +3318,18 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
         countBadge.setAttribute("title", `${occurrences.length} task(s) on this day`);
       }
       const chipsContainer = cell.createDiv({ cls: "ai-scheduler-cal-chips" });
-      const visibleOccurrences = occurrences.slice(0, 3);
-      for (const occ of visibleOccurrences) {
+      for (const occ of occurrences) {
         const isRunning = occ.job.status === "running" || this.plugin.runningJobs.has(occ.job.id);
         const chip = chipsContainer.createDiv({
-          cls: `ai-scheduler-cal-chip ${occ.isReview ? "is-review" : ""} ${isRunning ? "is-running" : ""} ${!occ.job.enabled ? "is-paused" : ""}`
+          cls: `ai-scheduler-cal-chip ${occ.isReview ? "is-review" : ""} ${isRunning ? "is-running" : ""} ${occ.isCompleted ? "is-completed" : ""} ${!occ.job.enabled ? "is-paused" : ""}`
         });
+        if (occ.isCompleted) {
+          chip.createSpan({ cls: "ai-scheduler-cal-chip-check", text: "\u2713" });
+        }
         chip.createSpan({ cls: "ai-scheduler-cal-chip-time", text: occ.timeStr });
-        const titleText = occ.isReview ? "Nightly Review" : `#${(_a = occ.job.taskNumber) != null ? _a : ""} ${occ.job.title}`;
+        const titleText = occ.isReview ? "Periodic Review" : `#${(_a = occ.job.taskNumber) != null ? _a : ""} ${occ.job.title}`;
         chip.createSpan({ cls: "ai-scheduler-cal-chip-title", text: titleText });
-        chip.setAttribute("title", `${occ.timeStr} \u2014 ${titleText} (${describeSchedule(occ.job)})`);
-      }
-      if (occurrences.length > 3) {
-        const moreEl = chipsContainer.createDiv({
-          cls: "ai-scheduler-cal-chip-more",
-          text: `+${occurrences.length - 3} more`
-        });
-        moreEl.setAttribute("title", `${occurrences.length - 3} additional task(s)`);
+        chip.setAttribute("title", `${occ.isCompleted ? "[Completed] " : ""}${occ.timeStr} \u2014 ${titleText} (${describeSchedule(occ.job)})`);
       }
       cell.onclick = () => {
         this.selectedDate = cellDate;
@@ -3371,15 +3382,18 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
       const job = occ.job;
       const isRunning = job.status === "running" || this.plugin.runningJobs.has(job.id);
       const card = list.createDiv({
-        cls: `ai-scheduler-cal-timeline-item ${isRunning ? "is-running" : ""} ${!job.enabled ? "is-paused" : ""}`
+        cls: `ai-scheduler-cal-timeline-item ${isRunning ? "is-running" : ""} ${occ.isCompleted ? "is-completed" : ""} ${!job.enabled ? "is-paused" : ""}`
       });
       const timePillar = card.createDiv({ cls: "ai-scheduler-cal-timeline-time" });
       timePillar.createSpan({ cls: "ai-scheduler-cal-time-badge", text: occ.timeStr });
       const body = card.createDiv({ cls: "ai-scheduler-cal-timeline-body" });
       const row = body.createDiv({ cls: "ai-scheduler-cal-timeline-top" });
-      const title = occ.isReview ? "Nightly Review" : `#${(_a = job.taskNumber) != null ? _a : "?"} ${job.title}`;
-      row.createEl("h4", { text: title, cls: "ai-scheduler-cal-item-title" });
+      const title = occ.isReview ? "Periodic Review" : `#${(_a = job.taskNumber) != null ? _a : "?"} ${job.title}`;
+      row.createEl("h4", { text: title, cls: `ai-scheduler-cal-item-title ${occ.isCompleted ? "is-completed-title" : ""}` });
       const metaRow = body.createDiv({ cls: "ai-scheduler-cal-timeline-meta" });
+      if (occ.isCompleted) {
+        metaRow.createSpan({ cls: "ai-scheduler-badge ai-scheduler-badge-completed", text: "\u2713 Completed" });
+      }
       metaRow.createSpan({ cls: "ai-scheduler-badge", text: describeSchedule(job) });
       metaRow.createSpan({ cls: "ai-scheduler-badge ai-scheduler-badge-backend", text: describeBinding(job) });
       if ((_b = job.output) == null ? void 0 : _b.folder) {
@@ -3390,7 +3404,7 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
         body.createDiv({ cls: "ai-scheduler-cal-prompt-preview", text: `\u201C${promptPreview}\u201D` });
       }
       const actions = card.createDiv({ cls: "ai-scheduler-cal-timeline-actions" });
-      makeButton(actions, "\u25B6 Run now", () => {
+      makeButton(actions, occ.isCompleted ? "\u25B6 Run again" : "\u25B6 Run now", () => {
         void (async () => {
           var _a2;
           new import_obsidian7.Notice(`Starting Task #${(_a2 = job.taskNumber) != null ? _a2 : ""} (${job.title})...`);
@@ -3455,12 +3469,15 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
       const job = occ.job;
       const isRunning = job.status === "running" || this.plugin.runningJobs.has(job.id);
       const row = timeline.createDiv({
-        cls: `ai-scheduler-cal-agenda-row ${isRunning ? "is-running" : ""} ${!job.enabled ? "is-paused" : ""}`
+        cls: `ai-scheduler-cal-agenda-row ${isRunning ? "is-running" : ""} ${occ.isCompleted ? "is-completed" : ""} ${!job.enabled ? "is-paused" : ""}`
       });
       row.createSpan({ cls: "ai-scheduler-cal-agenda-time", text: occ.timeStr });
       const mainCol = row.createDiv({ cls: "ai-scheduler-cal-agenda-main" });
-      const titleText = occ.isReview ? "Nightly Review" : `#${(_a = job.taskNumber) != null ? _a : "?"} ${job.title}`;
-      mainCol.createDiv({ cls: "ai-scheduler-cal-agenda-title", text: titleText });
+      const titleText = occ.isReview ? "Periodic Review" : `#${(_a = job.taskNumber) != null ? _a : "?"} ${job.title}`;
+      mainCol.createDiv({
+        cls: `ai-scheduler-cal-agenda-title ${occ.isCompleted ? "is-completed-title" : ""}`,
+        text: occ.isCompleted ? `\u2713 ${titleText}` : titleText
+      });
       mainCol.createDiv({ cls: "ai-scheduler-cal-agenda-sub", text: `${describeBinding(job)} \xB7 ${describeSchedule(job)}` });
       const actions = row.createDiv({ cls: "ai-scheduler-cal-agenda-actions" });
       makeButton(actions, "\u25B6 Run", () => {
@@ -5045,56 +5062,121 @@ var AssistantSettingTab = class extends import_obsidian10.PluginSettingTab {
       addModelSetting("Scheduled task model", "Used when an enabled task runs, including tasks created by the planner.", "executionModel");
       addModelSetting("Daily preview model", "Used by Run daily preview.", "dailyReviewModel");
       if (this.plugin.settings.nightlyReviewEnabled) {
-        addModelSetting("Nightly review model", "Used by the recurring nightly review and the Run AI nightly review now command.", "nightlyReviewModel");
+        addModelSetting("Periodic review model", "Used by recurring periodic reviews and the Run AI periodic review now command.", "nightlyReviewModel");
       }
     }
     if (mode && mode !== "none") {
-      new import_obsidian10.Setting(containerEl).setName("Daily & nightly reviews").setHeading();
+      new import_obsidian10.Setting(containerEl).setName("Periodic vault reviews").setHeading();
       containerEl.createEl("p", {
-        text: "Autonomous vault intelligence: Synthesizes notes created or modified during the day and saves timestamped Markdown reports in your review folder.",
+        text: "Autonomous vault intelligence: Periodically synthesizes notes created or modified across your vault and saves timestamped Markdown reports in your periodic review folder.",
         cls: "ai-scheduler-subtitle"
       });
-      new import_obsidian10.Setting(containerEl).setName("Review context").setDesc("Files the daily and nightly reviews may inspect through the active backend's vault tools.").addDropdown((dropdown) => dropdown.addOption("modified-today", "Markdown files modified today").addOption("all-markdown", "All Markdown files").addOption("no-files", "No automatic files").setValue(this.plugin.settings.reviewContextMode).onChange((value) => {
-        void (async () => {
-          this.plugin.settings.reviewContextMode = value;
-          await this.plugin.saveState();
-        })();
-      }));
-      new import_obsidian10.Setting(containerEl).setName("Review report folder").setDesc("Vault folder where daily and nightly review summaries are saved (default: AI reviews). Each review creates a timestamped Markdown file (e.g. YYYY-MM-DD-HHmmss.md) so past summaries are permanently preserved.").addText((text) => text.setValue(this.plugin.settings.reportFolder).onChange((value) => {
-        void (async () => {
-          this.plugin.settings.reportFolder = value.trim() || "AI Reviews";
-          await this.plugin.saveState();
-        })();
-      }));
-      new import_obsidian10.Setting(containerEl).setName("Run daily preview now").setDesc("Immediately synthesize notes modified today and generate a preview review summary in your review folder.").addButton((button) => button.setButtonText("Run preview now").onClick(() => {
-        void this.plugin.startReviewRun(true, "daily");
-      }));
-      new import_obsidian10.Setting(containerEl).setName("Nightly AI review").setDesc("Automated end-of-day synthesis: Runs in the background (e.g., at night while you sleep) to review everything you created or modified during the day, saving timestamped summaries to your review folder.").addToggle((toggle) => toggle.setValue(this.plugin.settings.nightlyReviewEnabled).onChange((value) => {
+      const warningBox = containerEl.createDiv({ cls: "ai-scheduler-warning-callout" });
+      warningBox.createSpan({ cls: "ai-scheduler-warning-icon", text: "\u26A0\uFE0F" });
+      const warningBody = warningBox.createDiv({ cls: "ai-scheduler-warning-body" });
+      warningBody.createDiv({
+        cls: "ai-scheduler-warning-title",
+        text: "Important note on computer sleep and scheduled tasks"
+      });
+      warningBody.createEl("p", {
+        text: 'Periodic reviews and scheduled AI tasks execute locally inside Obsidian on your computer. If your computer is turned off or in sleep mode at the scheduled time, the review will not trigger. To automatically run any missed reviews as soon as you reopen Obsidian, enable "catch up missed tasks on startup" below.'
+      });
+      new import_obsidian10.Setting(containerEl).setName("Enable periodic AI review").setDesc("Automated recurring synthesis: Reviews recent notes and vault changes according to your chosen frequency, saving timestamped summaries to your periodic review folder.").addToggle((toggle) => toggle.setValue(this.plugin.settings.nightlyReviewEnabled).onChange((value) => {
         void (async () => {
           const previous = this.plugin.settings.nightlyReviewEnabled;
           try {
             this.plugin.settings.nightlyReviewEnabled = value;
-            await this.plugin.ensureNightlyReviewJob();
+            await this.plugin.ensurePeriodicReviewJob();
             await this.plugin.saveState();
-            new import_obsidian10.Notice(value ? "Nightly review enabled." : "Nightly review disabled.");
+            new import_obsidian10.Notice(value ? "Periodic AI review enabled." : "Periodic AI review disabled.");
             this.renderSettings();
           } catch (error) {
             this.plugin.settings.nightlyReviewEnabled = previous;
             toggle.setValue(previous);
-            new import_obsidian10.Notice(`Could not change nightly review: ${errorText(error)}`, 8e3);
+            new import_obsidian10.Notice(`Could not change periodic review: ${errorText(error)}`, 8e3);
           }
         })();
       }));
       if (this.plugin.settings.nightlyReviewEnabled) {
-        new import_obsidian10.Setting(containerEl).setName("Nightly review schedule time").setDesc("Local 24-hour time when the nightly review runs automatically (for example, 22:00 or 23:30).").addText((text) => text.setValue(this.plugin.settings.reviewTime).onChange((value) => {
+        new import_obsidian10.Setting(containerEl).setName("Review frequency & cadence").setDesc("Choose how often the periodic review should execute.").addDropdown((dropdown) => dropdown.addOption("daily", "Daily (at chosen time)").addOption("weekly", "Weekly (on specific days)").addOption("every-n-days", "Every n days").addOption("hourly", "Hourly / interval (every n hours)").setValue(this.plugin.settings.periodicReviewCadence || "daily").onChange((value) => {
           void (async () => {
-            if (/^([01]?\d|2[0-3]):[0-5]\d$/.test(value)) this.plugin.settings.reviewTime = value;
-            await this.plugin.ensureNightlyReviewJob();
+            this.plugin.settings.periodicReviewCadence = value;
+            await this.plugin.ensurePeriodicReviewJob();
+            await this.plugin.saveState();
+            this.renderSettings();
+          })();
+        }));
+        const cadence = this.plugin.settings.periodicReviewCadence || "daily";
+        if (cadence === "daily" || cadence === "weekly" || cadence === "every-n-days") {
+          new import_obsidian10.Setting(containerEl).setName("Execution time (24h hh:mm)").setDesc("Local 24-hour time when the review runs (for example, 22:00 or 09:30).").addText((text) => text.setValue(this.plugin.settings.reviewTime).onChange((value) => {
+            void (async () => {
+              if (/^([01]?\d|2[0-3]):[0-5]\d$/.test(value.trim())) {
+                this.plugin.settings.reviewTime = value.trim();
+                await this.plugin.ensurePeriodicReviewJob();
+                await this.plugin.saveState();
+              }
+            })();
+          }));
+        }
+        if (cadence === "every-n-days") {
+          new import_obsidian10.Setting(containerEl).setName("Interval in days").setDesc("Run the review once every n days (for example, 2 for every other day, 3 for every 3 days).").addText((text) => text.setValue(String(this.plugin.settings.periodicReviewEveryDays || 2)).onChange((value) => {
+            void (async () => {
+              const n = parseInt(value.trim(), 10);
+              if (Number.isInteger(n) && n >= 1) {
+                this.plugin.settings.periodicReviewEveryDays = n;
+                await this.plugin.ensurePeriodicReviewJob();
+                await this.plugin.saveState();
+              }
+            })();
+          }));
+        }
+        if (cadence === "hourly") {
+          new import_obsidian10.Setting(containerEl).setName("Interval in hours").setDesc("Run the review every n hours (for example, 6 for every 6 hours, 12 for twice a day).").addText((text) => text.setValue(String(this.plugin.settings.periodicReviewHours || 12)).onChange((value) => {
+            void (async () => {
+              const n = parseInt(value.trim(), 10);
+              if (Number.isInteger(n) && n >= 1) {
+                this.plugin.settings.periodicReviewHours = n;
+                await this.plugin.ensurePeriodicReviewJob();
+                await this.plugin.saveState();
+              }
+            })();
+          }));
+        }
+        if (cadence === "weekly") {
+          const daysContainer = new import_obsidian10.Setting(containerEl).setName("Days of the week").setDesc("Select the days on which the review should run.");
+          const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+          const selectedDays = new Set(this.plugin.settings.periodicReviewDays || [1]);
+          dayLabels.forEach((label, idx) => {
+            daysContainer.addToggle((toggle) => toggle.setTooltip(label).setValue(selectedDays.has(idx)).onChange((checked) => {
+              void (async () => {
+                if (checked) {
+                  selectedDays.add(idx);
+                } else {
+                  selectedDays.delete(idx);
+                  if (selectedDays.size === 0) selectedDays.add(idx);
+                }
+                this.plugin.settings.periodicReviewDays = Array.from(selectedDays).sort();
+                await this.plugin.ensurePeriodicReviewJob();
+                await this.plugin.saveState();
+              })();
+            }));
+          });
+        }
+        new import_obsidian10.Setting(containerEl).setName("Review context").setDesc("Files the periodic review may inspect through the active backend's vault tools.").addDropdown((dropdown) => dropdown.addOption("modified-today", "Markdown files modified recently / today").addOption("all-markdown", "All Markdown files").addOption("no-files", "No automatic files").setValue(this.plugin.settings.reviewContextMode).onChange((value) => {
+          void (async () => {
+            this.plugin.settings.reviewContextMode = value;
             await this.plugin.saveState();
           })();
         }));
-        new import_obsidian10.Setting(containerEl).setName("Run nightly review now").setDesc("Manually trigger the full end-of-day nightly review routine immediately without waiting for the scheduled hour.").addButton((button) => button.setButtonText("Run review now").onClick(() => {
-          void this.plugin.startReviewRun(true, "nightly");
+        const defaultReviewFolder = `${this.plugin.getDefaultOutputFolder()}/Periodic Reviews`;
+        new import_obsidian10.Setting(containerEl).setName("Periodic review folder").setDesc(`Vault folder where periodic review summaries are saved. Defaults to "${defaultReviewFolder}". Each review creates a timestamped Markdown file (e.g. YYYY-MM-DD-HHmmss.md) so past summaries are permanently preserved.`).addText((text) => text.setPlaceholder(defaultReviewFolder).setValue(this.plugin.settings.reportFolder).onChange((value) => {
+          void (async () => {
+            this.plugin.settings.reportFolder = value.trim();
+            await this.plugin.saveState();
+          })();
+        }));
+        new import_obsidian10.Setting(containerEl).setName("Run periodic review now").setDesc("Manually trigger the full periodic review routine immediately without waiting for the scheduled time.").addButton((button) => button.setButtonText("Run review now").onClick(() => {
+          void this.plugin.startReviewRun(true, "periodic");
         }));
       }
     }
@@ -5572,37 +5654,37 @@ var AISchedulerPlugin = class extends import_obsidian12.Plugin {
     });
     this.addCommand({
       id: "run-nightly-review",
-      name: "Run AI nightly review now",
-      callback: () => this.startReviewRun(true, "nightly")
+      name: "Run AI periodic review now",
+      callback: () => this.startReviewRun(true, "periodic")
     });
     this.addCommand({
       id: "enable-nightly-review",
-      name: "Enable nightly AI review",
+      name: "Enable periodic AI review",
       callback: async () => {
         this.settings.nightlyReviewEnabled = true;
-        await this.ensureNightlyReviewJob();
+        await this.ensurePeriodicReviewJob();
         await this.saveState();
-        new import_obsidian12.Notice("Nightly AI review enabled");
+        new import_obsidian12.Notice("Periodic AI review enabled");
       }
     });
     this.addCommand({
       id: "disable-nightly-review",
-      name: "Disable nightly AI review",
+      name: "Disable periodic AI review",
       callback: async () => {
         this.settings.nightlyReviewEnabled = false;
-        await this.ensureNightlyReviewJob();
+        await this.ensurePeriodicReviewJob();
         await this.saveState();
-        new import_obsidian12.Notice("Nightly AI review disabled");
+        new import_obsidian12.Notice("Periodic AI review disabled");
       }
     });
     this.addCommand({
       id: "toggle-nightly-review",
-      name: "Toggle nightly AI review",
+      name: "Toggle periodic AI review",
       callback: async () => {
         this.settings.nightlyReviewEnabled = !this.settings.nightlyReviewEnabled;
-        await this.ensureNightlyReviewJob();
+        await this.ensurePeriodicReviewJob();
         await this.saveState();
-        new import_obsidian12.Notice(this.settings.nightlyReviewEnabled ? "Nightly AI review enabled" : "Nightly AI review disabled");
+        new import_obsidian12.Notice(this.settings.nightlyReviewEnabled ? "Periodic AI review enabled" : "Periodic AI review disabled");
       }
     });
     this.addCommand({
@@ -5682,7 +5764,7 @@ var AISchedulerPlugin = class extends import_obsidian12.Plugin {
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       void this.notesSync.handleVaultChange(file, "rename", oldPath);
     }));
-    if (this.settings.nightlyReviewEnabled) await this.ensureNightlyReviewJob();
+    if (this.settings.nightlyReviewEnabled) await this.ensurePeriodicReviewJob();
     await this.saveState();
     const currentVersion = this.manifest.version;
     const previousVersion = this.settings.lastSeenVersion;
@@ -5832,8 +5914,9 @@ var AISchedulerPlugin = class extends import_obsidian12.Plugin {
       });
       await this.saveState();
       const context = this.getJobContext(job);
-      const prompt = job.routine === "daily-review" ? "" : executionPrompt(job.prompt, context.paths);
-      const reply = job.routine === "daily-review" ? await this.runDailyReview(false, execution, "nightly") : await sendToAI(this, prompt, execution, context);
+      const isReview = job.routine === "daily-review" || job.routine === "periodic-review";
+      const prompt = isReview ? "" : executionPrompt(job.prompt, context.paths);
+      const reply = isReview ? await this.runDailyReview(false, execution, "periodic") : await sendToAI(this, prompt, execution, context);
       const trimmedReply = (reply || "").trim();
       if (!trimmedReply) {
         throw new Error("The AI returned an empty response.");
@@ -5889,7 +5972,7 @@ ${job.lastError}`, 8e3);
     if (!file || !file.path) return;
     const normPath = (0, import_obsidian12.normalizePath)(file.path);
     if (this.selfWrites.has(normPath)) return;
-    const normReport = (0, import_obsidian12.normalizePath)(this.settings.reportFolder || "AI Reviews");
+    const normReport = this.getPeriodicReviewFolder();
     const normSchedule = (0, import_obsidian12.normalizePath)(this.settings.scheduleFolder || "AI Schedules");
     if (ScheduleNotesSync.isInside(normReport, normPath) || ScheduleNotesSync.isInside(normSchedule, normPath)) {
       return;
@@ -5920,8 +6003,14 @@ ${job.lastError}`, 8e3);
     await this.saveState();
     return job;
   }
-  async ensureNightlyReviewJob() {
-    let job = this.jobs.find((candidate) => candidate.routine === "daily-review");
+  getPeriodicReviewFolder() {
+    if (this.settings.reportFolder && this.settings.reportFolder.trim()) {
+      return (0, import_obsidian12.normalizePath)(this.settings.reportFolder.trim());
+    }
+    return (0, import_obsidian12.normalizePath)(`${this.getDefaultOutputFolder()}/Periodic Reviews`);
+  }
+  async ensurePeriodicReviewJob() {
+    let job = this.jobs.find((candidate) => candidate.routine === "daily-review" || candidate.routine === "periodic-review");
     if (!this.settings.nightlyReviewEnabled) {
       if (job) {
         job.enabled = false;
@@ -5931,43 +6020,62 @@ ${job.lastError}`, 8e3);
       }
       return;
     }
-    if (!validClock(this.settings.reviewTime)) {
-      new import_obsidian12.Notice("AI Scheduler: review time is invalid, nightly review not scheduled.");
-      return;
+    const cadence = this.settings.periodicReviewCadence || "daily";
+    let schedule;
+    if (cadence === "hourly") {
+      const hours = Math.max(1, Number(this.settings.periodicReviewHours) || 12);
+      schedule = { kind: "interval", intervalMinutes: hours * 60 };
+    } else if (cadence === "every-n-days") {
+      const everyDays = Math.max(1, Number(this.settings.periodicReviewEveryDays) || 2);
+      const time = validClock(this.settings.reviewTime) ? this.settings.reviewTime : "22:00";
+      schedule = { kind: "daily", time, everyDays };
+    } else if (cadence === "weekly") {
+      const days = Array.isArray(this.settings.periodicReviewDays) && this.settings.periodicReviewDays.length ? this.settings.periodicReviewDays : [1];
+      const time = validClock(this.settings.reviewTime) ? this.settings.reviewTime : "22:00";
+      schedule = { kind: "weekly", time, days };
+    } else {
+      const time = validClock(this.settings.reviewTime) ? this.settings.reviewTime : "22:00";
+      schedule = { kind: "daily", time };
     }
     if (!job) {
       job = normalizeJob({
-        id: "nightly-daily-review",
-        title: "Nightly daily review",
+        id: "periodic-vault-review",
+        title: "Periodic vault review",
         prompt: "",
         tab: this.settings.assistantTab,
-        routine: "daily-review",
-        schedule: { kind: "daily", time: this.settings.reviewTime },
+        routine: "periodic-review",
+        schedule,
         notify: true
       });
       this.jobs.push(job);
     } else {
+      job.title = "Periodic vault review";
+      job.routine = "periodic-review";
       job.enabled = true;
       job.status = "scheduled";
       job.lastStatus = null;
       job.tab = this.settings.assistantTab;
-      job.schedule = { kind: "daily", time: this.settings.reviewTime };
-      job.nextRunAt = nextDailyRun(this.settings.reviewTime);
+      job.schedule = schedule;
+      job.nextRunAt = getScheduleNextRun(schedule);
     }
   }
-  async startReviewRun(manual = true, kind = "daily") {
+  async ensureNightlyReviewJob() {
+    return this.ensurePeriodicReviewJob();
+  }
+  async startReviewRun(manual = true, kind = "periodic") {
     if (this.reviewRunning) {
       new import_obsidian12.Notice("A review is already running. You can keep using Obsidian while it finishes.", 5e3);
       return;
     }
-    new import_obsidian12.Notice(`${kind === "nightly" ? "Nightly" : "Daily"} review started. It will create ${this.settings.reportFolder}/${localTimestampKey()}.md. You can keep using Obsidian.`, 7e3);
+    const folder = this.getPeriodicReviewFolder();
+    new import_obsidian12.Notice(`Periodic review started. It will create ${folder}/${localTimestampKey()}.md. You can keep using Obsidian.`, 7e3);
     void this.runDailyReview(manual, null, kind).catch((error) => {
       this.logActivity("failed", `Review failed: ${errorText(error)}`);
       new import_obsidian12.Notice(`Review failed: ${errorText(error)}`, 8e3);
       void this.saveState();
     });
   }
-  async runDailyReview(manual, execution = null, kind = "daily") {
+  async runDailyReview(manual, execution = null, kind = "periodic") {
     if (this.reviewRunning) {
       throw new Error("A review is already in progress.");
     }
@@ -5980,37 +6088,38 @@ ${job.lastError}`, 8e3);
       start.setHours(0, 0, 0, 0);
       const files = this.app.vault.getMarkdownFiles().filter((file) => this.includeReviewFile(file, start)).sort((a, b) => b.stat.mtime - a.stat.mtime);
       const fileList = files.length ? files.map((file) => `- ${file.path}`).join("\n") : "- No Markdown files were created or modified today.";
-      const prompt = reviewPrompt(kind, today, fileList);
-      const nightlyJob = this.jobs.find((candidate) => candidate.routine === "daily-review");
-      const model = kind === "nightly" ? this.settings.nightlyReviewModel : this.settings.dailyReviewModel;
-      const resolved = execution || (nightlyJob && kind === "nightly" ? await resolveJobExecution(this, nightlyJob) : await resolveModel(this, model, kind === "nightly" ? "nightly review" : "daily preview"));
+      const prompt = reviewPrompt(kind === "daily" ? "daily" : "nightly", today, fileList);
+      const reviewJob = this.jobs.find((candidate) => candidate.routine === "daily-review" || candidate.routine === "periodic-review");
+      const model = this.settings.nightlyReviewModel || this.settings.dailyReviewModel;
+      const resolved = execution || (reviewJob ? await resolveJobExecution(this, reviewJob) : await resolveModel(this, model, "periodic review"));
       const context = getPathsContext(this.app, files.map((file) => file.path));
       const reply = await sendToAI(this, prompt, resolved, context);
-      const reportTitle = kind === "nightly" ? "Nightly Review" : "Daily Preview";
+      const reportTitle = kind === "daily" ? "Daily Preview" : "Periodic Vault Review";
       const report = reply || `# ${reportTitle} - ${today}
 
 The active AI backend did not return a report.`;
       const timestamp = localTimestampKey(now);
+      const reportFolder = this.getPeriodicReviewFolder();
       let filename = `${timestamp}.md`;
       let suffix = 2;
-      while (this.app.vault.getAbstractFileByPath((0, import_obsidian12.normalizePath)(`${this.settings.reportFolder}/${filename}`))) {
+      while (this.app.vault.getAbstractFileByPath((0, import_obsidian12.normalizePath)(`${reportFolder}/${filename}`))) {
         filename = `${timestamp}-${suffix}.md`;
         suffix += 1;
       }
-      const path = `${this.settings.reportFolder}/${filename}`;
-      await this.writeOutput(this.settings.reportFolder, filename, `# ${reportTitle} - ${today}
+      const path = `${reportFolder}/${filename}`;
+      await this.writeOutput(reportFolder, filename, `# ${reportTitle} - ${today}
 
 Generated: ${formatDate(now.toISOString())}
 
 ${report}`);
-      if (nightlyJob) {
-        nightlyJob.lastOutputPath = path;
-        if (!nightlyJob.lastOutputFiles) nightlyJob.lastOutputFiles = [];
-        if (!nightlyJob.lastOutputFiles.includes(path)) {
-          nightlyJob.lastOutputFiles.push(path);
+      if (reviewJob) {
+        reviewJob.lastOutputPath = path;
+        if (!reviewJob.lastOutputFiles) reviewJob.lastOutputFiles = [];
+        if (!reviewJob.lastOutputFiles.includes(path)) {
+          reviewJob.lastOutputFiles.push(path);
         }
       }
-      this.logActivity("review", `Daily review written to ${path}`);
+      this.logActivity("review", `Periodic review written to ${path}`);
       if (manual || this.settings.notifyOnCompletion) {
         new import_obsidian12.Notice(`Review written to ${path}`, 6e3);
       }
@@ -6027,7 +6136,7 @@ ${report}`);
   includeReviewFile(file, start) {
     if (!file || !file.path) return false;
     const normPath = (0, import_obsidian12.normalizePath)(file.path);
-    const normReport = (0, import_obsidian12.normalizePath)(this.settings.reportFolder || "AI Reviews");
+    const normReport = this.getPeriodicReviewFolder();
     const normSchedule = (0, import_obsidian12.normalizePath)(this.settings.scheduleFolder || "AI Schedules");
     if (ScheduleNotesSync.isInside(normReport, normPath) || ScheduleNotesSync.isInside(normSchedule, normPath)) {
       return false;

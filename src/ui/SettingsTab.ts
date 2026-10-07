@@ -1,6 +1,6 @@
 import { PluginSettingTab, App, Setting, Notice } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
-import { BACKEND_INFO, BackendMode } from '../types';
+import { AISettings, BACKEND_INFO, BackendMode } from '../types';
 import { errorText } from '../util';
 import { ChangelogModal } from './ChangelogModal';
 
@@ -138,89 +138,185 @@ export class AssistantSettingTab extends PluginSettingTab {
 			addModelSetting('Scheduled task model', 'Used when an enabled task runs, including tasks created by the planner.', 'executionModel');
 			addModelSetting('Daily preview model', 'Used by Run daily preview.', 'dailyReviewModel');
 			if (this.plugin.settings.nightlyReviewEnabled) {
-				addModelSetting('Nightly review model', 'Used by the recurring nightly review and the Run AI nightly review now command.', 'nightlyReviewModel');
+				addModelSetting('Periodic review model', 'Used by recurring periodic reviews and the Run AI periodic review now command.', 'nightlyReviewModel');
 			}
 		}
 
 		// -------------------------------------------------------------------------
-		// Section 2: Daily & Nightly Reviews (Only visible when an AI backend is active)
+		// Section 2: Periodic Vault Reviews (Only visible when an AI backend is active)
 		// -------------------------------------------------------------------------
 		if (mode && mode !== 'none') {
-			new Setting(containerEl).setName('Daily & nightly reviews').setHeading();
+			new Setting(containerEl).setName('Periodic vault reviews').setHeading();
 			containerEl.createEl('p', {
-				text: 'Autonomous vault intelligence: Synthesizes notes created or modified during the day and saves timestamped Markdown reports in your review folder.',
+				text: 'Autonomous vault intelligence: Periodically synthesizes notes created or modified across your vault and saves timestamped Markdown reports in your periodic review folder.',
 				cls: 'ai-scheduler-subtitle',
 			});
 
-			new Setting(containerEl)
-				.setName('Review context')
-				.setDesc('Files the daily and nightly reviews may inspect through the active backend\'s vault tools.')
-				.addDropdown(dropdown => dropdown
-					.addOption('modified-today', 'Markdown files modified today')
-					.addOption('all-markdown', 'All Markdown files')
-					.addOption('no-files', 'No automatic files')
-					.setValue(this.plugin.settings.reviewContextMode)
-					.onChange(value => {
-						void (async () => {
-							this.plugin.settings.reviewContextMode = value as typeof this.plugin.settings.reviewContextMode;
-							await this.plugin.saveState();
-						})();
-					}));
+			const warningBox = containerEl.createDiv({ cls: 'ai-scheduler-warning-callout' });
+			warningBox.createSpan({ cls: 'ai-scheduler-warning-icon', text: '⚠️' });
+			const warningBody = warningBox.createDiv({ cls: 'ai-scheduler-warning-body' });
+			warningBody.createDiv({
+				cls: 'ai-scheduler-warning-title',
+				text: 'Important note on computer sleep and scheduled tasks',
+			});
+			warningBody.createEl('p', {
+				text: 'Periodic reviews and scheduled AI tasks execute locally inside Obsidian on your computer. If your computer is turned off or in sleep mode at the scheduled time, the review will not trigger. To automatically run any missed reviews as soon as you reopen Obsidian, enable "catch up missed tasks on startup" below.',
+			});
 
 			new Setting(containerEl)
-				.setName('Review report folder')
-				.setDesc('Vault folder where daily and nightly review summaries are saved (default: AI reviews). Each review creates a timestamped Markdown file (e.g. YYYY-MM-DD-HHmmss.md) so past summaries are permanently preserved.')
-				.addText(text => text.setValue(this.plugin.settings.reportFolder).onChange(value => {
-					void (async () => {
-						this.plugin.settings.reportFolder = value.trim() || 'AI Reviews';
-						await this.plugin.saveState();
-					})();
-				}));
-
-			new Setting(containerEl)
-				.setName('Run daily preview now')
-				.setDesc('Immediately synthesize notes modified today and generate a preview review summary in your review folder.')
-				.addButton(button => button.setButtonText('Run preview now').onClick(() => {
-					void this.plugin.startReviewRun(true, 'daily');
-				}));
-
-			new Setting(containerEl)
-				.setName('Nightly AI review')
-				.setDesc('Automated end-of-day synthesis: Runs in the background (e.g., at night while you sleep) to review everything you created or modified during the day, saving timestamped summaries to your review folder.')
+				.setName('Enable periodic AI review')
+				.setDesc('Automated recurring synthesis: Reviews recent notes and vault changes according to your chosen frequency, saving timestamped summaries to your periodic review folder.')
 				.addToggle(toggle => toggle.setValue(this.plugin.settings.nightlyReviewEnabled).onChange(value => {
 					void (async () => {
 						const previous = this.plugin.settings.nightlyReviewEnabled;
 						try {
 							this.plugin.settings.nightlyReviewEnabled = value;
-							await this.plugin.ensureNightlyReviewJob();
+							await this.plugin.ensurePeriodicReviewJob();
 							await this.plugin.saveState();
-							new Notice(value ? 'Nightly review enabled.' : 'Nightly review disabled.');
+							new Notice(value ? 'Periodic AI review enabled.' : 'Periodic AI review disabled.');
 							this.renderSettings();
 						} catch (error) {
 							this.plugin.settings.nightlyReviewEnabled = previous;
 							toggle.setValue(previous);
-							new Notice(`Could not change nightly review: ${errorText(error)}`, 8000);
+							new Notice(`Could not change periodic review: ${errorText(error)}`, 8000);
 						}
 					})();
 				}));
 
 			if (this.plugin.settings.nightlyReviewEnabled) {
 				new Setting(containerEl)
-					.setName('Nightly review schedule time')
-					.setDesc('Local 24-hour time when the nightly review runs automatically (for example, 22:00 or 23:30).')
-					.addText(text => text.setValue(this.plugin.settings.reviewTime).onChange(value => {
-						void (async () => {
-							if (/^([01]?\d|2[0-3]):[0-5]\d$/.test(value)) this.plugin.settings.reviewTime = value;
-							await this.plugin.ensureNightlyReviewJob();
-							await this.plugin.saveState();
-						})();
-					}));
+					.setName('Review frequency & cadence')
+					.setDesc('Choose how often the periodic review should execute.')
+					.addDropdown(dropdown => dropdown
+						.addOption('daily', 'Daily (at chosen time)')
+						.addOption('weekly', 'Weekly (on specific days)')
+						.addOption('every-n-days', 'Every n days')
+						.addOption('hourly', 'Hourly / interval (every n hours)')
+						.setValue(this.plugin.settings.periodicReviewCadence || 'daily')
+						.onChange(value => {
+							void (async () => {
+								this.plugin.settings.periodicReviewCadence = value as AISettings['periodicReviewCadence'];
+								await this.plugin.ensurePeriodicReviewJob();
+								await this.plugin.saveState();
+								this.renderSettings();
+							})();
+						}));
+
+				const cadence = this.plugin.settings.periodicReviewCadence || 'daily';
+
+				if (cadence === 'daily' || cadence === 'weekly' || cadence === 'every-n-days') {
+					new Setting(containerEl)
+						.setName('Execution time (24h hh:mm)')
+						.setDesc('Local 24-hour time when the review runs (for example, 22:00 or 09:30).')
+						.addText(text => text.setValue(this.plugin.settings.reviewTime).onChange(value => {
+							void (async () => {
+								if (/^([01]?\d|2[0-3]):[0-5]\d$/.test(value.trim())) {
+									this.plugin.settings.reviewTime = value.trim();
+									await this.plugin.ensurePeriodicReviewJob();
+									await this.plugin.saveState();
+								}
+							})();
+						}));
+				}
+
+				if (cadence === 'every-n-days') {
+					new Setting(containerEl)
+						.setName('Interval in days')
+						.setDesc('Run the review once every n days (for example, 2 for every other day, 3 for every 3 days).')
+						.addText(text => text
+							.setValue(String(this.plugin.settings.periodicReviewEveryDays || 2))
+							.onChange(value => {
+								void (async () => {
+									const n = parseInt(value.trim(), 10);
+									if (Number.isInteger(n) && n >= 1) {
+										this.plugin.settings.periodicReviewEveryDays = n;
+										await this.plugin.ensurePeriodicReviewJob();
+										await this.plugin.saveState();
+									}
+								})();
+							}));
+				}
+
+				if (cadence === 'hourly') {
+					new Setting(containerEl)
+						.setName('Interval in hours')
+						.setDesc('Run the review every n hours (for example, 6 for every 6 hours, 12 for twice a day).')
+						.addText(text => text
+							.setValue(String(this.plugin.settings.periodicReviewHours || 12))
+							.onChange(value => {
+								void (async () => {
+									const n = parseInt(value.trim(), 10);
+									if (Number.isInteger(n) && n >= 1) {
+										this.plugin.settings.periodicReviewHours = n;
+										await this.plugin.ensurePeriodicReviewJob();
+										await this.plugin.saveState();
+									}
+								})();
+							}));
+				}
+
+				if (cadence === 'weekly') {
+					const daysContainer = new Setting(containerEl)
+						.setName('Days of the week')
+						.setDesc('Select the days on which the review should run.');
+					
+					const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+					const selectedDays = new Set(this.plugin.settings.periodicReviewDays || [1]);
+					
+					dayLabels.forEach((label, idx) => {
+						daysContainer.addToggle(toggle => toggle
+							.setTooltip(label)
+							.setValue(selectedDays.has(idx))
+							.onChange(checked => {
+								void (async () => {
+									if (checked) {
+										selectedDays.add(idx);
+									} else {
+										selectedDays.delete(idx);
+										if (selectedDays.size === 0) selectedDays.add(idx); // keep at least one
+									}
+									this.plugin.settings.periodicReviewDays = Array.from(selectedDays).sort();
+									await this.plugin.ensurePeriodicReviewJob();
+									await this.plugin.saveState();
+								})();
+							}));
+					});
+				}
 
 				new Setting(containerEl)
-					.setName('Run nightly review now')
-					.setDesc('Manually trigger the full end-of-day nightly review routine immediately without waiting for the scheduled hour.')
+					.setName('Review context')
+					.setDesc('Files the periodic review may inspect through the active backend\'s vault tools.')
+					.addDropdown(dropdown => dropdown
+						.addOption('modified-today', 'Markdown files modified recently / today')
+						.addOption('all-markdown', 'All Markdown files')
+						.addOption('no-files', 'No automatic files')
+						.setValue(this.plugin.settings.reviewContextMode)
+						.onChange(value => {
+							void (async () => {
+								this.plugin.settings.reviewContextMode = value as typeof this.plugin.settings.reviewContextMode;
+								await this.plugin.saveState();
+							})();
+						}));
+
+				const defaultReviewFolder = `${this.plugin.getDefaultOutputFolder()}/Periodic Reviews`;
+				new Setting(containerEl)
+					.setName('Periodic review folder')
+					.setDesc(`Vault folder where periodic review summaries are saved. Defaults to "${defaultReviewFolder}". Each review creates a timestamped Markdown file (e.g. YYYY-MM-DD-HHmmss.md) so past summaries are permanently preserved.`)
+					.addText(text => text
+						.setPlaceholder(defaultReviewFolder)
+						.setValue(this.plugin.settings.reportFolder)
+						.onChange(value => {
+							void (async () => {
+								this.plugin.settings.reportFolder = value.trim();
+								await this.plugin.saveState();
+							})();
+						}));
+
+				new Setting(containerEl)
+					.setName('Run periodic review now')
+					.setDesc('Manually trigger the full periodic review routine immediately without waiting for the scheduled time.')
 					.addButton(button => button.setButtonText('Run review now').onClick(() => {
-						void this.plugin.startReviewRun(true, 'nightly');
+						void this.plugin.startReviewRun(true, 'periodic');
 					}));
 			}
 		}

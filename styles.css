@@ -1759,6 +1759,23 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	font-weight: 600;
 }
 
+/* Modal sizing expansion for Calendar */
+.ai-scheduler-modal.ai-scheduler-calendar-modal {
+	width: min(1280px, calc(100vw - 32px)) !important;
+	max-width: 1280px !important;
+	max-height: min(92vh, 920px) !important;
+}
+
+.ai-scheduler-calendar-modal .ai-scheduler-content {
+	max-height: calc(92vh - 40px);
+}
+
+.ai-scheduler-calendar-modal .ai-scheduler-shell {
+	max-width: 1220px;
+	width: 100%;
+	padding: 24px 28px;
+}
+
 .ai-scheduler-cal-card {
 	padding: 14px;
 	margin-bottom: 14px;
@@ -1766,13 +1783,15 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-cal-grid {
 	width: 100%;
+	box-sizing: border-box;
 }
 
 .ai-scheduler-cal-weekdays {
 	display: grid;
-	grid-template-columns: repeat(7, 1fr);
+	grid-template-columns: repeat(7, minmax(0, 1fr));
 	gap: 6px;
 	margin-bottom: 6px;
+	width: 100%;
 }
 
 .ai-scheduler-cal-weekday-cell {
@@ -1783,25 +1802,32 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	text-transform: uppercase;
 	padding: 4px 0;
 	letter-spacing: 0.5px;
+	min-width: 0;
 }
 
 .ai-scheduler-cal-days {
 	display: grid;
-	grid-template-columns: repeat(7, 1fr);
+	grid-template-columns: repeat(7, minmax(0, 1fr));
 	gap: 6px;
+	width: 100%;
 }
 
 .ai-scheduler-cal-day-cell {
-	min-height: 85px;
+	height: 120px;
+	min-height: 120px;
+	max-height: 120px;
+	min-width: 0;
+	width: 100%;
+	box-sizing: border-box;
 	background: var(--background-secondary);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-s, 6px);
 	padding: 6px;
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
 	cursor: pointer;
 	transition: all 0.15s ease;
+	overflow: hidden;
 }
 
 .ai-scheduler-cal-day-cell:hover {
@@ -1810,13 +1836,13 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-day-cell.is-outside {
-	opacity: 0.45;
+	opacity: 0.4;
 	background: var(--background-primary);
 }
 
 .ai-scheduler-cal-day-cell.is-today {
 	border: 2px solid var(--interactive-accent);
-	box-shadow: 0 0 0 1px rgba(var(--interactive-accent-rgb, 120, 80, 240), 0.2);
+	box-shadow: 0 0 0 1px rgba(var(--interactive-accent-rgb, 120, 80, 240), 0.25);
 }
 
 .ai-scheduler-cal-day-cell.is-selected {
@@ -1828,6 +1854,8 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
+	flex-shrink: 0;
+	margin-bottom: 3px;
 }
 
 .ai-scheduler-cal-day-num {
@@ -1850,23 +1878,48 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	display: flex;
 	flex-direction: column;
 	gap: 3px;
-	margin-top: 2px;
-	overflow: hidden;
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding-right: 2px;
+	scrollbar-width: thin;
+}
+
+.ai-scheduler-cal-chips::-webkit-scrollbar {
+	width: 3px;
+}
+
+.ai-scheduler-cal-chips::-webkit-scrollbar-thumb {
+	background: var(--background-modifier-border);
+	border-radius: 3px;
 }
 
 .ai-scheduler-cal-chip {
 	font-size: 10.5px;
-	padding: 2px 4px;
+	padding: 2px 5px;
 	border-radius: 4px;
 	background: var(--background-modifier-hover);
 	border: 1px solid var(--background-modifier-border);
 	display: flex;
 	align-items: center;
 	gap: 4px;
+	min-width: 0;
+	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: none;
 	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
 	border-left: 3px solid var(--interactive-accent);
+	flex-shrink: 0;
+	transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.ai-scheduler-cal-chip::-webkit-scrollbar {
+	display: none;
+}
+
+.ai-scheduler-cal-chip:hover {
+	background: var(--background-modifier-border);
 }
 
 .ai-scheduler-cal-chip.is-review {
@@ -1883,6 +1936,30 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	border-left-color: var(--text-muted);
 }
 
+.ai-scheduler-cal-chip.is-completed {
+	opacity: 0.55;
+	background: var(--background-secondary-alt);
+	border-left-color: var(--text-muted);
+}
+
+.ai-scheduler-cal-chip.is-completed .ai-scheduler-cal-chip-title {
+	text-decoration: line-through;
+	color: var(--text-muted);
+}
+
+.ai-scheduler-cal-chip.is-completed .ai-scheduler-cal-chip-time {
+	text-decoration: line-through;
+	opacity: 0.75;
+}
+
+.ai-scheduler-cal-chip-check {
+	font-size: 10px;
+	font-weight: 800;
+	color: #10b981;
+	flex-shrink: 0;
+	line-height: 1;
+}
+
 .ai-scheduler-cal-chip-time {
 	font-weight: 700;
 	color: var(--text-accent, var(--interactive-accent));
@@ -1894,6 +1971,8 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	min-width: 0;
+	flex: 1 1 auto;
 }
 
 .ai-scheduler-cal-chip-more {
@@ -1902,6 +1981,53 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	text-align: center;
 	padding: 1px 0;
 	font-weight: 500;
+}
+
+/* Strikethrough for completed items in timeline/agenda */
+.ai-scheduler-cal-item-title.is-completed-title,
+.ai-scheduler-cal-agenda-title.is-completed-title {
+	text-decoration: line-through;
+	color: var(--text-muted);
+}
+
+.ai-scheduler-cal-timeline-item.is-completed {
+	opacity: 0.7;
+}
+
+.ai-scheduler-badge-completed {
+	background: rgba(16, 185, 129, 0.15);
+	color: #10b981;
+	border-color: rgba(16, 185, 129, 0.3);
+}
+
+/* Warning callout banner for periodic reviews */
+.ai-scheduler-warning-callout {
+	background: rgba(245, 158, 11, 0.1);
+	border: 1px solid rgba(245, 158, 11, 0.35);
+	border-radius: var(--radius-m, 8px);
+	padding: 12px 16px;
+	margin: 10px 0 16px;
+	display: flex;
+	gap: 12px;
+	align-items: flex-start;
+}
+
+.ai-scheduler-warning-icon {
+	font-size: 18px;
+	flex-shrink: 0;
+	line-height: 1.2;
+}
+
+.ai-scheduler-warning-body {
+	font-size: 12.5px;
+	line-height: 1.5;
+	color: var(--text-normal);
+}
+
+.ai-scheduler-warning-title {
+	font-weight: 600;
+	margin-bottom: 2px;
+	color: var(--text-accent, #f59e0b);
 }
 
 /* Day Details Panel */
