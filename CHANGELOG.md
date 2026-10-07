@@ -5,6 +5,19 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.7.19] - 2026-10-07
+
+### Changed
+- Streamlined the calendar Day View and removed duplicate headers.
+
+### Fixed
+- Fixed the layout of the calendar navigation buttons.
+
+## [2.1.7.18] - 2026-10-07
+
+### Added
+- Added a full-page Day View to the schedule calendar with a timeline breakdown, metric counters and back navigation.
+
 ## [2.1.7.17] - 2026-10-07
 
 ### Highlights

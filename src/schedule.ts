@@ -22,23 +22,43 @@ export function validClock(value: unknown): boolean {
 	return /^([01]?\d|2[0-3]):[0-5]\d$/.test(str);
 }
 
+/**
+ * Parses a schedule anchor. A bare "YYYY-MM-DD" (what date inputs produce) is a
+ * local calendar date; `new Date("YYYY-MM-DD")` would be UTC midnight, which is
+ * the previous day west of UTC.
+ */
+export function parseAnchor(startAt: string | undefined): Date | null {
+	if (!startAt) return null;
+	const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(startAt.trim());
+	const date = dateOnly
+		? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+		: new Date(startAt);
+	return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** Calendar-day number of a local date; differences are exact across DST changes. */
+function dayNumber(date: Date): number {
+	return Math.round(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000);
+}
+
 export function nextDailyRun(time: string, everyDays = 1, startAt?: string, from: Date = new Date()): string {
 	const clock = parseClock(time);
 	const step = Number.isInteger(everyDays) && everyDays > 1 ? everyDays : 1;
 
-	if (startAt) {
-		const anchor = new Date(startAt);
-		if (!Number.isNaN(anchor.getTime())) {
-			anchor.setHours(clock.hour, clock.minute, 0, 0);
-			if (anchor > from) return anchor.toISOString();
-			const diffDays = Math.floor((from.getTime() - anchor.getTime()) / 86400000);
-			const jump = Math.floor(diffDays / step) * step;
-			const candidate = new Date(anchor.getTime() + jump * 86400000);
-			while (candidate <= from) {
-				candidate.setDate(candidate.getDate() + step);
-			}
-			return candidate.toISOString();
+	const anchor = parseAnchor(startAt);
+	if (anchor) {
+		anchor.setHours(clock.hour, clock.minute, 0, 0);
+		if (anchor > from) return anchor.toISOString();
+		// Count calendar days (not 24h blocks) and step with setDate so the wall
+		// time stays fixed across DST transitions.
+		const elapsedDays = dayNumber(from) - dayNumber(anchor);
+		let offset = Math.floor(elapsedDays / step) * step;
+		let candidate = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + offset, clock.hour, clock.minute, 0, 0);
+		while (candidate <= from) {
+			offset += step;
+			candidate = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + offset, clock.hour, clock.minute, 0, 0);
 		}
+		return candidate.toISOString();
 	}
 
 	const candidate = new Date(from);
@@ -62,12 +82,10 @@ export function nextWeeklyRun(time: string, days: number[] | undefined, everyWee
 		candidate.setHours(clock.hour, clock.minute, 0, 0);
 		if (candidate <= from) continue;
 		if (wanted.includes(candidate.getDay())) {
-			if (stepWeeks > 1 && startAt) {
-				const anchor = new Date(startAt);
-				if (!Number.isNaN(anchor.getTime())) {
-					const diffWeeks = Math.floor((candidate.getTime() - anchor.getTime()) / (7 * 86400000));
-					if (diffWeeks >= 0 && diffWeeks % stepWeeks !== 0) continue;
-				}
+			const anchor = stepWeeks > 1 ? parseAnchor(startAt) : null;
+			if (anchor) {
+				const diffWeeks = Math.floor((dayNumber(candidate) - dayNumber(anchor)) / 7);
+				if (diffWeeks >= 0 && diffWeeks % stepWeeks !== 0) continue;
 			}
 			return candidate.toISOString();
 		}
@@ -89,18 +107,16 @@ export function nextMonthlyRun(time: string, dayOfMonth = 1, everyMonths = 1, st
 		const candidate = new Date(year, month, clampedDay, clock.hour, clock.minute, 0, 0);
 
 		if (candidate > from) {
-			if (stepMonths > 1 && startAt) {
-				const anchor = new Date(startAt);
-				if (!Number.isNaN(anchor.getTime())) {
-					const monthDiff = (year - anchor.getFullYear()) * 12 + (month - anchor.getMonth());
-					if (monthDiff >= 0 && monthDiff % stepMonths !== 0) {
-						month += 1;
-						if (month > 11) {
-							year += Math.floor(month / 12);
-							month = month % 12;
-						}
-						continue;
+			const anchor = stepMonths > 1 ? parseAnchor(startAt) : null;
+			if (anchor) {
+				const monthDiff = (year - anchor.getFullYear()) * 12 + (month - anchor.getMonth());
+				if (monthDiff >= 0 && monthDiff % stepMonths !== 0) {
+					month += 1;
+					if (month > 11) {
+						year += Math.floor(month / 12);
+						month = month % 12;
 					}
+					continue;
 				}
 			}
 			return candidate.toISOString();
@@ -249,14 +265,12 @@ export function getScheduleNextRun(schedule: TaskSchedule | null | undefined, fr
 	if (schedule.kind === 'hourly' || schedule.kind === 'interval') {
 		const minutes = scheduleMinutes(schedule);
 		if (!Number.isFinite(minutes) || minutes <= 0) return null;
-		if (schedule.startAt) {
-			const anchor = new Date(schedule.startAt);
-			if (!Number.isNaN(anchor.getTime())) {
-				if (anchor > from) return anchor.toISOString();
-				const elapsed = from.getTime() - anchor.getTime();
-				const steps = Math.floor(elapsed / (minutes * 60000)) + 1;
-				return new Date(anchor.getTime() + steps * minutes * 60000).toISOString();
-			}
+		const anchor = parseAnchor(schedule.startAt);
+		if (anchor) {
+			if (anchor > from) return anchor.toISOString();
+			const elapsed = from.getTime() - anchor.getTime();
+			const steps = Math.floor(elapsed / (minutes * 60000)) + 1;
+			return new Date(anchor.getTime() + steps * minutes * 60000).toISOString();
 		}
 		if (schedule.time && validClock(schedule.time)) {
 			const clock = parseClock(schedule.time);

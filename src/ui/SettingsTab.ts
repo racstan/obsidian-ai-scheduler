@@ -160,7 +160,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 				text: 'Important note on computer sleep and scheduled tasks',
 			});
 			warningBody.createEl('p', {
-				text: 'Periodic reviews and scheduled AI tasks execute locally inside Obsidian on your computer. If your computer is turned off or in sleep mode at the scheduled time, the review will not trigger. To automatically run any missed reviews as soon as you reopen Obsidian, enable "catch up missed tasks on startup" below.',
+				text: 'Periodic reviews and scheduled AI tasks execute locally inside Obsidian on your computer. If your computer is turned off or in sleep mode at the scheduled time, the review will not trigger. To automatically run missed reviews when you reopen Obsidian, turn on the startup catch-up setting below.',
 			});
 
 			new Setting(containerEl)

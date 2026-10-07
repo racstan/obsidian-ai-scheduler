@@ -1,10 +1,10 @@
-import { App, Modal, Notice, TFile } from 'obsidian';
+import { App, Modal, Notice } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
 import { Job } from '../types';
 import { normalizeJob } from '../settings';
 import { describeBinding, formatDate, isNightlyReviewJob } from '../util';
 import { describeSchedule, getScheduleOccurrencesInRange, DAY_SHORT_NAMES, DAY_NAMES, MONTH_NAMES, MONTH_SHORT_NAMES } from '../schedule';
-import { closeExistingSchedulerModals, makeButton, makeCard } from './dom';
+import { closeExistingSchedulerModals, liveRefresh, makeButton, makeCard } from './dom';
 import { JobModal } from './JobModal';
 import { PlannerModal } from './PlannerModal';
 import { TaskViewModal } from './TaskViewModal';
@@ -90,9 +90,8 @@ export class CalendarModal extends Modal {
 	onOpen(): void {
 		closeExistingSchedulerModals(this);
 		this.render();
-		this.refreshTimer = window.setInterval(() => {
-			this.render();
-		}, 4000);
+		const refresh = liveRefresh(this.modalEl, () => this.plugin.stateSignature(), () => this.render());
+		this.refreshTimer = window.setInterval(refresh, 4000);
 	}
 
 	onClose(): void {
@@ -119,14 +118,22 @@ export class CalendarModal extends Modal {
 		const jobs = this.getRelevantJobs();
 
 		for (const job of jobs) {
+			// Schedules are projected backwards over the grid; nothing before the job
+			// existed is a real occurrence.
+			const created = new Date(job.createdAt);
+			const createdDay = Number.isNaN(created.getTime()) ? null : new Date(created.getFullYear(), created.getMonth(), created.getDate());
+			const lastRun = job.lastRunAt ? new Date(job.lastRunAt).getTime() : 0;
 			const dates = getScheduleOccurrencesInRange(job.schedule, start, end, 150);
 			for (const d of dates) {
+				if (createdDay && d < createdDay) continue;
 				const key = toLocalDateKey(d);
 				if (!map.has(key)) map.set(key, []);
-				const isJobCompleted = job.status === 'completed';
-				const isOnceCompleted = job.schedule?.kind === 'once' && (job.status === 'completed' || Boolean(job.lastRunAt));
-				const isPastCompleted = (d < now) && job.status !== 'failed' && job.status !== 'running';
-				const isCompleted = isJobCompleted || isOnceCompleted || isPastCompleted;
+				// Completed needs evidence of a run: a once job that ran, or a past slot
+				// of a recurring job that has run at or after that slot. Other past
+				// slots (missed, paused, failed) are not shown as completed.
+				const isCompleted = job.schedule?.kind === 'once'
+					? job.status === 'completed' || Boolean(job.lastRunAt)
+					: d < now && job.runCount > 0 && d.getTime() <= lastRun + 60000;
 
 				map.get(key)!.push({
 					job,
@@ -322,7 +329,7 @@ export class CalendarModal extends Modal {
 		const titleCol = header.createDiv({ cls: 'ai-scheduler-cal-day-title-col' });
 		const backRow = titleCol.createDiv({ cls: 'ai-scheduler-cal-back-bar' });
 		const backBtn = backRow.createEl('button', {
-			text: '← Back to Month View',
+			text: 'Back to month view',
 			cls: 'ai-scheduler-cal-back-btn',
 		});
 		backBtn.onclick = () => {
@@ -373,7 +380,7 @@ export class CalendarModal extends Modal {
 		const controlsBar = container.createDiv({ cls: 'ai-scheduler-cal-controls ai-scheduler-cal-day-controls' });
 
 		const navGroup = controlsBar.createDiv({ cls: 'ai-scheduler-cal-nav' });
-		const prevDayBtn = navGroup.createEl('button', { text: '‹ Previous', cls: 'ai-scheduler-cal-day-nav-btn' });
+		const prevDayBtn = navGroup.createEl('button', { text: 'Previous day', cls: 'ai-scheduler-cal-day-nav-btn', attr: { 'aria-label': 'Previous day' } });
 		prevDayBtn.onclick = () => {
 			const prev = new Date(this.selectedDate);
 			prev.setDate(prev.getDate() - 1);
@@ -392,7 +399,7 @@ export class CalendarModal extends Modal {
 			this.render();
 		};
 
-		const nextDayBtn = navGroup.createEl('button', { text: 'Next ›', cls: 'ai-scheduler-cal-day-nav-btn' });
+		const nextDayBtn = navGroup.createEl('button', { text: 'Next day', cls: 'ai-scheduler-cal-day-nav-btn' });
 		nextDayBtn.onclick = () => {
 			const next = new Date(this.selectedDate);
 			next.setDate(next.getDate() + 1);
@@ -500,7 +507,7 @@ export class CalendarModal extends Modal {
 				this.close();
 				window.setTimeout(() => new PlannerModal(this.app, this.plugin).open(), 50);
 			});
-			makeButton(emptyActions, '← Back to Month View', () => {
+			makeButton(emptyActions, 'Back to month view', () => {
 				this.viewMode = 'month';
 				this.render();
 			});
@@ -586,9 +593,10 @@ export class CalendarModal extends Modal {
 
 			makeButton(actions, job.enabled ? '⏸ Pause' : '▶ Resume', () => {
 				void (async () => {
-					job.enabled = !job.enabled;
-					job.status = job.enabled ? 'scheduled' : 'disabled';
-					await this.plugin.saveState();
+					// Through the plugin so the next run is recomputed (no stale past-due run
+					// firing on resume) and the change is logged.
+					if (job.enabled) await this.plugin.disableJob(job);
+					else await this.plugin.enableJob(job);
 					new Notice(`Task #${job.taskNumber ?? ''} ${job.enabled ? 'resumed' : 'paused'}.`);
 					this.render();
 				})();

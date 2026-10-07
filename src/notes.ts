@@ -230,9 +230,12 @@ export class ScheduleNotesSync {
 		if (Array.isArray(definition.contextPaths)) job.contextPaths = definition.contextPaths.map(String);
 		if (definition.output === null || typeof definition.output === 'object') job.output = definition.output || null;
 		if (definition.schedule && (SCHEDULE_KINDS as string[]).includes(String(definition.schedule.kind))) {
-			const normalized = normalizeJob({ id: job.id, schedule: definition.schedule }).schedule;
-			job.schedule = normalized;
-			job.nextRunAt = job.schedule.kind === 'event' ? null : getScheduleNextRun(job.schedule, new Date());
+			const normalized = normalizeJob({ id: job.id, createdAt: job.createdAt, schedule: definition.schedule }).schedule;
+			// Body-only edits must not push the next run out (or drop an overdue one).
+			if (JSON.stringify(normalized) !== JSON.stringify(normalizeJob({ id: job.id, createdAt: job.createdAt, schedule: job.schedule }).schedule)) {
+				job.schedule = normalized;
+				job.nextRunAt = job.schedule.kind === 'event' ? null : getScheduleNextRun(job.schedule, new Date());
+			}
 		}
 		if (typeof definition.cooldownMinutes === 'number') job.cooldownMinutes = definition.cooldownMinutes;
 		job.notePath = notePath;
@@ -286,6 +289,12 @@ export class ScheduleNotesSync {
 	}
 
 	/** Debounced post-save hook; skips while the syncer itself is writing. */
+	/** Cancels a pending debounced sync (called on plugin unload). */
+	dispose(): void {
+		if (this.debounceTimer !== null) window.clearTimeout(this.debounceTimer);
+		this.debounceTimer = null;
+	}
+
 	requestSync(): void {
 		if (!this.plugin.settings.scheduleNotesEnabled) return;
 		if (this.debounceTimer !== null) window.clearTimeout(this.debounceTimer);

@@ -320,12 +320,12 @@ export class TaskViewModal extends Modal {
 					this.app,
 					`Run task #${this.job.taskNumber} (${this.job.title}) immediately? It will execute in the background now.`,
 					() => {
-						void (async () => {
-							new Notice(`Starting task #${this.job.taskNumber} now...`);
-							await this.plugin.runJobNow(this.job);
-							this.close();
-							if (this.onBack) this.onBack();
-						})();
+						new Notice(`Starting task #${this.job.taskNumber} now...`);
+						// Don't wait for the AI run (minutes): navigate now, so a late onBack()
+						// can't close whatever modal the user has moved on to.
+						void this.plugin.runJobNow(this.job);
+						this.close();
+						if (this.onBack) this.onBack();
 					}
 				).open();
 			});
