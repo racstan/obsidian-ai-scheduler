@@ -6,6 +6,7 @@ import { closeExistingSchedulerModals, makeButton, makeCard } from './dom';
 import { JobModal } from './JobModal';
 import { PlannerModal } from './PlannerModal';
 import { TaskViewModal } from './TaskViewModal';
+import { CalendarModal } from './CalendarModal';
 import { Job } from '../types';
 
 function appendTaskIdBadge(container: HTMLElement, id: string): void {
@@ -181,6 +182,12 @@ export class AssistantModal extends Modal {
 				new PlannerModal(this.app, this.plugin).open();
 			}, 50);
 		}, true);
+		makeButton(actions, '📅 Calendar', () => {
+			this.close();
+			window.setTimeout(() => {
+				new CalendarModal(this.app, this.plugin).open();
+			}, 50);
+		});
 		makeButton(actions, 'Settings', () => {
 			this.close();
 			window.setTimeout(() => {

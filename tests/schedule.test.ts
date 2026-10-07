@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cronFormFor, describeSchedule, getScheduleNextRun, normalizeMultiRules, previewSchedule, validClock } from '../src/schedule';
+import { cronFormFor, describeSchedule, getScheduleNextRun, getScheduleOccurrencesInRange, normalizeMultiRules, previewSchedule, validClock } from '../src/schedule';
 import { normalizeJob, parseStoredData, DEFAULT_SETTINGS } from '../src/settings';
 import { TaskSchedule } from '../src/types';
 
@@ -201,4 +201,33 @@ test('parseStoredData preserves and normalizes deletedJobs', () => {
 	assert.equal(parsed.deletedJobs[0].id, 'deleted-1');
 	assert.equal(parsed.deletedJobs[0].title, 'Deleted Task');
 });
+
+test('getScheduleOccurrencesInRange projects runs across a date range', () => {
+	const start = at(2026, 10, 1, 0, 0);
+	const end = at(2026, 10, 7, 23, 59);
+
+	// Daily at 09:00
+	const dailySchedule: TaskSchedule = { kind: 'daily', time: '09:00' };
+	const dailyRuns = getScheduleOccurrencesInRange(dailySchedule, start, end);
+	assert.equal(dailyRuns.length, 7);
+	assert.equal(dailyRuns[0].toISOString(), at(2026, 10, 1, 9, 0).toISOString());
+	assert.equal(dailyRuns[6].toISOString(), at(2026, 10, 7, 9, 0).toISOString());
+
+	// Weekly on Mondays and Fridays
+	const weeklySchedule: TaskSchedule = { kind: 'weekly', time: '14:00', days: [1, 5] };
+	const weeklyRuns = getScheduleOccurrencesInRange(weeklySchedule, start, end);
+	// In Oct 1-7 2026: Oct 2 is Fri, Oct 5 is Mon
+	assert.equal(weeklyRuns.length, 2);
+
+	// Once schedule within range
+	const onceSchedule: TaskSchedule = { kind: 'once', at: at(2026, 10, 3, 15, 30).toISOString() };
+	const onceRuns = getScheduleOccurrencesInRange(onceSchedule, start, end);
+	assert.equal(onceRuns.length, 1);
+	assert.equal(onceRuns[0].toISOString(), at(2026, 10, 3, 15, 30).toISOString());
+
+	// Once schedule outside range
+	const onceOutside: TaskSchedule = { kind: 'once', at: at(2026, 11, 1, 10, 0).toISOString() };
+	assert.equal(getScheduleOccurrencesInRange(onceOutside, start, end).length, 0);
+});
+
 

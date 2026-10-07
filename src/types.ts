@@ -114,6 +114,15 @@ export interface AISettings {
 	lastSeenVersion: string;
 	/** Whether to automatically show the changelog after an update. */
 	showChangelogOnUpdate: boolean;
+	/** Default output folder for tasks that don't specify an output location.
+	 *  Falls back to 'AI Scheduler' if empty. */
+	defaultOutputFolder: string;
+	/** Whether to append an entry to the task log file after each run. */
+	taskLoggingEnabled: boolean;
+	/** Folder where the task log file lives. Falls back to defaultOutputFolder
+	 *  (or 'AI Scheduler') if empty. The log file is always named
+	 *  'AI SCHEDULER LOGS.md' inside this folder. */
+	taskLogFolder: string;
 }
 
 export interface ActivityEntry {

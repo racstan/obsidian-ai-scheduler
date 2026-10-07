@@ -23,29 +23,33 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
-		version: '2.1.16',
-		date: '2026-10-03',
-		title: 'Task Trash & Restoration, Quick Undo & Trash Management',
+		version: '2.1.7.15',
+		date: '2026-10-07',
+		title: 'Schedule Calendar View, Default Output Folder, Task Activity Logging & PolyForm License',
 		highlights: [
-			'Task Trash & Restoration: Deleted tasks are now safely moved to a Deleted Tasks trash section and can be restored back to your schedule with a single click.',
-			'Bulk Trash Management: Added "Restore all" and "Empty trash" controls to restore or permanently purge multiple deleted tasks.',
-			'Restore Command Palette Support: Added "AI Scheduler: Restore last deleted task" command for fast keyboard-driven undo.',
-			'Interactive Task Inspection: Deleted tasks can be inspected in the task detail viewer, restored, or permanently deleted directly.',
+			'Schedule Calendar View: Added an interactive Month Grid and Day Timeline view with status chips, filtering, and instant task actions.',
+			'Default Task Output Folder: Unspecified output destinations now automatically route to a configurable default vault folder (defaults to "AI Scheduler").',
+			'Centralized Task Activity Logging: Track task runs in a clean Markdown table with serial numbers, timestamps, status, and wikilinks to modified files.',
+			'PolyForm Noncommercial 1.0.0 License: Upgraded license terms to PolyForm Noncommercial 1.0.0.',
+			'Task Trash & Restoration: Safely recover deleted tasks from a dedicated trash section or with the restore command.',
 		],
 		added: [
-			'Added Deleted Tasks section with Restore and Delete forever actions in the dashboard.',
-			'Added "Restore all" and "Empty trash" bulk action controls in the trash section.',
+			'Added interactive Schedule Calendar modal with Month Grid and Day Timeline modes.',
+			'Added "AI Scheduler: Open schedule calendar" command to the command palette and a calendar button in the dashboard.',
+			'Added Default Output Folder setting with automatic fallback to "AI Scheduler".',
+			'Added Task Activity Logging setting that writes structured Markdown table entries to "AI SCHEDULER LOGS.md".',
+			'Added Deleted Tasks trash section with Restore, Restore all, and Delete forever controls.',
 			'Added "AI Scheduler: Restore last deleted task" command.',
-			'Added task restoration and permanent deletion support in the Task Details modal.',
-			'Added RESTORED activity logging and badge styling.',
 		],
 		changed: [
-			'Updated delete confirmation dialogs and notices to inform users that deleted tasks can be restored from trash.',
-			'Improved Activity feed ID click handling to find and inspect deleted tasks seamlessly.',
+			'Updated license to PolyForm Noncommercial License 1.0.0.',
+			'Cleaned branding, removed legacy BRAT references and external donation buttons.',
+			'Updated author attributions to @racstan GitHub profile.',
+			'Updated README documentation with clean Obsidian Copilot and Claudian setup guides.',
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author & Lead Maintainer',
@@ -73,7 +77,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author & Lead Maintainer',
@@ -100,7 +104,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author & Lead Maintainer',
@@ -129,7 +133,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author & Lead Maintainer',
@@ -155,7 +159,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author & Lead Maintainer',
@@ -183,7 +187,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author & Lead Maintainer',
@@ -193,20 +197,18 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
 		version: '2.1.7.9',
 		date: '2026-10-02',
-		title: 'About AI Scheduler & Creator Support (Buy Me a Coffee)',
+		title: 'About AI Scheduler & Metadata',
 		highlights: [
 			'About AI Scheduler Section: Added dedicated project overview, author credits, and license details in Settings.',
-			'Creator Support (Buy Me a Coffee): Added "☕ Buy me a coffee" creator support button in Settings and Changelog dialog (https://buymeacoffee.com/rachitasthana).',
-			'Documentation & Funding Links: Enriched repository documentation with creator support badges and funding guides.',
+			'Documentation & Links: Enriched repository documentation and project metadata.',
 		],
 		added: [
-			'Dedicated "About & support" section in Settings tab with version info, author metadata, and repository links.',
-			'"☕ Buy me a coffee" button in Settings and Changelog modal footer.',
-			'Support and funding documentation in project README.',
+			'Dedicated "About" section in Settings tab with version info, author metadata, and repository links.',
+			'Documentation updates in project README.',
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author & Lead Maintainer',
@@ -234,7 +236,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author & Lead Maintainer',
@@ -254,7 +256,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author & Lead Maintainer',
@@ -284,7 +286,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author & Lead Maintainer',
@@ -310,7 +312,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Maintainer',
@@ -339,7 +341,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Maintainer',
@@ -366,7 +368,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Maintainer',
@@ -393,7 +395,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Maintainer',
@@ -425,7 +427,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Maintainer',
@@ -455,7 +457,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Maintainer',
@@ -487,7 +489,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Maintainer',
@@ -516,7 +518,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author',
@@ -532,7 +534,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author',
@@ -560,7 +562,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author',
@@ -581,7 +583,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author',
@@ -608,7 +610,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author',
@@ -631,7 +633,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author',
@@ -648,7 +650,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author',
@@ -665,7 +667,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author',
@@ -682,7 +684,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author',
@@ -699,7 +701,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author',
@@ -716,7 +718,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		],
 		contributors: [
 			{
-				name: 'Rachit Asthana',
+				name: 'racstan',
 				username: 'racstan',
 				url: 'https://github.com/racstan',
 				role: 'Author',

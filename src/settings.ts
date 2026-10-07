@@ -23,6 +23,9 @@ export const DEFAULT_SETTINGS: AISettings = {
 	scheduleFolder: 'AI Schedules',
 	lastSeenVersion: '',
 	showChangelogOnUpdate: true,
+	defaultOutputFolder: '',
+	taskLoggingEnabled: false,
+	taskLogFolder: '',
 };
 
 const VALID_STATUSES = new Set(['scheduled', 'running', 'completed', 'failed', 'missed', 'disabled']);
@@ -152,6 +155,10 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 	if (typeof settings.showChangelogOnUpdate !== 'boolean') settings.showChangelogOnUpdate = true;
 	if (typeof settings.lastSeenVersion !== 'string') settings.lastSeenVersion = '';
 	if (typeof settings.systemNotifications !== 'boolean') settings.systemNotifications = true;
+	// New fields added in later versions — safe defaults for existing installs.
+	if (typeof settings.defaultOutputFolder !== 'string') settings.defaultOutputFolder = '';
+	if (typeof settings.taskLoggingEnabled !== 'boolean') settings.taskLoggingEnabled = false;
+	if (typeof settings.taskLogFolder !== 'string') settings.taskLogFolder = '';
 
 	const legacyTasks = stored.tasks as Array<Record<string, unknown>> | undefined;
 	const jobs = Array.isArray(stored.jobs)

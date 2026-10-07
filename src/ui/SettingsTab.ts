@@ -226,7 +226,53 @@ export class AssistantSettingTab extends PluginSettingTab {
 		}
 
 		// -------------------------------------------------------------------------
-		// Section 3: Background Execution & Notifications
+		// Section 3: Default Output & Task Logging
+		// -------------------------------------------------------------------------
+		new Setting(containerEl).setName('Task outputs & activity logging').setHeading();
+
+		new Setting(containerEl)
+			.setName('Default output folder')
+			.setDesc('Vault folder where AI task results are saved when a prompt does not specify a save location. If empty, defaults to "AI Scheduler".')
+			.addText(text => text
+				.setPlaceholder('AI Scheduler')
+				.setValue(this.plugin.settings.defaultOutputFolder)
+				.onChange(value => {
+					void (async () => {
+						this.plugin.settings.defaultOutputFolder = value.trim();
+						await this.plugin.saveState();
+					})();
+				}));
+
+		new Setting(containerEl)
+			.setName('Enable task activity logging')
+			.setDesc('Record every task execution in a centralized Markdown log table with serial number, timestamp, execution status, and links to modified/created files.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.taskLoggingEnabled)
+				.onChange(value => {
+					void (async () => {
+						this.plugin.settings.taskLoggingEnabled = value;
+						await this.plugin.saveState();
+						this.renderSettings();
+					})();
+				}));
+
+		if (this.plugin.settings.taskLoggingEnabled) {
+			new Setting(containerEl)
+				.setName('Task log folder')
+				.setDesc('Vault folder where "AI SCHEDULER LOGS.md" is stored. Leave blank to use the default output folder.')
+				.addText(text => text
+					.setPlaceholder(this.plugin.getDefaultOutputFolder())
+					.setValue(this.plugin.settings.taskLogFolder)
+					.onChange(value => {
+						void (async () => {
+							this.plugin.settings.taskLogFolder = value.trim();
+							await this.plugin.saveState();
+						})();
+					}));
+		}
+
+		// -------------------------------------------------------------------------
+		// Section 4: Background Execution & Notifications
 		// -------------------------------------------------------------------------
 		new Setting(containerEl).setName('Background execution & notifications').setHeading();
 
@@ -361,9 +407,9 @@ export class AssistantSettingTab extends PluginSettingTab {
 			}));
 
 		// -------------------------------------------------------------------------
-		// Section 7: About & Creator Support
+		// Section 7: About
 		// -------------------------------------------------------------------------
-		new Setting(containerEl).setName('About & support').setHeading();
+		new Setting(containerEl).setName('About').setHeading();
 
 		const aboutCard = containerEl.createDiv({ cls: 'ai-scheduler-about-card' });
 		const aboutHeader = aboutCard.createDiv({ cls: 'ai-scheduler-about-header' });
@@ -376,24 +422,14 @@ export class AssistantSettingTab extends PluginSettingTab {
 		});
 
 		const metaRow = aboutCard.createDiv({ cls: 'ai-scheduler-about-meta' });
-		metaRow.createSpan({ text: 'Author: Rachit Asthana' });
+		const authorEl = metaRow.createSpan({ text: 'Author: ' });
+		const authorLink = authorEl.createEl('a', { text: '@racstan', href: 'https://github.com/racstan' });
+		authorLink.target = '_blank';
 		metaRow.createSpan({ text: ' · ' });
-		metaRow.createSpan({ text: 'License: GNU GPL-3.0' });
+		metaRow.createSpan({ text: 'License: PolyForm Noncommercial 1.0.0' });
 		metaRow.createSpan({ text: ' · ' });
 		const ghLink = metaRow.createEl('a', { text: 'GitHub repository', href: 'https://github.com/racstan/obsidian-ai-scheduler' });
 		ghLink.target = '_blank';
-
-		new Setting(containerEl)
-			.setName('Buy me a coffee ☕')
-			.setDesc('AI Scheduler is free and open-source. If it saves you time and brings intelligence to your vault, consider buying me a coffee to support continued development!')
-			.addButton(button => {
-				button
-					.setButtonText('☕ Buy me a coffee')
-					.setClass('ai-scheduler-coffee-btn')
-					.onClick(() => {
-						window.open('https://buymeacoffee.com/rachitasthana', '_blank');
-					});
-			});
 
 		new Setting(containerEl)
 			.setName('Documentation & source code')

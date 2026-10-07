@@ -182,5 +182,28 @@ export function formatDuration(isoString: string): string {
 	return `${min}m ${remSec}s`;
 }
 
+/**
+ * Builds a single markdown table row for the task activity log.
+ * @param serial   Row number (monotonically increasing integer stored externally)
+ * @param job      The completed / failed job
+ * @param status   'completed' | 'failed'
+ * @param outputFiles  Vault-relative paths of files created or modified
+ */
+export function buildTaskLogRow(
+	serial: number,
+	job: { taskNumber?: number; title: string; lastRunAt: string | null },
+	status: string,
+	outputFiles: string[],
+): string {
+	const ts = job.lastRunAt ? formatDate(job.lastRunAt) : formatDate(new Date().toISOString());
+	const summary = status === 'failed' ? '❌ Failed' : '✅ Completed';
+	const links = outputFiles.length
+		? outputFiles.map(p => `[[${p}]]`).join(', ')
+		: '—';
+	// Escape pipe characters inside cells so the table stays valid
+	const escapedTitle = (job.title || 'Untitled').replace(/\|/g, '\\|');
+	return `| ${serial} | ${ts} | #${job.taskNumber ?? '?'} ${escapedTitle} | ${summary} | ${links} |`;
+}
 
-
+/** Header + separator for the task log markdown table (written once on file creation). */
+export const TASK_LOG_HEADER = `# AI Scheduler — Task Log\n\n| # | Timestamp | Task | Status | Modified files |\n| --- | --- | --- | --- | --- |`;

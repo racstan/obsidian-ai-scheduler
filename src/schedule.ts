@@ -386,3 +386,41 @@ export function describeSchedule(job: { schedule?: TaskSchedule; nextRunAt?: str
 	}
 	return desc;
 }
+
+/**
+ * Calculates all scheduled run times for a given schedule within a date range [start, end].
+ * Capped by max to prevent runaway on high-frequency schedules.
+ */
+export function getScheduleOccurrencesInRange(
+	schedule: TaskSchedule | null | undefined,
+	start: Date,
+	end: Date,
+	max = 100,
+): Date[] {
+	if (!schedule || schedule.kind === 'event') return [];
+	if (schedule.kind === 'once') {
+		if (!schedule.at) return [];
+		const date = new Date(schedule.at);
+		if (!Number.isNaN(date.getTime()) && date >= start && date <= end) {
+			return [date];
+		}
+		return [];
+	}
+	const occurrences: Date[] = [];
+	let cursor = new Date(start.getTime() - 1000);
+	const seen = new Set<number>();
+	while (occurrences.length < max) {
+		const nextIso = getScheduleNextRun(schedule, cursor);
+		if (!nextIso) break;
+		const nextDate = new Date(nextIso);
+		const timeMs = nextDate.getTime();
+		if (Number.isNaN(timeMs) || nextDate > end) break;
+		if (!seen.has(timeMs)) {
+			seen.add(timeMs);
+			occurrences.push(nextDate);
+		}
+		cursor = new Date(Math.max(timeMs + 1000, cursor.getTime() + 1000));
+	}
+	return occurrences;
+}
+

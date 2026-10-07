@@ -5,27 +5,31 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.1.16] - 2026-10-03
+## [2.1.7.15] - 2026-10-07
 
 ### Highlights
-- **Task Trash & Restoration**: Deleted tasks are now safely moved to a Deleted Tasks trash section and can be restored back to your schedule with a single click.
-- **Bulk Trash Management**: Added "Restore all" and "Empty trash" controls to restore or permanently purge multiple deleted tasks.
-- **Restore Command Palette Support**: Added "AI Scheduler: Restore last deleted task" command for fast keyboard-driven undo.
-- **Interactive Task Inspection**: Deleted tasks can be inspected in the task detail viewer, restored, or permanently deleted directly.
+- **Schedule Calendar View**: Added an interactive Month Grid and Day Timeline view with status chips, filtering, and instant task actions.
+- **Default Task Output Folder**: Unspecified output destinations now automatically route to a configurable default vault folder (defaults to "AI Scheduler").
+- **Centralized Task Activity Logging**: Track task runs in a clean Markdown table with serial numbers, timestamps, status, and wikilinks to modified files.
+- **PolyForm Noncommercial 1.0.0 License**: Upgraded license terms to PolyForm Noncommercial 1.0.0.
+- **Task Trash & Restoration**: Safely recover deleted tasks from a dedicated trash section or with the restore command.
 
 ### Added
-- Added Deleted Tasks section with Restore and Delete forever actions in the dashboard.
-- Added "Restore all" and "Empty trash" bulk action controls in the trash section.
+- Added interactive Schedule Calendar modal with Month Grid and Day Timeline modes.
+- Added "AI Scheduler: Open schedule calendar" command to the command palette and a calendar button in the dashboard.
+- Added Default Output Folder setting with automatic fallback to "AI Scheduler".
+- Added Task Activity Logging setting that writes structured Markdown table entries to "AI SCHEDULER LOGS.md".
+- Added Deleted Tasks trash section with Restore, Restore all, and Delete forever controls.
 - Added "AI Scheduler: Restore last deleted task" command.
-- Added task restoration and permanent deletion support in the Task Details modal.
-- Added RESTORED activity logging and badge styling.
 
 ### Changed
-- Updated delete confirmation dialogs and notices to inform users that deleted tasks can be restored from trash.
-- Improved Activity feed ID click handling to find and inspect deleted tasks seamlessly.
+- Updated license to PolyForm Noncommercial License 1.0.0.
+- Cleaned branding, removed legacy BRAT references and external donation buttons.
+- Updated author attributions to @racstan GitHub profile.
+- Updated README documentation with clean Obsidian Copilot and Claudian setup guides.
 
 ### Contributors
-- [@racstan](https://github.com/racstan) (Rachit Asthana)
+- [@racstan](https://github.com/racstan)
 
 ---
 
@@ -47,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced AI Planning Note cards to highlight unmentioned prompt parameters with default values.
 
 ### Contributors
-- [@racstan](https://github.com/racstan) (Rachit Asthana)
+- [@racstan](https://github.com/racstan)
 
 ---
 
@@ -68,7 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Limited Recent Activity feed to the 10 most recent entries.
 
 ### Contributors
-- [@racstan](https://github.com/racstan) (Rachit Asthana)
+- [@racstan](https://github.com/racstan)
 
 ---
 
@@ -91,7 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cleaned button labels across all modals and pickers.
 
 ### Contributors
-- [@racstan](https://github.com/racstan) (Rachit Asthana)
+- [@racstan](https://github.com/racstan)
 
 ---
 
@@ -111,7 +115,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replaced `Edit` button on past task cards with `View` button in `AssistantModal`.
 
 ### Contributors
-- [@racstan](https://github.com/racstan) (Rachit Asthana)
+- [@racstan](https://github.com/racstan)
 
 ---
 
@@ -133,7 +137,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed stringification type warnings across backend error handlers.
 
 ### Contributors
-- [@racstan](https://github.com/racstan) (Rachit Asthana)
+- [@racstan](https://github.com/racstan)
 
 ---
 
@@ -141,16 +145,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Highlights
 - **About AI Scheduler Section**: Added a dedicated project overview, author credits, and GNU GPL-3.0 licensing in plugin Settings.
-- **Creator Support (Buy Me a Coffee)**: Added a "☕ Buy me a coffee" support button in Settings and Changelog dialog ([buymeacoffee.com/rachitasthana](https://buymeacoffee.com/rachitasthana)).
-- **Documentation & Funding**: Enriched repository documentation with creator support badges and funding guides.
+- **Documentation & Links**: Enriched repository documentation and project metadata.
 
 ### Added
-- Dedicated "About & support" section in Settings tab with version info, author metadata, and repository links.
-- "☕ Buy me a coffee" button in Settings and Changelog modal footer.
-- Support and funding documentation in project README.
+- Dedicated "About" section in Settings tab with version info, author metadata, and repository links.
+- Documentation updates in project README.
 
 ### Contributors
-- [@racstan](https://github.com/racstan) (Rachit Asthana)
+- [@racstan](https://github.com/racstan)
 
 ---
 
@@ -171,7 +173,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prevented long background stalls by shortening agent execution timeout and inspecting tab errors.
 
 ### Contributors
-- [@racstan](https://github.com/racstan) (Rachit Asthana)
+- [@racstan](https://github.com/racstan)
 
 ---
 
@@ -185,7 +187,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed changelog dialog footer getting cut off on lower-height viewports.
 
 ### Contributors
-- [@racstan](https://github.com/racstan) (Rachit Asthana)
+- [@racstan](https://github.com/racstan)
 
 ---
 
@@ -209,7 +211,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed misleading "Next run: <past time>" timestamp during background execution.
 
 ### Contributors
-- [@racstan](https://github.com/racstan) (Rachit Asthana)
+- [@racstan](https://github.com/racstan)
 
 ---
 
@@ -232,7 +234,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed `describeSchedule()` displaying "not scheduled" for one-time execution jobs.
 
 ### Contributors
-- [@racstan](https://github.com/racstan) (Rachit Asthana)
+- [@racstan](https://github.com/racstan)
 
 ---
 
@@ -255,7 +257,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Eliminated multi-select box hover selection bugs with modern tag chips.
 
 ### Contributors
-- [@racstan](https://github.com/racstan) (Rachit Asthana)
+- [@racstan](https://github.com/racstan)
 
 ---
 
@@ -276,7 +278,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enriched descriptions for Nightly AI Review explaining nightly synthesis and timestamped note archives.
 
 ### Contributors
-- [@racstan](https://github.com/racstan) (Rachit Asthana)
+- [@racstan](https://github.com/racstan)
 
 ---
 
@@ -297,7 +299,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test notification button now triggers both in-app and system desktop alerts to verify OS permissions.
 
 ### Contributors
-- [@racstan](https://github.com/racstan) (Rachit Asthana)
+- [@racstan](https://github.com/racstan)
 
 ---
 
@@ -323,7 +325,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed ambiguous dashboard next run stat clarity.
 
 ### Contributors
-- [@racstan](https://github.com/racstan) (Rachit Asthana)
+- [@racstan](https://github.com/racstan)
 
 ---
 
@@ -347,7 +349,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed cron multi-time conversion and range stepping math.
 
 ### Contributors
-- [@racstan](https://github.com/racstan) (Rachit Asthana)
+- [@racstan](https://github.com/racstan)
 
 ---
 
@@ -374,7 +376,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wrapped plugin state persistence in comprehensive error handling.
 
 ### Contributors
-- [@racstan](https://github.com/racstan) (Rachit Asthana)
+- [@racstan](https://github.com/racstan)
 - [@leweii](https://github.com/leweii) (Jakob He - PR [#2](https://github.com/racstan/obsidian-ai-scheduler/pull/2))
 
 ---

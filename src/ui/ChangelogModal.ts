@@ -112,14 +112,6 @@ export class ChangelogModal extends Modal {
 			window.open('https://github.com/racstan/obsidian-ai-scheduler', '_blank');
 		});
 
-		const coffeeBtn = leftActions.createEl('button', {
-			text: '☕ Buy me a coffee',
-			cls: 'ai-scheduler-coffee-btn',
-		});
-		coffeeBtn.addEventListener('click', () => {
-			window.open('https://buymeacoffee.com/rachitasthana', '_blank');
-		});
-
 		const closeBtn = actionsRow.createEl('button', {
 			text: 'Got it',
 			cls: 'mod-cta ai-scheduler-close-btn',
@@ -194,7 +186,7 @@ export class ChangelogModal extends Modal {
 				});
 				chip.target = '_blank';
 				chip.createSpan({ cls: 'ai-scheduler-contributor-name', text: contributor.name });
-				if (contributor.username) {
+				if (contributor.username && contributor.username !== contributor.name) {
 					chip.createSpan({ cls: 'ai-scheduler-contributor-handle', text: ` (@${contributor.username})` });
 				}
 				if (contributor.role) {

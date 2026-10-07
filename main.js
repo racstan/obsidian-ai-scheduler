@@ -31,7 +31,7 @@ __export(main_exports, {
   default: () => AISchedulerPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian11 = require("obsidian");
+var import_obsidian12 = require("obsidian");
 
 // src/types.ts
 var BACKEND_INFO = {
@@ -524,6 +524,18 @@ function formatDuration(isoString) {
   const remSec = sec % 60;
   return `${min}m ${remSec}s`;
 }
+function buildTaskLogRow(serial, job, status, outputFiles) {
+  var _a;
+  const ts = job.lastRunAt ? formatDate(job.lastRunAt) : formatDate((/* @__PURE__ */ new Date()).toISOString());
+  const summary = status === "failed" ? "\u274C Failed" : "\u2705 Completed";
+  const links = outputFiles.length ? outputFiles.map((p) => `[[${p}]]`).join(", ") : "\u2014";
+  const escapedTitle = (job.title || "Untitled").replace(/\|/g, "\\|");
+  return `| ${serial} | ${ts} | #${(_a = job.taskNumber) != null ? _a : "?"} ${escapedTitle} | ${summary} | ${links} |`;
+}
+var TASK_LOG_HEADER = `# AI Scheduler \u2014 Task Log
+
+| # | Timestamp | Task | Status | Modified files |
+| --- | --- | --- | --- | --- |`;
 
 // src/schedule.ts
 var DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -869,6 +881,33 @@ function describeSchedule(job) {
   }
   return desc;
 }
+function getScheduleOccurrencesInRange(schedule, start, end, max = 100) {
+  if (!schedule || schedule.kind === "event") return [];
+  if (schedule.kind === "once") {
+    if (!schedule.at) return [];
+    const date = new Date(schedule.at);
+    if (!Number.isNaN(date.getTime()) && date >= start && date <= end) {
+      return [date];
+    }
+    return [];
+  }
+  const occurrences = [];
+  let cursor = new Date(start.getTime() - 1e3);
+  const seen = /* @__PURE__ */ new Set();
+  while (occurrences.length < max) {
+    const nextIso = getScheduleNextRun(schedule, cursor);
+    if (!nextIso) break;
+    const nextDate = new Date(nextIso);
+    const timeMs = nextDate.getTime();
+    if (Number.isNaN(timeMs) || nextDate > end) break;
+    if (!seen.has(timeMs)) {
+      seen.add(timeMs);
+      occurrences.push(nextDate);
+    }
+    cursor = new Date(Math.max(timeMs + 1e3, cursor.getTime() + 1e3));
+  }
+  return occurrences;
+}
 
 // src/settings.ts
 var DEFAULT_SETTINGS = {
@@ -889,7 +928,10 @@ var DEFAULT_SETTINGS = {
   scheduleNotesEnabled: false,
   scheduleFolder: "AI Schedules",
   lastSeenVersion: "",
-  showChangelogOnUpdate: true
+  showChangelogOnUpdate: true,
+  defaultOutputFolder: "",
+  taskLoggingEnabled: false,
+  taskLogFolder: ""
 };
 var VALID_STATUSES = /* @__PURE__ */ new Set(["scheduled", "running", "completed", "failed", "missed", "disabled"]);
 function normalizeOutput(output) {
@@ -984,6 +1026,9 @@ function parseStoredData(data) {
   if (typeof settings.showChangelogOnUpdate !== "boolean") settings.showChangelogOnUpdate = true;
   if (typeof settings.lastSeenVersion !== "string") settings.lastSeenVersion = "";
   if (typeof settings.systemNotifications !== "boolean") settings.systemNotifications = true;
+  if (typeof settings.defaultOutputFolder !== "string") settings.defaultOutputFolder = "";
+  if (typeof settings.taskLoggingEnabled !== "boolean") settings.taskLoggingEnabled = false;
+  if (typeof settings.taskLogFolder !== "string") settings.taskLogFolder = "";
   const legacyTasks = stored.tasks;
   const jobs = Array.isArray(stored.jobs) ? stored.jobs.map((job) => normalizeJob(job)) : Array.isArray(legacyTasks) ? legacyTasks.map((task) => normalizeJob({
     ...task,
@@ -1538,7 +1583,7 @@ async function resolveJobExecution(host, job) {
 }
 
 // src/ui/AssistantModal.ts
-var import_obsidian7 = require("obsidian");
+var import_obsidian8 = require("obsidian");
 
 // src/ui/dom.ts
 function makeButton(parent, label, onClick, primary = false, danger = false) {
@@ -3038,6 +3083,451 @@ var TaskViewModal = class extends import_obsidian6.Modal {
   }
 };
 
+// src/ui/CalendarModal.ts
+var import_obsidian7 = require("obsidian");
+function toLocalDateKey(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function formatClockTime(d) {
+  const h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, "0");
+  const ampm = h >= 12 ? "PM" : "AM";
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${m} ${ampm}`;
+}
+var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
+  constructor(app, plugin, initialDate = /* @__PURE__ */ new Date()) {
+    super(app);
+    this.activeFilter = "all";
+    this.viewMode = "month";
+    this.refreshTimer = null;
+    this.plugin = plugin;
+    this.currentYear = initialDate.getFullYear();
+    this.currentMonth = initialDate.getMonth();
+    this.selectedDate = new Date(initialDate);
+  }
+  onOpen() {
+    closeExistingSchedulerModals(this);
+    this.render();
+    this.refreshTimer = window.setInterval(() => {
+      this.render();
+    }, 4e3);
+  }
+  onClose() {
+    if (this.refreshTimer !== null) {
+      window.clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+    this.contentEl.empty();
+  }
+  getRelevantJobs() {
+    let jobs = this.plugin.jobs;
+    if (this.activeFilter === "active") {
+      jobs = jobs.filter((j) => j.enabled && j.status !== "disabled");
+    } else if (this.activeFilter === "paused") {
+      jobs = jobs.filter((j) => !j.enabled || j.status === "disabled");
+    }
+    return jobs;
+  }
+  buildOccurrencesMap(start, end) {
+    const map = /* @__PURE__ */ new Map();
+    const now = /* @__PURE__ */ new Date();
+    const jobs = this.getRelevantJobs();
+    for (const job of jobs) {
+      const dates = getScheduleOccurrencesInRange(job.schedule, start, end, 150);
+      for (const d of dates) {
+        const key = toLocalDateKey(d);
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push({
+          job,
+          date: d,
+          timeStr: formatClockTime(d),
+          isPast: d < now,
+          isReview: isNightlyReviewJob(job)
+        });
+      }
+    }
+    for (const [, list] of map.entries()) {
+      list.sort((a, b) => a.date.getTime() - b.date.getTime());
+    }
+    return map;
+  }
+  render() {
+    const { contentEl } = this;
+    this.modalEl.addClass("ai-scheduler-modal");
+    this.modalEl.addClass("ai-scheduler-modal-lg");
+    this.modalEl.addClass("ai-scheduler-calendar-modal");
+    contentEl.addClass("ai-scheduler-content");
+    contentEl.empty();
+    const shell = contentEl.createDiv("ai-scheduler-shell ai-scheduler-shell-lg");
+    const header = shell.createDiv({ cls: "ai-scheduler-calendar-header" });
+    const titleCol = header.createDiv();
+    titleCol.createEl("h1", { text: "Schedule calendar", cls: "ai-scheduler-title" });
+    titleCol.createEl("p", {
+      text: "Visualize and manage scheduled AI tasks across days, weeks, and months.",
+      cls: "ai-scheduler-subtitle"
+    });
+    const topActions = header.createDiv({ cls: "ai-scheduler-calendar-top-actions" });
+    makeButton(topActions, "\u{1F4CB} Task dashboard", () => {
+      this.close();
+      window.setTimeout(() => new AssistantModal(this.app, this.plugin).open(), 50);
+    });
+    makeButton(topActions, "\u26A1 Ask AI to plan", () => {
+      this.close();
+      window.setTimeout(() => new PlannerModal(this.app, this.plugin).open(), 50);
+    });
+    makeButton(topActions, "+ New task", () => {
+      this.close();
+      window.setTimeout(() => {
+        new JobModal(this.app, this.plugin, normalizeJob({ prompt: "", title: "" }), () => {
+          new _CalendarModal(this.app, this.plugin, this.selectedDate).open();
+        }).open();
+      }, 50);
+    }, true);
+    const controlsBar = shell.createDiv({ cls: "ai-scheduler-cal-controls" });
+    const navGroup = controlsBar.createDiv({ cls: "ai-scheduler-cal-nav" });
+    const prevBtn = navGroup.createEl("button", { text: "\u2039", cls: "ai-scheduler-cal-nav-btn" });
+    prevBtn.setAttribute("title", "Previous month");
+    prevBtn.onclick = () => {
+      if (this.currentMonth === 0) {
+        this.currentMonth = 11;
+        this.currentYear -= 1;
+      } else {
+        this.currentMonth -= 1;
+      }
+      this.render();
+    };
+    navGroup.createDiv({
+      cls: "ai-scheduler-cal-month-title",
+      text: `${MONTH_NAMES2[this.currentMonth + 1]} ${this.currentYear}`
+    });
+    const nextBtn = navGroup.createEl("button", { text: "\u203A", cls: "ai-scheduler-cal-nav-btn" });
+    nextBtn.setAttribute("title", "Next month");
+    nextBtn.onclick = () => {
+      if (this.currentMonth === 11) {
+        this.currentMonth = 0;
+        this.currentYear += 1;
+      } else {
+        this.currentMonth += 1;
+      }
+      this.render();
+    };
+    const todayBtn = navGroup.createEl("button", { text: "Today", cls: "ai-scheduler-cal-today-btn" });
+    todayBtn.onclick = () => {
+      const today = /* @__PURE__ */ new Date();
+      this.currentYear = today.getFullYear();
+      this.currentMonth = today.getMonth();
+      this.selectedDate = today;
+      this.render();
+    };
+    const filterGroup = controlsBar.createDiv({ cls: "ai-scheduler-cal-filter-group" });
+    const filterSelect = filterGroup.createEl("select", { cls: "dropdown ai-scheduler-cal-select" });
+    filterSelect.createEl("option", { text: "All tasks", value: "all" });
+    filterSelect.createEl("option", { text: "Active tasks only", value: "active" });
+    filterSelect.createEl("option", { text: "Paused / disabled", value: "paused" });
+    filterSelect.value = this.activeFilter;
+    filterSelect.onchange = () => {
+      this.activeFilter = filterSelect.value;
+      this.render();
+    };
+    const viewToggle = filterGroup.createDiv({ cls: "ai-scheduler-cal-view-toggle" });
+    const monthModeBtn = viewToggle.createEl("button", {
+      text: "\u{1F4C5} Month",
+      cls: `ai-scheduler-cal-toggle-btn ${this.viewMode === "month" ? "is-active" : ""}`
+    });
+    monthModeBtn.onclick = () => {
+      this.viewMode = "month";
+      this.render();
+    };
+    const agendaModeBtn = viewToggle.createEl("button", {
+      text: "\u{1F4C6} Timeline",
+      cls: `ai-scheduler-cal-toggle-btn ${this.viewMode === "agenda" ? "is-active" : ""}`
+    });
+    agendaModeBtn.onclick = () => {
+      this.viewMode = "agenda";
+      this.render();
+    };
+    const firstOfMonth = new Date(this.currentYear, this.currentMonth, 1);
+    const lastOfMonth = new Date(this.currentYear, this.currentMonth + 1, 0, 23, 59, 59, 999);
+    const startDayOfWeek = firstOfMonth.getDay();
+    const daysInMonth = lastOfMonth.getDate();
+    const gridStart = new Date(firstOfMonth);
+    gridStart.setDate(gridStart.getDate() - startDayOfWeek);
+    gridStart.setHours(0, 0, 0, 0);
+    const gridEnd = new Date(lastOfMonth);
+    const trailingDays = (7 - (startDayOfWeek + daysInMonth) % 7) % 7;
+    gridEnd.setDate(gridEnd.getDate() + trailingDays);
+    gridEnd.setHours(23, 59, 59, 999);
+    const occurrencesMap = this.buildOccurrencesMap(gridStart, gridEnd);
+    if (this.viewMode === "month") {
+      this.renderMonthGrid(shell, gridStart, gridEnd, occurrencesMap);
+      this.renderDayDetails(shell, this.selectedDate, occurrencesMap);
+    } else {
+      this.renderAgendaView(shell, firstOfMonth, lastOfMonth, occurrencesMap);
+    }
+    this.renderEventTasksSection(shell);
+  }
+  renderMonthGrid(container, gridStart, gridEnd, occurrencesMap) {
+    var _a;
+    const calCard = makeCard(container, "ai-scheduler-cal-card");
+    const grid = calCard.createDiv({ cls: "ai-scheduler-cal-grid" });
+    const headerRow = grid.createDiv({ cls: "ai-scheduler-cal-weekdays" });
+    for (const name of DAY_SHORT_NAMES) {
+      headerRow.createDiv({ cls: "ai-scheduler-cal-weekday-cell", text: name });
+    }
+    const daysGrid = grid.createDiv({ cls: "ai-scheduler-cal-days" });
+    const todayKey = toLocalDateKey(/* @__PURE__ */ new Date());
+    const selectedKey = toLocalDateKey(this.selectedDate);
+    const cur = new Date(gridStart);
+    while (cur <= gridEnd) {
+      const dateKey = toLocalDateKey(cur);
+      const cellDate = new Date(cur);
+      const isCurrentMonth = cur.getMonth() === this.currentMonth;
+      const isToday = dateKey === todayKey;
+      const isSelected = dateKey === selectedKey;
+      const occurrences = occurrencesMap.get(dateKey) || [];
+      const cell = daysGrid.createDiv({
+        cls: `ai-scheduler-cal-day-cell ${isCurrentMonth ? "" : "is-outside"} ${isToday ? "is-today" : ""} ${isSelected ? "is-selected" : ""}`
+      });
+      const cellTop = cell.createDiv({ cls: "ai-scheduler-cal-cell-top" });
+      cellTop.createSpan({ cls: "ai-scheduler-cal-day-num", text: String(cellDate.getDate()) });
+      if (occurrences.length > 0) {
+        const countBadge = cellTop.createSpan({
+          cls: "ai-scheduler-cal-count-badge",
+          text: String(occurrences.length)
+        });
+        countBadge.setAttribute("title", `${occurrences.length} task(s) on this day`);
+      }
+      const chipsContainer = cell.createDiv({ cls: "ai-scheduler-cal-chips" });
+      const visibleOccurrences = occurrences.slice(0, 3);
+      for (const occ of visibleOccurrences) {
+        const isRunning = occ.job.status === "running" || this.plugin.runningJobs.has(occ.job.id);
+        const chip = chipsContainer.createDiv({
+          cls: `ai-scheduler-cal-chip ${occ.isReview ? "is-review" : ""} ${isRunning ? "is-running" : ""} ${!occ.job.enabled ? "is-paused" : ""}`
+        });
+        chip.createSpan({ cls: "ai-scheduler-cal-chip-time", text: occ.timeStr });
+        const titleText = occ.isReview ? "Nightly Review" : `#${(_a = occ.job.taskNumber) != null ? _a : ""} ${occ.job.title}`;
+        chip.createSpan({ cls: "ai-scheduler-cal-chip-title", text: titleText });
+        chip.setAttribute("title", `${occ.timeStr} \u2014 ${titleText} (${describeSchedule(occ.job)})`);
+      }
+      if (occurrences.length > 3) {
+        const moreEl = chipsContainer.createDiv({
+          cls: "ai-scheduler-cal-chip-more",
+          text: `+${occurrences.length - 3} more`
+        });
+        moreEl.setAttribute("title", `${occurrences.length - 3} additional task(s)`);
+      }
+      cell.onclick = () => {
+        this.selectedDate = cellDate;
+        this.render();
+      };
+      cur.setDate(cur.getDate() + 1);
+    }
+  }
+  renderDayDetails(container, date, occurrencesMap) {
+    var _a, _b;
+    const key = toLocalDateKey(date);
+    const occurrences = occurrencesMap.get(key) || [];
+    const dateFormatted = formatDate(date.toISOString()).split(" at ")[0] || `${MONTH_NAMES2[date.getMonth() + 1]} ${date.getDate()}, ${date.getFullYear()}`;
+    const panel = makeCard(container, "ai-scheduler-cal-day-panel");
+    const panelHead = panel.createDiv({ cls: "ai-scheduler-cal-panel-header" });
+    const titleBlock = panelHead.createDiv();
+    titleBlock.createEl("h3", { text: `Tasks for ${dateFormatted}`, cls: "ai-scheduler-cal-panel-title" });
+    titleBlock.createDiv({
+      cls: "ai-scheduler-cal-panel-subtitle",
+      text: occurrences.length === 0 ? "No scheduled tasks for this date." : `${occurrences.length} task run${occurrences.length === 1 ? "" : "s"} scheduled`
+    });
+    const headActions = panelHead.createDiv({ cls: "ai-scheduler-cal-panel-actions" });
+    makeButton(headActions, "+ Schedule Task", () => {
+      this.close();
+      window.setTimeout(() => {
+        const defaultJob = normalizeJob({
+          prompt: "",
+          title: "",
+          schedule: {
+            kind: "once",
+            at: new Date(this.selectedDate.getFullYear(), this.selectedDate.getMonth(), this.selectedDate.getDate(), 9, 0).toISOString()
+          }
+        });
+        new JobModal(this.app, this.plugin, defaultJob, () => {
+          new _CalendarModal(this.app, this.plugin, this.selectedDate).open();
+        }).open();
+      }, 50);
+    });
+    if (occurrences.length === 0) {
+      const empty = panel.createDiv({ cls: "ai-scheduler-empty" });
+      empty.createDiv({ cls: "ai-scheduler-empty-title", text: "No tasks scheduled on this day" });
+      empty.createDiv({
+        cls: "ai-scheduler-empty-desc",
+        text: "You can create a new recurring or one-time AI task to run on this day."
+      });
+      return;
+    }
+    const list = panel.createDiv({ cls: "ai-scheduler-cal-timeline-list" });
+    for (const occ of occurrences) {
+      const job = occ.job;
+      const isRunning = job.status === "running" || this.plugin.runningJobs.has(job.id);
+      const card = list.createDiv({
+        cls: `ai-scheduler-cal-timeline-item ${isRunning ? "is-running" : ""} ${!job.enabled ? "is-paused" : ""}`
+      });
+      const timePillar = card.createDiv({ cls: "ai-scheduler-cal-timeline-time" });
+      timePillar.createSpan({ cls: "ai-scheduler-cal-time-badge", text: occ.timeStr });
+      const body = card.createDiv({ cls: "ai-scheduler-cal-timeline-body" });
+      const row = body.createDiv({ cls: "ai-scheduler-cal-timeline-top" });
+      const title = occ.isReview ? "Nightly Review" : `#${(_a = job.taskNumber) != null ? _a : "?"} ${job.title}`;
+      row.createEl("h4", { text: title, cls: "ai-scheduler-cal-item-title" });
+      const metaRow = body.createDiv({ cls: "ai-scheduler-cal-timeline-meta" });
+      metaRow.createSpan({ cls: "ai-scheduler-badge", text: describeSchedule(job) });
+      metaRow.createSpan({ cls: "ai-scheduler-badge ai-scheduler-badge-backend", text: describeBinding(job) });
+      if ((_b = job.output) == null ? void 0 : _b.folder) {
+        metaRow.createSpan({ cls: "ai-scheduler-badge ai-scheduler-badge-folder", text: `\u{1F4C1} ${job.output.folder}` });
+      }
+      if (job.prompt && !occ.isReview) {
+        const promptPreview = job.prompt.length > 140 ? `${job.prompt.slice(0, 140)}...` : job.prompt;
+        body.createDiv({ cls: "ai-scheduler-cal-prompt-preview", text: `\u201C${promptPreview}\u201D` });
+      }
+      const actions = card.createDiv({ cls: "ai-scheduler-cal-timeline-actions" });
+      makeButton(actions, "\u25B6 Run now", () => {
+        void (async () => {
+          var _a2;
+          new import_obsidian7.Notice(`Starting Task #${(_a2 = job.taskNumber) != null ? _a2 : ""} (${job.title})...`);
+          await this.plugin.retryJob(job);
+          this.render();
+        })();
+      });
+      makeButton(actions, "\u270F Edit", () => {
+        this.close();
+        window.setTimeout(() => {
+          new JobModal(this.app, this.plugin, job, () => {
+            new _CalendarModal(this.app, this.plugin, this.selectedDate).open();
+          }).open();
+        }, 50);
+      });
+      makeButton(actions, "\u{1F441} Details", () => {
+        this.close();
+        window.setTimeout(() => {
+          new TaskViewModal(this.app, this.plugin, job, () => {
+            new _CalendarModal(this.app, this.plugin, this.selectedDate).open();
+          }).open();
+        }, 50);
+      });
+    }
+  }
+  renderAgendaView(container, start, end, occurrencesMap) {
+    var _a;
+    const agendaCard = makeCard(container, "ai-scheduler-cal-card");
+    agendaCard.createEl("h3", {
+      text: `Upcoming Task Schedule \u2014 ${MONTH_NAMES2[this.currentMonth + 1]} ${this.currentYear}`,
+      cls: "ai-scheduler-cal-panel-title"
+    });
+    const allOccurrences = [];
+    const sortedKeys = Array.from(occurrencesMap.keys()).sort();
+    for (const key of sortedKeys) {
+      const list = occurrencesMap.get(key) || [];
+      for (const occ of list) {
+        if (occ.date >= start && occ.date <= end) {
+          allOccurrences.push(occ);
+        }
+      }
+    }
+    if (allOccurrences.length === 0) {
+      const empty = agendaCard.createDiv({ cls: "ai-scheduler-empty" });
+      empty.createDiv({ cls: "ai-scheduler-empty-title", text: "No tasks scheduled in this month" });
+      empty.createDiv({
+        cls: "ai-scheduler-empty-desc",
+        text: "Create a scheduled task or use the AI planner to automate your routine."
+      });
+      return;
+    }
+    const timeline = agendaCard.createDiv({ cls: "ai-scheduler-cal-agenda-list" });
+    let lastDateKey = "";
+    for (const occ of allOccurrences) {
+      const dateKey = toLocalDateKey(occ.date);
+      if (dateKey !== lastDateKey) {
+        lastDateKey = dateKey;
+        const dayHeader = timeline.createDiv({ cls: "ai-scheduler-cal-agenda-date-header" });
+        const dayFormatted = `${DAY_NAMES[occ.date.getDay()]}, ${MONTH_NAMES2[occ.date.getMonth() + 1]} ${occ.date.getDate()}`;
+        dayHeader.createSpan({ text: dayFormatted });
+      }
+      const job = occ.job;
+      const isRunning = job.status === "running" || this.plugin.runningJobs.has(job.id);
+      const row = timeline.createDiv({
+        cls: `ai-scheduler-cal-agenda-row ${isRunning ? "is-running" : ""} ${!job.enabled ? "is-paused" : ""}`
+      });
+      row.createSpan({ cls: "ai-scheduler-cal-agenda-time", text: occ.timeStr });
+      const mainCol = row.createDiv({ cls: "ai-scheduler-cal-agenda-main" });
+      const titleText = occ.isReview ? "Nightly Review" : `#${(_a = job.taskNumber) != null ? _a : "?"} ${job.title}`;
+      mainCol.createDiv({ cls: "ai-scheduler-cal-agenda-title", text: titleText });
+      mainCol.createDiv({ cls: "ai-scheduler-cal-agenda-sub", text: `${describeBinding(job)} \xB7 ${describeSchedule(job)}` });
+      const actions = row.createDiv({ cls: "ai-scheduler-cal-agenda-actions" });
+      makeButton(actions, "\u25B6 Run", () => {
+        void (async () => {
+          var _a2;
+          new import_obsidian7.Notice(`Starting Task #${(_a2 = job.taskNumber) != null ? _a2 : ""}...`);
+          await this.plugin.retryJob(job);
+          this.render();
+        })();
+      });
+      makeButton(actions, "\u{1F441} View", () => {
+        this.close();
+        window.setTimeout(() => {
+          new TaskViewModal(this.app, this.plugin, job, () => {
+            new _CalendarModal(this.app, this.plugin, this.selectedDate).open();
+          }).open();
+        }, 50);
+      });
+    }
+  }
+  renderEventTasksSection(container) {
+    var _a;
+    const eventJobs = this.plugin.jobs.filter((j) => {
+      var _a2;
+      return ((_a2 = j.schedule) == null ? void 0 : _a2.kind) === "event";
+    });
+    if (eventJobs.length === 0) return;
+    const card = makeCard(container, "ai-scheduler-cal-event-card");
+    const head = card.createDiv({ cls: "ai-scheduler-cal-event-head" });
+    head.createEl("h4", { text: `\u26A1 Event-Triggered Tasks (${eventJobs.length})` });
+    head.createDiv({
+      cls: "ai-scheduler-cal-event-desc",
+      text: "These tasks execute automatically whenever vault files change, rather than at a fixed calendar time."
+    });
+    const list = card.createDiv({ cls: "ai-scheduler-cal-event-list" });
+    for (const job of eventJobs) {
+      const item = list.createDiv({ cls: "ai-scheduler-cal-event-item" });
+      const top = item.createDiv({ cls: "ai-scheduler-cal-event-item-top" });
+      top.createSpan({ cls: "ai-scheduler-cal-event-title", text: `#${(_a = job.taskNumber) != null ? _a : "?"} ${job.title}` });
+      top.createSpan({
+        cls: `ai-scheduler-badge ${job.enabled ? "is-enabled" : "is-disabled"}`,
+        text: job.enabled ? "Active on file change" : "Paused"
+      });
+      const sub = item.createDiv({ cls: "ai-scheduler-cal-event-sub" });
+      const cooldown = job.cooldownMinutes ? `${job.cooldownMinutes} min cooldown` : "10 min cooldown";
+      sub.createSpan({ text: `${describeBinding(job)} \xB7 Trigger: vault modify \xB7 ${cooldown}` });
+      const actions = item.createDiv({ cls: "ai-scheduler-cal-event-actions" });
+      makeButton(actions, "\u25B6 Run now", () => {
+        void (async () => {
+          var _a2;
+          new import_obsidian7.Notice(`Starting Task #${(_a2 = job.taskNumber) != null ? _a2 : ""}...`);
+          await this.plugin.retryJob(job);
+          this.render();
+        })();
+      });
+      makeButton(actions, "\u270F Edit", () => {
+        this.close();
+        window.setTimeout(() => {
+          new JobModal(this.app, this.plugin, job, () => {
+            new _CalendarModal(this.app, this.plugin, this.selectedDate).open();
+          }).open();
+        }, 50);
+      });
+    }
+  }
+};
+
 // src/ui/AssistantModal.ts
 function appendTaskIdBadge2(container, id2) {
   const idBadge = container.createSpan({ cls: "ai-scheduler-task-id-badge", text: `ID: ${id2}` });
@@ -3046,12 +3536,12 @@ function appendTaskIdBadge2(container, id2) {
     e.stopPropagation();
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       void navigator.clipboard.writeText(id2).then(() => {
-        new import_obsidian7.Notice(`Copied Task ID: ${id2}`);
+        new import_obsidian8.Notice(`Copied Task ID: ${id2}`);
       });
     }
   };
 }
-var ConfirmModal = class extends import_obsidian7.Modal {
+var ConfirmModal = class extends import_obsidian8.Modal {
   constructor(app, message, onConfirm) {
     super(app);
     this.message = message;
@@ -3062,7 +3552,7 @@ var ConfirmModal = class extends import_obsidian7.Modal {
     this.modalEl.addClass("ai-scheduler-confirm-modal");
     this.contentEl.createEl("h3", { text: "Confirm" });
     this.contentEl.createEl("p", { text: this.message });
-    new import_obsidian7.Setting(this.contentEl).addButton((btn) => btn.setButtonText("Cancel").onClick(() => this.close())).addButton((btn) => btn.setButtonText("Confirm").setCta().onClick(() => {
+    new import_obsidian8.Setting(this.contentEl).addButton((btn) => btn.setButtonText("Cancel").onClick(() => this.close())).addButton((btn) => btn.setButtonText("Confirm").setCta().onClick(() => {
       this.onConfirm();
       this.close();
     }));
@@ -3071,7 +3561,7 @@ var ConfirmModal = class extends import_obsidian7.Modal {
     this.contentEl.empty();
   }
 };
-var PastDuePromptModal = class extends import_obsidian7.Modal {
+var PastDuePromptModal = class extends import_obsidian8.Modal {
   constructor(app, plugin, job, pastTime, onDone) {
     super(app);
     this.plugin = plugin;
@@ -3096,7 +3586,7 @@ var PastDuePromptModal = class extends import_obsidian7.Modal {
     makeButton(actions, "Run now", () => {
       void (async () => {
         this.close();
-        new import_obsidian7.Notice(`Starting task #${this.job.taskNumber} now...`);
+        new import_obsidian8.Notice(`Starting task #${this.job.taskNumber} now...`);
         await this.plugin.retryJob(this.job);
         this.onDone();
       })();
@@ -3117,7 +3607,7 @@ var PastDuePromptModal = class extends import_obsidian7.Modal {
     this.contentEl.empty();
   }
 };
-var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
+var AssistantModal = class _AssistantModal extends import_obsidian8.Modal {
   constructor(app, plugin) {
     super(app);
     this.refreshTimer = null;
@@ -3190,6 +3680,12 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
         new PlannerModal(this.app, this.plugin).open();
       }, 50);
     }, true);
+    makeButton(actions, "\u{1F4C5} Calendar", () => {
+      this.close();
+      window.setTimeout(() => {
+        new CalendarModal(this.app, this.plugin).open();
+      }, 50);
+    });
     makeButton(actions, "Settings", () => {
       this.close();
       window.setTimeout(() => {
@@ -3222,7 +3718,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
           () => {
             void (async () => {
               const count = await this.plugin.enableAllJobs();
-              new import_obsidian7.Notice(`Enabled ${count} tasks`);
+              new import_obsidian8.Notice(`Enabled ${count} tasks`);
               this.render();
             })();
           }
@@ -3235,7 +3731,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
           () => {
             void (async () => {
               const count = await this.plugin.disableAllJobs();
-              new import_obsidian7.Notice(`Disabled ${count} tasks`);
+              new import_obsidian8.Notice(`Disabled ${count} tasks`);
               this.render();
             })();
           }
@@ -3248,7 +3744,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
           () => {
             void (async () => {
               const count = await this.plugin.deleteAllJobs();
-              new import_obsidian7.Notice(`Deleted ${count} tasks. You can restore them from Deleted tasks.`);
+              new import_obsidian8.Notice(`Deleted ${count} tasks. You can restore them from Deleted tasks.`);
               this.render();
             })();
           }
@@ -3298,7 +3794,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
             () => {
               void (async () => {
                 await this.plugin.resetRunningJob(job);
-                new import_obsidian7.Notice(`Reset task #${job.taskNumber}.`);
+                new import_obsidian8.Notice(`Reset task #${job.taskNumber}.`);
                 this.render();
               })();
             }
@@ -3311,7 +3807,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
             `Run task #${job.taskNumber} (${job.title}) immediately? This will trigger background execution right now without waiting for its scheduled time slot.`,
             () => {
               void (async () => {
-                new import_obsidian7.Notice(`Starting task #${job.taskNumber} now...`);
+                new import_obsidian8.Notice(`Starting task #${job.taskNumber} now...`);
                 await this.plugin.runJobNow(job);
                 this.render();
               })();
@@ -3341,7 +3837,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
         new ConfirmModal(this.app, `Delete task #${job.taskNumber}? It will be moved to Deleted tasks and can be restored.`, () => {
           void (async () => {
             await this.plugin.deleteJob(job);
-            new import_obsidian7.Notice(`Deleted task #${job.taskNumber}. You can restore it from Deleted tasks.`);
+            new import_obsidian8.Notice(`Deleted task #${job.taskNumber}. You can restore it from Deleted tasks.`);
             this.render();
           })();
         }).open();
@@ -3383,7 +3879,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
           new ConfirmModal(this.app, `Delete task #${job.taskNumber}? It will be moved to Deleted tasks and can be restored.`, () => {
             void (async () => {
               await this.plugin.deleteJob(job);
-              new import_obsidian7.Notice(`Deleted task #${job.taskNumber}. You can restore it from Deleted tasks.`);
+              new import_obsidian8.Notice(`Deleted task #${job.taskNumber}. You can restore it from Deleted tasks.`);
               this.render();
             })();
           }).open();
@@ -3419,7 +3915,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
             `Run task #${job.taskNumber} (${job.title}) immediately? It will execute right now in the background and will no longer be marked as past/missed.`,
             () => {
               void (async () => {
-                new import_obsidian7.Notice(`Starting task #${job.taskNumber} now...`);
+                new import_obsidian8.Notice(`Starting task #${job.taskNumber} now...`);
                 await this.plugin.retryJob(job);
                 this.render();
               })();
@@ -3430,7 +3926,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
           new ConfirmModal(this.app, `Delete task #${job.taskNumber}? It will be moved to Deleted tasks and can be restored.`, () => {
             void (async () => {
               await this.plugin.deleteJob(job);
-              new import_obsidian7.Notice(`Deleted task #${job.taskNumber}. You can restore it from Deleted tasks.`);
+              new import_obsidian8.Notice(`Deleted task #${job.taskNumber}. You can restore it from Deleted tasks.`);
               this.render();
             })();
           }).open();
@@ -3448,7 +3944,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
           () => {
             void (async () => {
               const count = await this.plugin.restoreAllJobs();
-              new import_obsidian7.Notice(`Restored ${count} tasks.`);
+              new import_obsidian8.Notice(`Restored ${count} tasks.`);
               this.render();
             })();
           }
@@ -3461,7 +3957,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
           () => {
             void (async () => {
               const count = await this.plugin.emptyTrash();
-              new import_obsidian7.Notice(`Permanently deleted ${count} tasks.`);
+              new import_obsidian8.Notice(`Permanently deleted ${count} tasks.`);
               this.render();
             })();
           }
@@ -3484,7 +3980,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
         makeButton(controls, "Restore", () => {
           void (async () => {
             await this.plugin.restoreJob(job);
-            new import_obsidian7.Notice(`Restored task #${job.taskNumber}: ${job.title}`);
+            new import_obsidian8.Notice(`Restored task #${job.taskNumber}: ${job.title}`);
             this.render();
           })();
         });
@@ -3495,7 +3991,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
             () => {
               void (async () => {
                 await this.plugin.permanentlyDeleteJob(job);
-                new import_obsidian7.Notice(`Permanently deleted task #${job.taskNumber}.`);
+                new import_obsidian8.Notice(`Permanently deleted task #${job.taskNumber}.`);
                 this.render();
               })();
             }
@@ -3535,7 +4031,7 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
                 }).open();
               }, 50);
             } else {
-              new import_obsidian7.Notice(`Task ${event.jobId} is no longer available.`);
+              new import_obsidian8.Notice(`Task ${event.jobId} is no longer available.`);
             }
           };
         }
@@ -3581,37 +4077,41 @@ var AssistantModal = class _AssistantModal extends import_obsidian7.Modal {
 };
 
 // src/ui/SettingsTab.ts
-var import_obsidian9 = require("obsidian");
+var import_obsidian10 = require("obsidian");
 
 // src/ui/ChangelogModal.ts
-var import_obsidian8 = require("obsidian");
+var import_obsidian9 = require("obsidian");
 
 // src/changelog.ts
 var CHANGELOG_DATA = [
   {
-    version: "2.1.16",
-    date: "2026-10-03",
-    title: "Task Trash & Restoration, Quick Undo & Trash Management",
+    version: "2.1.7.15",
+    date: "2026-10-07",
+    title: "Schedule Calendar View, Default Output Folder, Task Activity Logging & PolyForm License",
     highlights: [
-      "Task Trash & Restoration: Deleted tasks are now safely moved to a Deleted Tasks trash section and can be restored back to your schedule with a single click.",
-      'Bulk Trash Management: Added "Restore all" and "Empty trash" controls to restore or permanently purge multiple deleted tasks.',
-      'Restore Command Palette Support: Added "AI Scheduler: Restore last deleted task" command for fast keyboard-driven undo.',
-      "Interactive Task Inspection: Deleted tasks can be inspected in the task detail viewer, restored, or permanently deleted directly."
+      "Schedule Calendar View: Added an interactive Month Grid and Day Timeline view with status chips, filtering, and instant task actions.",
+      'Default Task Output Folder: Unspecified output destinations now automatically route to a configurable default vault folder (defaults to "AI Scheduler").',
+      "Centralized Task Activity Logging: Track task runs in a clean Markdown table with serial numbers, timestamps, status, and wikilinks to modified files.",
+      "PolyForm Noncommercial 1.0.0 License: Upgraded license terms to PolyForm Noncommercial 1.0.0.",
+      "Task Trash & Restoration: Safely recover deleted tasks from a dedicated trash section or with the restore command."
     ],
     added: [
-      "Added Deleted Tasks section with Restore and Delete forever actions in the dashboard.",
-      'Added "Restore all" and "Empty trash" bulk action controls in the trash section.',
-      'Added "AI Scheduler: Restore last deleted task" command.',
-      "Added task restoration and permanent deletion support in the Task Details modal.",
-      "Added RESTORED activity logging and badge styling."
+      "Added interactive Schedule Calendar modal with Month Grid and Day Timeline modes.",
+      'Added "AI Scheduler: Open schedule calendar" command to the command palette and a calendar button in the dashboard.',
+      'Added Default Output Folder setting with automatic fallback to "AI Scheduler".',
+      'Added Task Activity Logging setting that writes structured Markdown table entries to "AI SCHEDULER LOGS.md".',
+      "Added Deleted Tasks trash section with Restore, Restore all, and Delete forever controls.",
+      'Added "AI Scheduler: Restore last deleted task" command.'
     ],
     changed: [
-      "Updated delete confirmation dialogs and notices to inform users that deleted tasks can be restored from trash.",
-      "Improved Activity feed ID click handling to find and inspect deleted tasks seamlessly."
+      "Updated license to PolyForm Noncommercial License 1.0.0.",
+      "Cleaned branding, removed legacy BRAT references and external donation buttons.",
+      "Updated author attributions to @racstan GitHub profile.",
+      "Updated README documentation with clean Obsidian Copilot and Claudian setup guides."
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author & Lead Maintainer"
@@ -3639,7 +4139,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author & Lead Maintainer"
@@ -3666,7 +4166,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author & Lead Maintainer"
@@ -3695,7 +4195,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author & Lead Maintainer"
@@ -3721,7 +4221,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author & Lead Maintainer"
@@ -3749,7 +4249,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author & Lead Maintainer"
@@ -3759,20 +4259,18 @@ var CHANGELOG_DATA = [
   {
     version: "2.1.7.9",
     date: "2026-10-02",
-    title: "About AI Scheduler & Creator Support (Buy Me a Coffee)",
+    title: "About AI Scheduler & Metadata",
     highlights: [
       "About AI Scheduler Section: Added dedicated project overview, author credits, and license details in Settings.",
-      'Creator Support (Buy Me a Coffee): Added "\u2615 Buy me a coffee" creator support button in Settings and Changelog dialog (https://buymeacoffee.com/rachitasthana).',
-      "Documentation & Funding Links: Enriched repository documentation with creator support badges and funding guides."
+      "Documentation & Links: Enriched repository documentation and project metadata."
     ],
     added: [
-      'Dedicated "About & support" section in Settings tab with version info, author metadata, and repository links.',
-      '"\u2615 Buy me a coffee" button in Settings and Changelog modal footer.',
-      "Support and funding documentation in project README."
+      'Dedicated "About" section in Settings tab with version info, author metadata, and repository links.',
+      "Documentation updates in project README."
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author & Lead Maintainer"
@@ -3800,7 +4298,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author & Lead Maintainer"
@@ -3820,7 +4318,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author & Lead Maintainer"
@@ -3850,7 +4348,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author & Lead Maintainer"
@@ -3876,7 +4374,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Maintainer"
@@ -3905,7 +4403,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Maintainer"
@@ -3932,7 +4430,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Maintainer"
@@ -3959,7 +4457,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Maintainer"
@@ -3991,7 +4489,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Maintainer"
@@ -4021,7 +4519,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Maintainer"
@@ -4053,7 +4551,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Maintainer"
@@ -4082,7 +4580,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author"
@@ -4098,7 +4596,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author"
@@ -4126,7 +4624,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author"
@@ -4147,7 +4645,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author"
@@ -4174,7 +4672,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author"
@@ -4197,7 +4695,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author"
@@ -4214,7 +4712,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author"
@@ -4231,7 +4729,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author"
@@ -4248,7 +4746,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author"
@@ -4265,7 +4763,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author"
@@ -4282,7 +4780,7 @@ var CHANGELOG_DATA = [
     ],
     contributors: [
       {
-        name: "Rachit Asthana",
+        name: "racstan",
         username: "racstan",
         url: "https://github.com/racstan",
         role: "Author"
@@ -4306,7 +4804,7 @@ function getReleasesSince(previousVersion) {
 }
 
 // src/ui/ChangelogModal.ts
-var ChangelogModal = class extends import_obsidian8.Modal {
+var ChangelogModal = class extends import_obsidian9.Modal {
   constructor(app, plugin, options = {}) {
     super(app);
     this.viewMode = "recent";
@@ -4357,7 +4855,7 @@ var ChangelogModal = class extends import_obsidian8.Modal {
     });
     renderList();
     const footerEl = contentEl.createDiv({ cls: "ai-scheduler-changelog-footer" });
-    new import_obsidian8.Setting(footerEl).setName("Show changelog after future updates").setDesc("Automatically open this dialog when AI Scheduler is updated.").addToggle((toggle) => {
+    new import_obsidian9.Setting(footerEl).setName("Show changelog after future updates").setDesc("Automatically open this dialog when AI Scheduler is updated.").addToggle((toggle) => {
       toggle.setValue(this.plugin.settings.showChangelogOnUpdate).onChange(async (val) => {
         this.plugin.settings.showChangelogOnUpdate = val;
         await this.plugin.saveState();
@@ -4371,13 +4869,6 @@ var ChangelogModal = class extends import_obsidian8.Modal {
     });
     starBtn.addEventListener("click", () => {
       window.open("https://github.com/racstan/obsidian-ai-scheduler", "_blank");
-    });
-    const coffeeBtn = leftActions.createEl("button", {
-      text: "\u2615 Buy me a coffee",
-      cls: "ai-scheduler-coffee-btn"
-    });
-    coffeeBtn.addEventListener("click", () => {
-      window.open("https://buymeacoffee.com/rachitasthana", "_blank");
     });
     const closeBtn = actionsRow.createEl("button", {
       text: "Got it",
@@ -4438,7 +4929,7 @@ var ChangelogModal = class extends import_obsidian8.Modal {
         });
         chip.target = "_blank";
         chip.createSpan({ cls: "ai-scheduler-contributor-name", text: contributor.name });
-        if (contributor.username) {
+        if (contributor.username && contributor.username !== contributor.name) {
           chip.createSpan({ cls: "ai-scheduler-contributor-handle", text: ` (@${contributor.username})` });
         }
         if (contributor.role) {
@@ -4454,7 +4945,7 @@ var ChangelogModal = class extends import_obsidian8.Modal {
 };
 
 // src/ui/SettingsTab.ts
-var AssistantSettingTab = class extends import_obsidian9.PluginSettingTab {
+var AssistantSettingTab = class extends import_obsidian10.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -4466,7 +4957,7 @@ var AssistantSettingTab = class extends import_obsidian9.PluginSettingTab {
     const mode = this.plugin.settings.backendMode;
     if (mode === "none" || !mode) return;
     const info = BACKEND_INFO[mode === "copilot" ? "copilot" : "claudian"];
-    const setting = new import_obsidian9.Setting(containerEl).setName("Backend connection status").setDesc("Checking readiness...");
+    const setting = new import_obsidian10.Setting(containerEl).setName("Backend connection status").setDesc("Checking readiness...");
     const update = (result) => {
       setting.setDesc("");
       const desc = setting.descEl;
@@ -4494,12 +4985,12 @@ var AssistantSettingTab = class extends import_obsidian9.PluginSettingTab {
   renderSettings() {
     const { containerEl } = this;
     containerEl.empty();
-    new import_obsidian9.Setting(containerEl).setName("AI backend & models").setHeading();
+    new import_obsidian10.Setting(containerEl).setName("AI backend & models").setHeading();
     containerEl.createEl("p", {
       text: "Choose which AI plugin AI Scheduler uses to execute tasks, plan schedules, and generate reviews.",
       cls: "ai-scheduler-subtitle"
     });
-    new import_obsidian9.Setting(containerEl).setName("AI backend").setDesc("Select Claudian (for claude and custom providers) or Obsidian Copilot (for OpenAI, gemini, ollama, etc.).").addDropdown((dropdown) => dropdown.addOption("none", "Select an AI backend...").addOption("claudian", "Claudian").addOption("copilot", "Obsidian Copilot").setValue(this.plugin.settings.backendMode || "none").onChange((value) => {
+    new import_obsidian10.Setting(containerEl).setName("AI backend").setDesc("Select Claudian (for claude and custom providers) or Obsidian Copilot (for OpenAI, gemini, ollama, etc.).").addDropdown((dropdown) => dropdown.addOption("none", "Select an AI backend...").addOption("claudian", "Claudian").addOption("copilot", "Obsidian Copilot").setValue(this.plugin.settings.backendMode || "none").onChange((value) => {
       void (async () => {
         this.plugin.settings.backendMode = value;
         await this.plugin.saveState();
@@ -4522,21 +5013,21 @@ var AssistantSettingTab = class extends import_obsidian9.PluginSettingTab {
       });
     } else if (mode === "claudian") {
       this.renderBackendStatus(containerEl);
-      new import_obsidian9.Setting(containerEl).setName("Available Claudian models").setDesc("Refresh this list after adding, removing, or changing models in Claudian.").addButton((button) => button.setButtonText("Refresh models").onClick(() => {
+      new import_obsidian10.Setting(containerEl).setName("Available Claudian models").setDesc("Refresh this list after adding, removing, or changing models in Claudian.").addButton((button) => button.setButtonText("Refresh models").onClick(() => {
         void (async () => {
           button.setDisabled(true);
           try {
             await this.plugin.refreshModels();
-            new import_obsidian9.Notice("Claudian model list refreshed.");
+            new import_obsidian10.Notice("Claudian model list refreshed.");
             this.renderSettings();
           } catch (error) {
-            new import_obsidian9.Notice(`Could not refresh models: ${errorText(error)}`, 8e3);
+            new import_obsidian10.Notice(`Could not refresh models: ${errorText(error)}`, 8e3);
             button.setDisabled(false);
           }
         })();
       }));
       const models = this.plugin.getModelOptions();
-      const addModelSetting = (name, desc, key) => new import_obsidian9.Setting(containerEl).setName(name).setDesc(desc).addDropdown((dropdown) => {
+      const addModelSetting = (name, desc, key) => new import_obsidian10.Setting(containerEl).setName(name).setDesc(desc).addDropdown((dropdown) => {
         dropdown.addOption("", models.length ? "Select a model" : "No models found - open Claudian");
         models.forEach((model) => {
           dropdown.addOption(model.value, model.label);
@@ -4558,70 +5049,92 @@ var AssistantSettingTab = class extends import_obsidian9.PluginSettingTab {
       }
     }
     if (mode && mode !== "none") {
-      new import_obsidian9.Setting(containerEl).setName("Daily & nightly reviews").setHeading();
+      new import_obsidian10.Setting(containerEl).setName("Daily & nightly reviews").setHeading();
       containerEl.createEl("p", {
         text: "Autonomous vault intelligence: Synthesizes notes created or modified during the day and saves timestamped Markdown reports in your review folder.",
         cls: "ai-scheduler-subtitle"
       });
-      new import_obsidian9.Setting(containerEl).setName("Review context").setDesc("Files the daily and nightly reviews may inspect through the active backend's vault tools.").addDropdown((dropdown) => dropdown.addOption("modified-today", "Markdown files modified today").addOption("all-markdown", "All Markdown files").addOption("no-files", "No automatic files").setValue(this.plugin.settings.reviewContextMode).onChange((value) => {
+      new import_obsidian10.Setting(containerEl).setName("Review context").setDesc("Files the daily and nightly reviews may inspect through the active backend's vault tools.").addDropdown((dropdown) => dropdown.addOption("modified-today", "Markdown files modified today").addOption("all-markdown", "All Markdown files").addOption("no-files", "No automatic files").setValue(this.plugin.settings.reviewContextMode).onChange((value) => {
         void (async () => {
           this.plugin.settings.reviewContextMode = value;
           await this.plugin.saveState();
         })();
       }));
-      new import_obsidian9.Setting(containerEl).setName("Review report folder").setDesc("Vault folder where daily and nightly review summaries are saved (default: AI reviews). Each review creates a timestamped Markdown file (e.g. YYYY-MM-DD-HHmmss.md) so past summaries are permanently preserved.").addText((text) => text.setValue(this.plugin.settings.reportFolder).onChange((value) => {
+      new import_obsidian10.Setting(containerEl).setName("Review report folder").setDesc("Vault folder where daily and nightly review summaries are saved (default: AI reviews). Each review creates a timestamped Markdown file (e.g. YYYY-MM-DD-HHmmss.md) so past summaries are permanently preserved.").addText((text) => text.setValue(this.plugin.settings.reportFolder).onChange((value) => {
         void (async () => {
           this.plugin.settings.reportFolder = value.trim() || "AI Reviews";
           await this.plugin.saveState();
         })();
       }));
-      new import_obsidian9.Setting(containerEl).setName("Run daily preview now").setDesc("Immediately synthesize notes modified today and generate a preview review summary in your review folder.").addButton((button) => button.setButtonText("Run preview now").onClick(() => {
+      new import_obsidian10.Setting(containerEl).setName("Run daily preview now").setDesc("Immediately synthesize notes modified today and generate a preview review summary in your review folder.").addButton((button) => button.setButtonText("Run preview now").onClick(() => {
         void this.plugin.startReviewRun(true, "daily");
       }));
-      new import_obsidian9.Setting(containerEl).setName("Nightly AI review").setDesc("Automated end-of-day synthesis: Runs in the background (e.g., at night while you sleep) to review everything you created or modified during the day, saving timestamped summaries to your review folder.").addToggle((toggle) => toggle.setValue(this.plugin.settings.nightlyReviewEnabled).onChange((value) => {
+      new import_obsidian10.Setting(containerEl).setName("Nightly AI review").setDesc("Automated end-of-day synthesis: Runs in the background (e.g., at night while you sleep) to review everything you created or modified during the day, saving timestamped summaries to your review folder.").addToggle((toggle) => toggle.setValue(this.plugin.settings.nightlyReviewEnabled).onChange((value) => {
         void (async () => {
           const previous = this.plugin.settings.nightlyReviewEnabled;
           try {
             this.plugin.settings.nightlyReviewEnabled = value;
             await this.plugin.ensureNightlyReviewJob();
             await this.plugin.saveState();
-            new import_obsidian9.Notice(value ? "Nightly review enabled." : "Nightly review disabled.");
+            new import_obsidian10.Notice(value ? "Nightly review enabled." : "Nightly review disabled.");
             this.renderSettings();
           } catch (error) {
             this.plugin.settings.nightlyReviewEnabled = previous;
             toggle.setValue(previous);
-            new import_obsidian9.Notice(`Could not change nightly review: ${errorText(error)}`, 8e3);
+            new import_obsidian10.Notice(`Could not change nightly review: ${errorText(error)}`, 8e3);
           }
         })();
       }));
       if (this.plugin.settings.nightlyReviewEnabled) {
-        new import_obsidian9.Setting(containerEl).setName("Nightly review schedule time").setDesc("Local 24-hour time when the nightly review runs automatically (for example, 22:00 or 23:30).").addText((text) => text.setValue(this.plugin.settings.reviewTime).onChange((value) => {
+        new import_obsidian10.Setting(containerEl).setName("Nightly review schedule time").setDesc("Local 24-hour time when the nightly review runs automatically (for example, 22:00 or 23:30).").addText((text) => text.setValue(this.plugin.settings.reviewTime).onChange((value) => {
           void (async () => {
             if (/^([01]?\d|2[0-3]):[0-5]\d$/.test(value)) this.plugin.settings.reviewTime = value;
             await this.plugin.ensureNightlyReviewJob();
             await this.plugin.saveState();
           })();
         }));
-        new import_obsidian9.Setting(containerEl).setName("Run nightly review now").setDesc("Manually trigger the full end-of-day nightly review routine immediately without waiting for the scheduled hour.").addButton((button) => button.setButtonText("Run review now").onClick(() => {
+        new import_obsidian10.Setting(containerEl).setName("Run nightly review now").setDesc("Manually trigger the full end-of-day nightly review routine immediately without waiting for the scheduled hour.").addButton((button) => button.setButtonText("Run review now").onClick(() => {
           void this.plugin.startReviewRun(true, "nightly");
         }));
       }
     }
-    new import_obsidian9.Setting(containerEl).setName("Background execution & notifications").setHeading();
-    new import_obsidian9.Setting(containerEl).setName("In-app completion notices").setDesc("Show an Obsidian notice when an AI job or review finishes.").addToggle((toggle) => toggle.setValue(this.plugin.settings.notifyOnCompletion).onChange((value) => {
+    new import_obsidian10.Setting(containerEl).setName("Task outputs & activity logging").setHeading();
+    new import_obsidian10.Setting(containerEl).setName("Default output folder").setDesc('Vault folder where AI task results are saved when a prompt does not specify a save location. If empty, defaults to "AI Scheduler".').addText((text) => text.setPlaceholder("AI Scheduler").setValue(this.plugin.settings.defaultOutputFolder).onChange((value) => {
+      void (async () => {
+        this.plugin.settings.defaultOutputFolder = value.trim();
+        await this.plugin.saveState();
+      })();
+    }));
+    new import_obsidian10.Setting(containerEl).setName("Enable task activity logging").setDesc("Record every task execution in a centralized Markdown log table with serial number, timestamp, execution status, and links to modified/created files.").addToggle((toggle) => toggle.setValue(this.plugin.settings.taskLoggingEnabled).onChange((value) => {
+      void (async () => {
+        this.plugin.settings.taskLoggingEnabled = value;
+        await this.plugin.saveState();
+        this.renderSettings();
+      })();
+    }));
+    if (this.plugin.settings.taskLoggingEnabled) {
+      new import_obsidian10.Setting(containerEl).setName("Task log folder").setDesc('Vault folder where "AI SCHEDULER LOGS.md" is stored. Leave blank to use the default output folder.').addText((text) => text.setPlaceholder(this.plugin.getDefaultOutputFolder()).setValue(this.plugin.settings.taskLogFolder).onChange((value) => {
+        void (async () => {
+          this.plugin.settings.taskLogFolder = value.trim();
+          await this.plugin.saveState();
+        })();
+      }));
+    }
+    new import_obsidian10.Setting(containerEl).setName("Background execution & notifications").setHeading();
+    new import_obsidian10.Setting(containerEl).setName("In-app completion notices").setDesc("Show an Obsidian notice when an AI job or review finishes.").addToggle((toggle) => toggle.setValue(this.plugin.settings.notifyOnCompletion).onChange((value) => {
       void (async () => {
         this.plugin.settings.notifyOnCompletion = value;
         await this.plugin.saveState();
       })();
     }));
-    new import_obsidian9.Setting(containerEl).setName("System desktop notifications").setDesc("Send native os desktop notifications (windows / macOS / linux) when tasks finish or fail.").addToggle((toggle) => toggle.setValue(this.plugin.settings.systemNotifications).onChange((value) => {
+    new import_obsidian10.Setting(containerEl).setName("System desktop notifications").setDesc("Send native os desktop notifications (windows / macOS / linux) when tasks finish or fail.").addToggle((toggle) => toggle.setValue(this.plugin.settings.systemNotifications).onChange((value) => {
       void (async () => {
         this.plugin.settings.systemNotifications = value;
         await this.plugin.saveState();
       })();
     }));
-    new import_obsidian9.Setting(containerEl).setName("Test notifications").setDesc("Send a test alert to verify both Obsidian in-app notices and system desktop notifications.").addButton((button) => button.setButtonText("Send test notification").onClick(() => this.plugin.testNotification()));
-    new import_obsidian9.Setting(containerEl).setName("Run missed jobs after startup").setDesc("Off by default. Enable only if you explicitly want AI work to run after Obsidian was closed.").addToggle((toggle) => toggle.setValue(this.plugin.settings.catchUpOnStart).onChange((value) => {
+    new import_obsidian10.Setting(containerEl).setName("Test notifications").setDesc("Send a test alert to verify both Obsidian in-app notices and system desktop notifications.").addButton((button) => button.setButtonText("Send test notification").onClick(() => this.plugin.testNotification()));
+    new import_obsidian10.Setting(containerEl).setName("Run missed jobs after startup").setDesc("Off by default. Enable only if you explicitly want AI work to run after Obsidian was closed.").addToggle((toggle) => toggle.setValue(this.plugin.settings.catchUpOnStart).onChange((value) => {
       void (async () => {
         this.plugin.settings.catchUpOnStart = value;
         await this.plugin.saveState();
@@ -4629,64 +5142,64 @@ var AssistantSettingTab = class extends import_obsidian9.PluginSettingTab {
       })();
     }));
     if (this.plugin.settings.catchUpOnStart) {
-      new import_obsidian9.Setting(containerEl).setName("Startup catch-up window (hours)").setDesc("Only jobs missed within this window will run after startup.").addText((text) => text.setValue(String(this.plugin.settings.catchUpHours)).onChange((value) => {
+      new import_obsidian10.Setting(containerEl).setName("Startup catch-up window (hours)").setDesc("Only jobs missed within this window will run after startup.").addText((text) => text.setValue(String(this.plugin.settings.catchUpHours)).onChange((value) => {
         void (async () => {
           this.plugin.settings.catchUpHours = Math.max(1, Number.parseInt(value, 10) || 24);
           await this.plugin.saveState();
         })();
       }));
     }
-    new import_obsidian9.Setting(containerEl).setName("Vault schedule notes (optional)").setHeading();
-    new import_obsidian9.Setting(containerEl).setName("Keep schedule notes in my vault").setDesc("Off by default. When enabled, every task gets a Markdown note whose frontmatter holds its schedule and prompt \u2014 edit the note or the dashboard, both stay in sync. Note: deleting a task note in Obsidian permanently removes that task.").addToggle((toggle) => toggle.setValue(this.plugin.settings.scheduleNotesEnabled).onChange((value) => {
+    new import_obsidian10.Setting(containerEl).setName("Vault schedule notes (optional)").setHeading();
+    new import_obsidian10.Setting(containerEl).setName("Keep schedule notes in my vault").setDesc("Off by default. When enabled, every task gets a Markdown note whose frontmatter holds its schedule and prompt \u2014 edit the note or the dashboard, both stay in sync. Note: deleting a task note in Obsidian permanently removes that task.").addToggle((toggle) => toggle.setValue(this.plugin.settings.scheduleNotesEnabled).onChange((value) => {
       void (async () => {
         this.plugin.settings.scheduleNotesEnabled = value;
         await this.plugin.saveState();
         if (value) {
           try {
             const written = await this.plugin.notesSync.syncAll();
-            new import_obsidian9.Notice(written ? `Schedule notes created or updated in ${this.plugin.settings.scheduleFolder}.` : "Schedule notes are up to date.");
+            new import_obsidian10.Notice(written ? `Schedule notes created or updated in ${this.plugin.settings.scheduleFolder}.` : "Schedule notes are up to date.");
           } catch (error) {
-            new import_obsidian9.Notice(`Could not write schedule notes: ${errorText(error)}`, 8e3);
+            new import_obsidian10.Notice(`Could not write schedule notes: ${errorText(error)}`, 8e3);
           }
         }
         this.renderSettings();
       })();
     }));
     if (this.plugin.settings.scheduleNotesEnabled) {
-      new import_obsidian9.Setting(containerEl).setName("Schedule notes folder").setDesc("Existing notes keep working after a rename of this folder; new notes are created here.").addText((text) => text.setValue(this.plugin.settings.scheduleFolder).onChange((value) => {
+      new import_obsidian10.Setting(containerEl).setName("Schedule notes folder").setDesc("Existing notes keep working after a rename of this folder; new notes are created here.").addText((text) => text.setValue(this.plugin.settings.scheduleFolder).onChange((value) => {
         void (async () => {
           this.plugin.settings.scheduleFolder = value.trim() || "AI Schedules";
           await this.plugin.saveState();
         })();
       }));
-      new import_obsidian9.Setting(containerEl).setName("Sync notes now").setDesc("Reconcile all task notes with the current schedule, including notes created by hand.").addButton((button) => button.setButtonText("Sync now").onClick(() => {
+      new import_obsidian10.Setting(containerEl).setName("Sync notes now").setDesc("Reconcile all task notes with the current schedule, including notes created by hand.").addButton((button) => button.setButtonText("Sync now").onClick(() => {
         void (async () => {
           button.setDisabled(true);
           try {
             const written = await this.plugin.notesSync.syncAll();
-            new import_obsidian9.Notice(written ? `${written} note(s) reconciled.` : "All schedule notes are up to date.");
+            new import_obsidian10.Notice(written ? `${written} note(s) reconciled.` : "All schedule notes are up to date.");
           } catch (error) {
-            new import_obsidian9.Notice(`Could not sync schedule notes: ${errorText(error)}`, 8e3);
+            new import_obsidian10.Notice(`Could not sync schedule notes: ${errorText(error)}`, 8e3);
           }
           button.setDisabled(false);
         })();
       }));
     }
-    new import_obsidian9.Setting(containerEl).setName("Updates & release notes").setHeading();
-    new import_obsidian9.Setting(containerEl).setName("Show changelog after updates").setDesc("Automatically open the what's new dialog when AI Scheduler is updated.").addToggle((toggle) => toggle.setValue(this.plugin.settings.showChangelogOnUpdate).onChange((value) => {
+    new import_obsidian10.Setting(containerEl).setName("Updates & release notes").setHeading();
+    new import_obsidian10.Setting(containerEl).setName("Show changelog after updates").setDesc("Automatically open the what's new dialog when AI Scheduler is updated.").addToggle((toggle) => toggle.setValue(this.plugin.settings.showChangelogOnUpdate).onChange((value) => {
       void (async () => {
         this.plugin.settings.showChangelogOnUpdate = value;
         await this.plugin.saveState();
       })();
     }));
-    new import_obsidian9.Setting(containerEl).setName("View changelog").setDesc("Browse recent changes and complete release history starting from v2.0.0.").addButton((button) => button.setButtonText("View what's new").onClick(() => {
+    new import_obsidian10.Setting(containerEl).setName("View changelog").setDesc("Browse recent changes and complete release history starting from v2.0.0.").addButton((button) => button.setButtonText("View what's new").onClick(() => {
       new ChangelogModal(this.app, this.plugin).open();
     }));
-    new import_obsidian9.Setting(containerEl).setName("Help & community").setHeading();
-    new import_obsidian9.Setting(containerEl).setName("Facing a problem?").setDesc("Found a bug or have a suggestion? Create an issue on GitHub to get help from the community.").addButton((button) => button.setButtonText("Report an issue").onClick(() => {
+    new import_obsidian10.Setting(containerEl).setName("Help & community").setHeading();
+    new import_obsidian10.Setting(containerEl).setName("Facing a problem?").setDesc("Found a bug or have a suggestion? Create an issue on GitHub to get help from the community.").addButton((button) => button.setButtonText("Report an issue").onClick(() => {
       window.open("https://github.com/racstan/obsidian-ai-scheduler/issues", "_blank");
     }));
-    new import_obsidian9.Setting(containerEl).setName("About & support").setHeading();
+    new import_obsidian10.Setting(containerEl).setName("About").setHeading();
     const aboutCard = containerEl.createDiv({ cls: "ai-scheduler-about-card" });
     const aboutHeader = aboutCard.createDiv({ cls: "ai-scheduler-about-header" });
     aboutHeader.createDiv({ text: "AI Scheduler for Obsidian", cls: "ai-scheduler-about-title" });
@@ -4696,25 +5209,22 @@ var AssistantSettingTab = class extends import_obsidian9.PluginSettingTab {
       cls: "ai-scheduler-about-desc"
     });
     const metaRow = aboutCard.createDiv({ cls: "ai-scheduler-about-meta" });
-    metaRow.createSpan({ text: "Author: Rachit Asthana" });
+    const authorEl = metaRow.createSpan({ text: "Author: " });
+    const authorLink = authorEl.createEl("a", { text: "@racstan", href: "https://github.com/racstan" });
+    authorLink.target = "_blank";
     metaRow.createSpan({ text: " \xB7 " });
-    metaRow.createSpan({ text: "License: GNU GPL-3.0" });
+    metaRow.createSpan({ text: "License: PolyForm Noncommercial 1.0.0" });
     metaRow.createSpan({ text: " \xB7 " });
     const ghLink = metaRow.createEl("a", { text: "GitHub repository", href: "https://github.com/racstan/obsidian-ai-scheduler" });
     ghLink.target = "_blank";
-    new import_obsidian9.Setting(containerEl).setName("Buy me a coffee \u2615").setDesc("AI Scheduler is free and open-source. If it saves you time and brings intelligence to your vault, consider buying me a coffee to support continued development!").addButton((button) => {
-      button.setButtonText("\u2615 Buy me a coffee").setClass("ai-scheduler-coffee-btn").onClick(() => {
-        window.open("https://buymeacoffee.com/rachitasthana", "_blank");
-      });
-    });
-    new import_obsidian9.Setting(containerEl).setName("Documentation & source code").setDesc("Read the setup guide, contribute, or star the project on GitHub.").addButton((button) => button.setButtonText("View on GitHub").onClick(() => {
+    new import_obsidian10.Setting(containerEl).setName("Documentation & source code").setDesc("Read the setup guide, contribute, or star the project on GitHub.").addButton((button) => button.setButtonText("View on GitHub").onClick(() => {
       window.open("https://github.com/racstan/obsidian-ai-scheduler", "_blank");
     }));
   }
 };
 
 // src/notes.ts
-var import_obsidian10 = require("obsidian");
+var import_obsidian11 = require("obsidian");
 var TABLE_START = "<!-- ai-scheduler:table:start -->";
 var TABLE_END = "<!-- ai-scheduler:table:end -->";
 function slugify(title) {
@@ -4729,7 +5239,7 @@ var ScheduleNotesSync = class _ScheduleNotesSync {
     this.plugin = plugin;
   }
   get folder() {
-    return (0, import_obsidian10.normalizePath)(this.plugin.settings.scheduleFolder || "AI Schedules");
+    return (0, import_obsidian11.normalizePath)(this.plugin.settings.scheduleFolder || "AI Schedules");
   }
   static isInside(folder, path) {
     return path === folder || path.startsWith(`${folder}/`);
@@ -4740,15 +5250,15 @@ var ScheduleNotesSync = class _ScheduleNotesSync {
     }
     const claimed = new Set(this.plugin.jobs.map((other) => other.id !== job.id ? other.notePath : null).filter(Boolean));
     const base = `${String(job.taskNumber || "").padStart(2, "0")}-${slugify(job.title)}`;
-    let candidate = (0, import_obsidian10.normalizePath)(`${this.folder}/${base}.md`);
+    let candidate = (0, import_obsidian11.normalizePath)(`${this.folder}/${base}.md`);
     let suffix = 2;
     while (claimed.has(candidate)) {
-      candidate = (0, import_obsidian10.normalizePath)(`${this.folder}/${base}-${suffix}.md`);
+      candidate = (0, import_obsidian11.normalizePath)(`${this.folder}/${base}-${suffix}.md`);
       suffix += 1;
     }
     if (job.notePath && !_ScheduleNotesSync.isInside(this.folder, job.notePath)) {
       const oldFile = this.plugin.app.vault.getAbstractFileByPath(job.notePath);
-      if (oldFile instanceof import_obsidian10.TFile) {
+      if (oldFile instanceof import_obsidian11.TFile) {
         try {
           void this.plugin.app.fileManager.renameFile(oldFile, candidate);
         } catch (e) {
@@ -4806,7 +5316,7 @@ var ScheduleNotesSync = class _ScheduleNotesSync {
     return lines.join("\n");
   }
   renderNote(job) {
-    const frontmatter = (0, import_obsidian10.stringifyYaml)({ "ai-scheduler": this.definitionFor(job) });
+    const frontmatter = (0, import_obsidian11.stringifyYaml)({ "ai-scheduler": this.definitionFor(job) });
     const body = [
       `# #${job.taskNumber} \xB7 ${job.title}`,
       "",
@@ -4825,7 +5335,7 @@ ${body.join("\n")}`;
   async writeFile(path, content) {
     this.plugin.markSelfWrite(path);
     const existing = this.plugin.app.vault.getAbstractFileByPath(path);
-    if (existing instanceof import_obsidian10.TFile) {
+    if (existing instanceof import_obsidian11.TFile) {
       const current = await this.plugin.app.vault.read(existing);
       if (current === content) {
         this.lastWritten.set(path, content);
@@ -4906,7 +5416,7 @@ ${body.join("\n")}`;
       const folder = this.plugin.app.vault.getAbstractFileByPath(this.folder);
       if (folder && "children" in folder) {
         for (const child of folder.children) {
-          if (!(child instanceof import_obsidian10.TFile) || child.extension !== "md") continue;
+          if (!(child instanceof import_obsidian11.TFile) || child.extension !== "md") continue;
           if (!this.plugin.app.vault.getAbstractFileByPath(child.path)) continue;
           const tracked = this.plugin.jobs.some((job) => job.notePath === child.path);
           if (tracked) continue;
@@ -4918,7 +5428,7 @@ ${body.join("\n")}`;
         const path = this.notePathFor(job);
         const content = this.renderNote(job);
         const existing = this.plugin.app.vault.getAbstractFileByPath(path);
-        if (existing instanceof import_obsidian10.TFile) {
+        if (existing instanceof import_obsidian11.TFile) {
           const current = await this.plugin.app.vault.read(existing);
           if (current !== content) {
             await this.writeFile(path, content);
@@ -4959,7 +5469,7 @@ ${body.join("\n")}`;
     if (!_ScheduleNotesSync.isInside(folder, watchPath) && !_ScheduleNotesSync.isInside(folder, file.path)) return;
     if (eventType === "rename") {
       const job2 = this.plugin.jobs.find((candidate) => candidate.notePath === oldPath);
-      if (job2 && _ScheduleNotesSync.isInside(folder, file.path) && file instanceof import_obsidian10.TFile) {
+      if (job2 && _ScheduleNotesSync.isInside(folder, file.path) && file instanceof import_obsidian11.TFile) {
         job2.notePath = file.path;
         this.lastWritten.delete(oldPath || "");
         await this.plugin.saveState();
@@ -4975,7 +5485,7 @@ ${body.join("\n")}`;
       this.lastWritten.delete(watchPath);
       return;
     }
-    if (!(file instanceof import_obsidian10.TFile) || file.extension !== "md") return;
+    if (!(file instanceof import_obsidian11.TFile) || file.extension !== "md") return;
     const content = await this.plugin.app.vault.read(file);
     if (this.lastWritten.get(file.path) === content) return;
     this.lastWritten.set(file.path, content);
@@ -4995,7 +5505,7 @@ ${body.join("\n")}`;
 
 // src/main.ts
 var TICK_MS = 15e3;
-var AISchedulerPlugin = class extends import_obsidian11.Plugin {
+var AISchedulerPlugin = class extends import_obsidian12.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
@@ -5015,7 +5525,7 @@ var AISchedulerPlugin = class extends import_obsidian11.Plugin {
     this.statusBarTimer = null;
   }
   markSelfWrite(path) {
-    const norm = (0, import_obsidian11.normalizePath)(path);
+    const norm = (0, import_obsidian12.normalizePath)(path);
     this.selfWrites.add(norm);
     window.setTimeout(() => {
       this.selfWrites.delete(norm);
@@ -5046,6 +5556,11 @@ var AISchedulerPlugin = class extends import_obsidian11.Plugin {
       callback: () => new AssistantModal(this.app, this).open()
     });
     this.addCommand({
+      id: "open-calendar",
+      name: "Open schedule calendar",
+      callback: () => new CalendarModal(this.app, this).open()
+    });
+    this.addCommand({
       id: "plan-with-ai",
       name: "Ask AI to plan a schedule",
       callback: () => new PlannerModal(this.app, this).open()
@@ -5067,7 +5582,7 @@ var AISchedulerPlugin = class extends import_obsidian11.Plugin {
         this.settings.nightlyReviewEnabled = true;
         await this.ensureNightlyReviewJob();
         await this.saveState();
-        new import_obsidian11.Notice("Nightly AI review enabled");
+        new import_obsidian12.Notice("Nightly AI review enabled");
       }
     });
     this.addCommand({
@@ -5077,7 +5592,7 @@ var AISchedulerPlugin = class extends import_obsidian11.Plugin {
         this.settings.nightlyReviewEnabled = false;
         await this.ensureNightlyReviewJob();
         await this.saveState();
-        new import_obsidian11.Notice("Nightly AI review disabled");
+        new import_obsidian12.Notice("Nightly AI review disabled");
       }
     });
     this.addCommand({
@@ -5087,7 +5602,7 @@ var AISchedulerPlugin = class extends import_obsidian11.Plugin {
         this.settings.nightlyReviewEnabled = !this.settings.nightlyReviewEnabled;
         await this.ensureNightlyReviewJob();
         await this.saveState();
-        new import_obsidian11.Notice(this.settings.nightlyReviewEnabled ? "Nightly AI review enabled" : "Nightly AI review disabled");
+        new import_obsidian12.Notice(this.settings.nightlyReviewEnabled ? "Nightly AI review enabled" : "Nightly AI review disabled");
       }
     });
     this.addCommand({
@@ -5096,11 +5611,11 @@ var AISchedulerPlugin = class extends import_obsidian11.Plugin {
       callback: async () => {
         const userTasks = this.jobs.filter((j) => !isNightlyReviewJob(j));
         if (userTasks.length === 0) {
-          new import_obsidian11.Notice("No tasks available.");
+          new import_obsidian12.Notice("No tasks available.");
           return;
         }
         const count = await this.enableAllJobs();
-        new import_obsidian11.Notice(count > 0 ? `${count} scheduled task(s) enabled.` : "All scheduled tasks are already enabled.");
+        new import_obsidian12.Notice(count > 0 ? `${count} scheduled task(s) enabled.` : "All scheduled tasks are already enabled.");
       }
     });
     this.addCommand({
@@ -5109,11 +5624,11 @@ var AISchedulerPlugin = class extends import_obsidian11.Plugin {
       callback: async () => {
         const userTasks = this.jobs.filter((j) => !isNightlyReviewJob(j));
         if (userTasks.length === 0) {
-          new import_obsidian11.Notice("No tasks available.");
+          new import_obsidian12.Notice("No tasks available.");
           return;
         }
         const count = await this.disableAllJobs();
-        new import_obsidian11.Notice(count > 0 ? `${count} scheduled task(s) disabled.` : "All scheduled tasks are already disabled.");
+        new import_obsidian12.Notice(count > 0 ? `${count} scheduled task(s) disabled.` : "All scheduled tasks are already disabled.");
       }
     });
     this.addCommand({
@@ -5122,9 +5637,9 @@ var AISchedulerPlugin = class extends import_obsidian11.Plugin {
       callback: async () => {
         const restored = await this.restoreLastDeletedJob();
         if (restored) {
-          new import_obsidian11.Notice(`Restored task #${restored.taskNumber}: ${restored.title}`);
+          new import_obsidian12.Notice(`Restored task #${restored.taskNumber}: ${restored.title}`);
         } else {
-          new import_obsidian11.Notice("No deleted tasks to restore.");
+          new import_obsidian12.Notice("No deleted tasks to restore.");
         }
       }
     });
@@ -5133,14 +5648,14 @@ var AISchedulerPlugin = class extends import_obsidian11.Plugin {
       name: "Sync schedule notes now",
       callback: async () => {
         if (!this.settings.scheduleNotesEnabled) {
-          new import_obsidian11.Notice("Schedule notes are not enabled in settings.");
+          new import_obsidian12.Notice("Schedule notes are not enabled in settings.");
           return;
         }
         try {
           const written = await this.notesSync.syncAll();
-          new import_obsidian11.Notice(written ? `${written} note(s) reconciled.` : "All schedule notes are up to date.");
+          new import_obsidian12.Notice(written ? `${written} note(s) reconciled.` : "All schedule notes are up to date.");
         } catch (error) {
-          new import_obsidian11.Notice(`Could not sync schedule notes: ${errorText(error)}`, 8e3);
+          new import_obsidian12.Notice(`Could not sync schedule notes: ${errorText(error)}`, 8e3);
         }
       }
     });
@@ -5255,7 +5770,7 @@ var AISchedulerPlugin = class extends import_obsidian11.Plugin {
       await this.saveState();
     }
     if (plan.missed.length) {
-      new import_obsidian11.Notice(`${plan.missed.length} AI task(s) are ready after startup`, 6e3);
+      new import_obsidian12.Notice(`${plan.missed.length} AI task(s) are ready after startup`, 6e3);
     }
     await sleep(1e3);
     await this.tick();
@@ -5296,12 +5811,13 @@ var AISchedulerPlugin = class extends import_obsidian11.Plugin {
     }
   }
   async runJobBody(job) {
+    var _a, _b, _c;
     job.status = "running";
     job.lastRunAt = (/* @__PURE__ */ new Date()).toISOString();
     job.attempts = Number(job.attempts || 0) + 1;
     this.logActivity("running", `Task #${job.taskNumber} started: ${job.title}`, job.id);
     if (job.notify !== false) {
-      new import_obsidian11.Notice(`AI Scheduler: Task #${job.taskNumber} started (${job.title})...`, 4e3);
+      new import_obsidian12.Notice(`AI Scheduler: Task #${job.taskNumber} started (${job.title})...`, 4e3);
     }
     this.updateStatusBar();
     await this.saveState();
@@ -5328,8 +5844,16 @@ var AISchedulerPlugin = class extends import_obsidian11.Plugin {
       job.status = "completed";
       job.runCount = Number(job.runCount || 0) + 1;
       await this.processFollowUps(reply, job);
-      if (job.output && job.output.folder && reply) {
+      if (((_a = job.output) == null ? void 0 : _a.folder) && reply) {
         const writtenPath = await this.writeOutput(job.output.folder, job.output.filename, reply);
+        job.lastOutputPath = writtenPath;
+        if (!job.lastOutputFiles) job.lastOutputFiles = [];
+        if (!job.lastOutputFiles.includes(writtenPath)) {
+          job.lastOutputFiles.push(writtenPath);
+        }
+      } else if (reply) {
+        const fallbackFolder = this.getDefaultOutputFolder();
+        const writtenPath = await this.writeOutput(fallbackFolder, (_b = job.output) == null ? void 0 : _b.filename, reply);
         job.lastOutputPath = writtenPath;
         if (!job.lastOutputFiles) job.lastOutputFiles = [];
         if (!job.lastOutputFiles.includes(writtenPath)) {
@@ -5338,8 +5862,9 @@ var AISchedulerPlugin = class extends import_obsidian11.Plugin {
       }
       reconcileAfterRun(job);
       this.logActivity("completed", `Task #${job.taskNumber} finished: ${job.title}`, job.id);
+      await this.appendTaskLogRow(job, "completed", (_c = job.lastOutputFiles) != null ? _c : []);
       if (this.settings.notifyOnCompletion && job.notify !== false) {
-        new import_obsidian11.Notice(`AI completed: ${job.title}`, 5e3);
+        new import_obsidian12.Notice(`AI completed: ${job.title}`, 5e3);
       }
       if (this.settings.systemNotifications && job.notify !== false) {
         sendSystemNotification("AI Scheduler", `AI completed: ${job.title}`);
@@ -5351,7 +5876,8 @@ var AISchedulerPlugin = class extends import_obsidian11.Plugin {
       reconcileAfterRun(job, { failed: true });
       this.lastTickError = job.lastError;
       this.logActivity("failed", `Task #${job.taskNumber} failed: ${job.title} (${job.lastError})`, job.id);
-      new import_obsidian11.Notice(`AI task failed: ${job.title}
+      await this.appendTaskLogRow(job, "failed", []);
+      new import_obsidian12.Notice(`AI task failed: ${job.title}
 ${job.lastError}`, 8e3);
       if (this.settings.systemNotifications) {
         sendSystemNotification("AI Scheduler", `AI task failed: ${job.title}`);
@@ -5361,10 +5887,10 @@ ${job.lastError}`, 8e3);
   }
   async handleVaultChange(file) {
     if (!file || !file.path) return;
-    const normPath = (0, import_obsidian11.normalizePath)(file.path);
+    const normPath = (0, import_obsidian12.normalizePath)(file.path);
     if (this.selfWrites.has(normPath)) return;
-    const normReport = (0, import_obsidian11.normalizePath)(this.settings.reportFolder || "AI Reviews");
-    const normSchedule = (0, import_obsidian11.normalizePath)(this.settings.scheduleFolder || "AI Schedules");
+    const normReport = (0, import_obsidian12.normalizePath)(this.settings.reportFolder || "AI Reviews");
+    const normSchedule = (0, import_obsidian12.normalizePath)(this.settings.scheduleFolder || "AI Schedules");
     if (ScheduleNotesSync.isInside(normReport, normPath) || ScheduleNotesSync.isInside(normSchedule, normPath)) {
       return;
     }
@@ -5406,7 +5932,7 @@ ${job.lastError}`, 8e3);
       return;
     }
     if (!validClock(this.settings.reviewTime)) {
-      new import_obsidian11.Notice("AI Scheduler: review time is invalid, nightly review not scheduled.");
+      new import_obsidian12.Notice("AI Scheduler: review time is invalid, nightly review not scheduled.");
       return;
     }
     if (!job) {
@@ -5431,13 +5957,13 @@ ${job.lastError}`, 8e3);
   }
   async startReviewRun(manual = true, kind = "daily") {
     if (this.reviewRunning) {
-      new import_obsidian11.Notice("A review is already running. You can keep using Obsidian while it finishes.", 5e3);
+      new import_obsidian12.Notice("A review is already running. You can keep using Obsidian while it finishes.", 5e3);
       return;
     }
-    new import_obsidian11.Notice(`${kind === "nightly" ? "Nightly" : "Daily"} review started. It will create ${this.settings.reportFolder}/${localTimestampKey()}.md. You can keep using Obsidian.`, 7e3);
+    new import_obsidian12.Notice(`${kind === "nightly" ? "Nightly" : "Daily"} review started. It will create ${this.settings.reportFolder}/${localTimestampKey()}.md. You can keep using Obsidian.`, 7e3);
     void this.runDailyReview(manual, null, kind).catch((error) => {
       this.logActivity("failed", `Review failed: ${errorText(error)}`);
-      new import_obsidian11.Notice(`Review failed: ${errorText(error)}`, 8e3);
+      new import_obsidian12.Notice(`Review failed: ${errorText(error)}`, 8e3);
       void this.saveState();
     });
   }
@@ -5467,7 +5993,7 @@ The active AI backend did not return a report.`;
       const timestamp = localTimestampKey(now);
       let filename = `${timestamp}.md`;
       let suffix = 2;
-      while (this.app.vault.getAbstractFileByPath((0, import_obsidian11.normalizePath)(`${this.settings.reportFolder}/${filename}`))) {
+      while (this.app.vault.getAbstractFileByPath((0, import_obsidian12.normalizePath)(`${this.settings.reportFolder}/${filename}`))) {
         filename = `${timestamp}-${suffix}.md`;
         suffix += 1;
       }
@@ -5486,7 +6012,7 @@ ${report}`);
       }
       this.logActivity("review", `Daily review written to ${path}`);
       if (manual || this.settings.notifyOnCompletion) {
-        new import_obsidian11.Notice(`Review written to ${path}`, 6e3);
+        new import_obsidian12.Notice(`Review written to ${path}`, 6e3);
       }
       if (this.settings.systemNotifications) {
         sendSystemNotification("AI Scheduler", `Review written to ${path}`);
@@ -5500,9 +6026,9 @@ ${report}`);
   }
   includeReviewFile(file, start) {
     if (!file || !file.path) return false;
-    const normPath = (0, import_obsidian11.normalizePath)(file.path);
-    const normReport = (0, import_obsidian11.normalizePath)(this.settings.reportFolder || "AI Reviews");
-    const normSchedule = (0, import_obsidian11.normalizePath)(this.settings.scheduleFolder || "AI Schedules");
+    const normPath = (0, import_obsidian12.normalizePath)(file.path);
+    const normReport = (0, import_obsidian12.normalizePath)(this.settings.reportFolder || "AI Reviews");
+    const normSchedule = (0, import_obsidian12.normalizePath)(this.settings.scheduleFolder || "AI Schedules");
     if (ScheduleNotesSync.isInside(normReport, normPath) || ScheduleNotesSync.isInside(normSchedule, normPath)) {
       return false;
     }
@@ -5528,29 +6054,29 @@ ${report}`);
     return context;
   }
   async writeOutput(folder, filename, content) {
-    const cleanFolder = (0, import_obsidian11.normalizePath)(String(folder || "").replace(/^\/+|\/+$/g, ""));
+    const cleanFolder = (0, import_obsidian12.normalizePath)(String(folder || "").replace(/^\/+|\/+$/g, ""));
     let cleanName = String(filename || `${localDateKey()}.md`).replace(/[\\/]/g, "-");
-    let path = (0, import_obsidian11.normalizePath)(cleanFolder ? `${cleanFolder}/${cleanName}` : cleanName);
+    let path = (0, import_obsidian12.normalizePath)(cleanFolder ? `${cleanFolder}/${cleanName}` : cleanName);
     this.markSelfWrite(path);
     await this.ensureFolder(cleanFolder);
     let existing = this.app.vault.getAbstractFileByPath(path);
-    if (existing instanceof import_obsidian11.TFolder) {
+    if (existing instanceof import_obsidian12.TFolder) {
       let suffix = 2;
-      while (existing instanceof import_obsidian11.TFolder) {
+      while (existing instanceof import_obsidian12.TFolder) {
         cleanName = cleanName.replace(/(\.md)?$/, `-${suffix}.md`);
-        path = (0, import_obsidian11.normalizePath)(cleanFolder ? `${cleanFolder}/${cleanName}` : cleanName);
+        path = (0, import_obsidian12.normalizePath)(cleanFolder ? `${cleanFolder}/${cleanName}` : cleanName);
         existing = this.app.vault.getAbstractFileByPath(path);
         suffix += 1;
       }
     }
-    if (existing instanceof import_obsidian11.TFile) {
+    if (existing instanceof import_obsidian12.TFile) {
       await this.app.vault.modify(existing, content);
     } else {
       try {
         await this.app.vault.create(path, content);
       } catch (err) {
         const retryFile = this.app.vault.getAbstractFileByPath(path);
-        if (retryFile instanceof import_obsidian11.TFile) {
+        if (retryFile instanceof import_obsidian12.TFile) {
           await this.app.vault.modify(retryFile, content);
         } else if (errorText(err).includes("already exists")) {
           try {
@@ -5576,6 +6102,61 @@ ${report}`);
         } catch (e) {
         }
       }
+    }
+  }
+  /** Returns the configured default output folder, falling back to 'AI Scheduler'. */
+  getDefaultOutputFolder() {
+    return (this.settings.defaultOutputFolder || "").trim() || "AI Scheduler";
+  }
+  /** Returns the configured task log folder, falling back to the default output folder. */
+  getTaskLogFolder() {
+    return (this.settings.taskLogFolder || "").trim() || this.getDefaultOutputFolder();
+  }
+  /**
+   * Appends a single row to the task activity log Markdown table.
+   * The file is created on first write; subsequent runs append a row.
+   * Silently skips if task logging is disabled.
+   */
+  async appendTaskLogRow(job, status, outputFiles) {
+    if (!this.settings.taskLoggingEnabled) return;
+    try {
+      const logFolder = this.getTaskLogFolder();
+      const logPath = (0, import_obsidian12.normalizePath)(`${logFolder}/AI SCHEDULER LOGS.md`);
+      await this.ensureFolder(logFolder);
+      this.markSelfWrite(logPath);
+      const existing = this.app.vault.getAbstractFileByPath(logPath);
+      let serial = 1;
+      let currentContent = TASK_LOG_HEADER;
+      if (existing instanceof import_obsidian12.TFile) {
+        const raw = await this.app.vault.read(existing);
+        const dataRows = raw.split("\n").filter(
+          (line) => line.startsWith("| ") && !line.startsWith("| # ") && !line.startsWith("| ---")
+        );
+        serial = dataRows.length + 1;
+        currentContent = raw;
+      }
+      const row = buildTaskLogRow(serial, job, status, outputFiles);
+      const newContent = existing instanceof import_obsidian12.TFile ? `${currentContent.trimEnd()}
+${row}` : `${TASK_LOG_HEADER}
+${row}`;
+      if (existing instanceof import_obsidian12.TFile) {
+        await this.app.vault.modify(existing, newContent);
+      } else {
+        try {
+          await this.app.vault.create(logPath, newContent);
+        } catch (err) {
+          const retryFile = this.app.vault.getAbstractFileByPath(logPath);
+          if (retryFile instanceof import_obsidian12.TFile) {
+            const raw = await this.app.vault.read(retryFile);
+            await this.app.vault.modify(retryFile, `${raw.trimEnd()}
+${row}`);
+          } else {
+            throw err;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[ai-scheduler] Could not write to task log:", err);
     }
   }
   async processFollowUps(reply, parentJob) {
@@ -5662,7 +6243,7 @@ ${report}`);
         ));
         jobs.push(newJob);
         if (newJob.doubt) {
-          new import_obsidian11.Notice(`AI Planning Note: ${newJob.doubt}`, 9e3);
+          new import_obsidian12.Notice(`AI Planning Note: ${newJob.doubt}`, 9e3);
         }
         this.logActivity("planned", `AI created Task #${newJob.taskNumber}: ${newJob.title}${newJob.doubt ? ` (${newJob.doubt})` : ""}`, newJob.id);
       }
@@ -5748,10 +6329,10 @@ ${report}`);
     }
   }
   testNotification() {
-    new import_obsidian11.Notice("AI Scheduler notifications are working.");
+    new import_obsidian12.Notice("AI Scheduler notifications are working.");
     const sentSystem = sendSystemNotification("AI Scheduler", "AI Scheduler desktop notifications are working.");
     if (!sentSystem && typeof window !== "undefined" && typeof window.Notification !== "undefined" && window.Notification.permission === "denied") {
-      new import_obsidian11.Notice("System desktop notifications are blocked by windows/Obsidian permissions.", 6e3);
+      new import_obsidian12.Notice("System desktop notifications are blocked by windows/Obsidian permissions.", 6e3);
     }
     this.logActivity("notification", "Test notification sent");
     void this.saveState();
@@ -5761,7 +6342,7 @@ ${report}`);
     this.deletedJobs = [job, ...this.deletedJobs.filter((candidate) => candidate.id !== job.id)].slice(0, 100);
     if (job.notePath) {
       const file = this.app.vault.getAbstractFileByPath(job.notePath);
-      if (file instanceof import_obsidian11.TFile) {
+      if (file instanceof import_obsidian12.TFile) {
         try {
           await this.app.fileManager.trashFile(file);
         } catch (error) {
@@ -5885,7 +6466,7 @@ ${report}`);
     for (const job of toDelete) {
       if (job.notePath) {
         const file = this.app.vault.getAbstractFileByPath(job.notePath);
-        if (file instanceof import_obsidian11.TFile) {
+        if (file instanceof import_obsidian12.TFile) {
           try {
             await this.app.fileManager.trashFile(file);
           } catch (error) {

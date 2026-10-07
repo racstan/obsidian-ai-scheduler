@@ -32,9 +32,10 @@ import {
 import { executionPrompt, plannerPrompt, refinePrompt, reviewPrompt } from './prompts';
 import { getPathsContext, getVaultContextOptions, JobContext } from './context';
 import * as backends from './backends';
-import { extractJson, errorText, formatDate, formatDuration, isDisabledTask, isNightlyReviewJob, localDateKey, localTimestampKey, logActivityEntry, sendSystemNotification, sleep, validateJobSchema } from './util';
+import { extractJson, errorText, formatDate, formatDuration, isDisabledTask, isNightlyReviewJob, localDateKey, localTimestampKey, logActivityEntry, sendSystemNotification, sleep, validateJobSchema, buildTaskLogRow, TASK_LOG_HEADER } from './util';
 import { AssistantModal } from './ui/AssistantModal';
 import { PlannerModal } from './ui/PlannerModal';
+import { CalendarModal } from './ui/CalendarModal';
 import { AssistantSettingTab } from './ui/SettingsTab';
 import { ChangelogModal } from './ui/ChangelogModal';
 import { ScheduleNotesSync } from './notes';
@@ -94,6 +95,11 @@ export class AISchedulerPlugin extends Plugin {
 			id: 'open-assistant',
 			name: 'Open assistant dashboard',
 			callback: () => new AssistantModal(this.app, this).open(),
+		});
+		this.addCommand({
+			id: 'open-calendar',
+			name: 'Open schedule calendar',
+			callback: () => new CalendarModal(this.app, this).open(),
 		});
 		this.addCommand({
 			id: 'plan-with-ai',
@@ -394,8 +400,17 @@ export class AISchedulerPlugin extends Plugin {
 			job.status = 'completed';
 			job.runCount = Number(job.runCount || 0) + 1;
 			await this.processFollowUps(reply, job);
-			if (job.output && job.output.folder && reply) {
+			if (job.output?.folder && reply) {
 				const writtenPath = await this.writeOutput(job.output.folder, job.output.filename, reply);
+				job.lastOutputPath = writtenPath;
+				if (!job.lastOutputFiles) job.lastOutputFiles = [];
+				if (!job.lastOutputFiles.includes(writtenPath)) {
+					job.lastOutputFiles.push(writtenPath);
+				}
+			} else if (reply) {
+				// No explicit output folder set — fall back to the plugin default.
+				const fallbackFolder = this.getDefaultOutputFolder();
+				const writtenPath = await this.writeOutput(fallbackFolder, job.output?.filename, reply);
 				job.lastOutputPath = writtenPath;
 				if (!job.lastOutputFiles) job.lastOutputFiles = [];
 				if (!job.lastOutputFiles.includes(writtenPath)) {
@@ -404,6 +419,7 @@ export class AISchedulerPlugin extends Plugin {
 			}
 			reconcileAfterRun(job);
 			this.logActivity('completed', `Task #${job.taskNumber} finished: ${job.title}`, job.id);
+			await this.appendTaskLogRow(job, 'completed', job.lastOutputFiles ?? []);
 			if (this.settings.notifyOnCompletion && job.notify !== false) {
 				new Notice(`AI completed: ${job.title}`, 5000);
 			}
@@ -417,6 +433,7 @@ export class AISchedulerPlugin extends Plugin {
 			reconcileAfterRun(job, { failed: true });
 			this.lastTickError = job.lastError;
 			this.logActivity('failed', `Task #${job.taskNumber} failed: ${job.title} (${job.lastError})`, job.id);
+			await this.appendTaskLogRow(job, 'failed', []);
 			new Notice(`AI task failed: ${job.title}\n${job.lastError}`, 8000);
 			if (this.settings.systemNotifications) {
 				sendSystemNotification('AI Scheduler', `AI task failed: ${job.title}`);
@@ -648,6 +665,65 @@ export class AISchedulerPlugin extends Plugin {
 			if (!this.app.vault.getAbstractFileByPath(current)) {
 				try { await this.app.vault.createFolder(current); } catch { /* another operation may have created it */ }
 			}
+		}
+	}
+
+	/** Returns the configured default output folder, falling back to 'AI Scheduler'. */
+	getDefaultOutputFolder(): string {
+		return (this.settings.defaultOutputFolder || '').trim() || 'AI Scheduler';
+	}
+
+	/** Returns the configured task log folder, falling back to the default output folder. */
+	getTaskLogFolder(): string {
+		return (this.settings.taskLogFolder || '').trim() || this.getDefaultOutputFolder();
+	}
+
+	/**
+	 * Appends a single row to the task activity log Markdown table.
+	 * The file is created on first write; subsequent runs append a row.
+	 * Silently skips if task logging is disabled.
+	 */
+	async appendTaskLogRow(job: Job, status: string, outputFiles: string[]): Promise<void> {
+		if (!this.settings.taskLoggingEnabled) return;
+		try {
+			const logFolder = this.getTaskLogFolder();
+			const logPath = normalizePath(`${logFolder}/AI SCHEDULER LOGS.md`);
+			await this.ensureFolder(logFolder);
+			this.markSelfWrite(logPath);
+			const existing = this.app.vault.getAbstractFileByPath(logPath);
+			// Count existing rows to assign a serial number.
+			let serial = 1;
+			let currentContent = TASK_LOG_HEADER;
+			if (existing instanceof TFile) {
+				const raw = await this.app.vault.read(existing);
+				// Count table data rows (lines starting with '| ' that aren't the header or separator).
+				const dataRows = raw.split('\n').filter(line =>
+					line.startsWith('| ') && !line.startsWith('| # ') && !line.startsWith('| ---'),
+				);
+				serial = dataRows.length + 1;
+				currentContent = raw;
+			}
+			const row = buildTaskLogRow(serial, job, status, outputFiles);
+			const newContent = existing instanceof TFile
+				? `${currentContent.trimEnd()}\n${row}`
+				: `${TASK_LOG_HEADER}\n${row}`;
+			if (existing instanceof TFile) {
+				await this.app.vault.modify(existing, newContent);
+			} else {
+				try {
+					await this.app.vault.create(logPath, newContent);
+				} catch (err) {
+					const retryFile = this.app.vault.getAbstractFileByPath(logPath);
+					if (retryFile instanceof TFile) {
+						const raw = await this.app.vault.read(retryFile);
+						await this.app.vault.modify(retryFile, `${raw.trimEnd()}\n${row}`);
+					} else {
+						throw err;
+					}
+				}
+			}
+		} catch (err) {
+			console.warn('[ai-scheduler] Could not write to task log:', err);
 		}
 	}
 
