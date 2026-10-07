@@ -95,6 +95,12 @@ export class ScheduleNotesSync {
 		if (job.schedule.intervalMinutes) schedule.intervalMinutes = job.schedule.intervalMinutes;
 		if (job.schedule.maxIterations) schedule.maxIterations = job.schedule.maxIterations;
 		if (job.schedule.expression) schedule.expression = job.schedule.expression;
+		if (job.schedule.startAt) schedule.startAt = job.schedule.startAt;
+		if (job.schedule.everyDays) schedule.everyDays = job.schedule.everyDays;
+		if (job.schedule.everyWeeks) schedule.everyWeeks = job.schedule.everyWeeks;
+		if (job.schedule.everyMonths) schedule.everyMonths = job.schedule.everyMonths;
+		if (job.schedule.dayOfMonth) schedule.dayOfMonth = job.schedule.dayOfMonth;
+		if (job.schedule.month) schedule.month = job.schedule.month;
 		const definition: NoteDefinition = {
 			id: job.id,
 			taskNumber: job.taskNumber,

@@ -12,7 +12,7 @@
  * releases its lock in a finally block so a crashed run can never wedge a
  * schedule.
  */
-import { Notice, Plugin, TFile, TFolder, normalizePath } from 'obsidian';
+import { Notice, Plugin, TFile, normalizePath } from 'obsidian';
 import { ActivityEntry, AISettings, BACKEND_INFO, Job, JobOutput, ScheduleKind, TaskSchedule } from './types';
 import { DEFAULT_SETTINGS, normalizeJob, parseStoredData } from './settings';
 import {
@@ -386,7 +386,8 @@ export class AISchedulerPlugin extends Plugin {
 			const isReview = job.routine === 'daily-review' || job.routine === 'periodic-review';
 			const prompt = isReview
 				? ''
-				: executionPrompt(job.prompt, context.paths);
+				// Follow-ups may not propose further follow-ups, which caps the chain at one level.
+				: executionPrompt(job.prompt, context.paths, job.source !== 'self-talk');
 			const reply = isReview
 				? await this.runDailyReview(false, execution, 'periodic')
 				: await backends.sendToAI(this, prompt, execution, context);
@@ -399,7 +400,7 @@ export class AISchedulerPlugin extends Plugin {
 			job.lastError = null;
 			job.status = 'completed';
 			job.runCount = Number(job.runCount || 0) + 1;
-			await this.processFollowUps(reply, job);
+			if (job.source !== 'self-talk') await this.processFollowUps(reply, job);
 			if (job.output?.folder && reply) {
 				const writtenPath = await this.writeOutput(job.output.folder, job.output.filename, reply);
 				job.lastOutputPath = writtenPath;
@@ -653,39 +654,44 @@ export class AISchedulerPlugin extends Plugin {
 		return context;
 	}
 
+	/**
+	 * Writes task output as a Markdown note. Output locations can come from AI
+	 * replies or schedule notes, so the folder must stay inside the vault and out
+	 * of hidden/config folders, and existing notes the plugin did not write are
+	 * never overwritten (a numbered sibling is created instead).
+	 */
 	async writeOutput(folder: string, filename: string | undefined, content: string): Promise<string> {
 		const cleanFolder = normalizePath(String(folder || '').replace(/^\/+|\/+$/g, ''));
-		let cleanName = String(filename || `${localDateKey()}.md`).replace(/[\\/]/g, '-');
-		let path = normalizePath(cleanFolder ? `${cleanFolder}/${cleanName}` : cleanName);
-		this.markSelfWrite(path);
-		await this.ensureFolder(cleanFolder);
-		let existing = this.app.vault.getAbstractFileByPath(path);
-		if (existing instanceof TFolder) {
-			let suffix = 2;
-			while (existing instanceof TFolder) {
-				cleanName = cleanName.replace(/(\.md)?$/, `-${suffix}.md`);
-				path = normalizePath(cleanFolder ? `${cleanFolder}/${cleanName}` : cleanName);
-				existing = this.app.vault.getAbstractFileByPath(path);
-				suffix += 1;
-			}
+		const segments = cleanFolder === '/' ? [] : cleanFolder.split('/').filter(Boolean);
+		const configDir = this.app.vault.configDir;
+		if (segments.some(segment => segment === '..' || segment.startsWith('.') || segment.includes(':'))
+			|| segments[0] === configDir) {
+			throw new Error(`Refusing to write output to unsafe folder "${folder}".`);
 		}
+		const folderPath = segments.join('/');
+		let baseName = String(filename || localDateKey()).replace(/[\\/:]/g, '-').replace(/^\.+/, '').trim();
+		baseName = baseName.replace(/\.md$/i, '') || localDateKey();
+		const pathFor = (name: string) => normalizePath(folderPath ? `${folderPath}/${name}.md` : `${name}.md`);
+
+		const ownOutputs = new Set<string>();
+		for (const job of [...this.jobs, ...this.deletedJobs]) {
+			if (job.lastOutputPath) ownOutputs.add(job.lastOutputPath);
+			job.lastOutputFiles?.forEach(path => ownOutputs.add(path));
+		}
+
+		let path = pathFor(baseName);
+		let existing = this.app.vault.getAbstractFileByPath(path);
+		for (let suffix = 2; existing && !(existing instanceof TFile && ownOutputs.has(path)); suffix++) {
+			path = pathFor(`${baseName}-${suffix}`);
+			existing = this.app.vault.getAbstractFileByPath(path);
+		}
+
+		await this.ensureFolder(folderPath);
+		this.markSelfWrite(path);
 		if (existing instanceof TFile) {
 			await this.app.vault.modify(existing, content);
 		} else {
-			try {
-				await this.app.vault.create(path, content);
-			} catch (err) {
-				const retryFile = this.app.vault.getAbstractFileByPath(path);
-				if (retryFile instanceof TFile) {
-					await this.app.vault.modify(retryFile, content);
-				} else if (errorText(err).includes('already exists')) {
-					try {
-						await this.app.vault.adapter.write(path, content);
-					} catch { /* ignore if already written */ }
-				} else {
-					throw err;
-				}
-			}
+			await this.app.vault.create(path, content);
 		}
 		return path;
 	}
@@ -766,21 +772,37 @@ export class AISchedulerPlugin extends Plugin {
 		const plans = extractJson(reply)
 			.map(item => validateJobSchema(item))
 			.filter((item): item is Record<string, unknown> => Boolean(item));
+		const proposed: Job[] = [];
 		for (const plan of plans.slice(0, 3)) {
 			if (this.jobs.length >= MAX_TOTAL_JOBS) {
 				console.warn('[ai-scheduler] Follow-up skipped: job limit reached');
 				break;
 			}
-			await this.addJob(Object.assign(
-				this.jobFromPlan(plan, parentJob.tab, 'self-talk'),
-				{
-					profile: parentJob.profile || null,
-					conversationId: parentJob.conversationId || null,
-					providerId: parentJob.providerId || null,
-					model: parentJob.model || null,
-					contextPaths: parentJob.contextPaths || [],
-				},
-			));
+			try {
+				// AI replies can be steered by vault content (prompt injection), so
+				// follow-ups are created disabled for the user to review, and may not
+				// choose their own output location.
+				proposed.push(await this.addJob(Object.assign(
+					this.jobFromPlan(plan, parentJob.tab, 'self-talk'),
+					{
+						profile: parentJob.profile || null,
+						conversationId: parentJob.conversationId || null,
+						providerId: parentJob.providerId || null,
+						model: parentJob.model || null,
+						contextPaths: parentJob.contextPaths || [],
+						output: null,
+						enabled: false,
+						status: 'disabled',
+					},
+				)));
+			} catch (error) {
+				console.warn('[ai-scheduler] Follow-up skipped:', errorText(error));
+			}
+		}
+		if (proposed.length) {
+			const numbers = proposed.map(job => `#${job.taskNumber}`).join(', ');
+			this.logActivity('planned', `Task #${parentJob.taskNumber} proposed follow-up ${proposed.length === 1 ? 'task' : 'tasks'} ${numbers} (disabled until you enable them)`, parentJob.id);
+			new Notice(`AI proposed ${proposed.length} follow-up ${proposed.length === 1 ? 'task' : 'tasks'} (${numbers}). Review and enable them in the dashboard.`, 8000);
 		}
 	}
 

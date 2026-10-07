@@ -191,6 +191,7 @@ function fakeApp() {
 				for (const listener of eventListeners.modify) listener(file);
 			},
 			read: async (file) => file._content || '',
+			configDir: '.obsidian',
 			adapter: { getBasePath: () => '/fake/vault' },
 		},
 		metadataCache: {
@@ -263,12 +264,12 @@ async function main() {
 	assert.ok(app.commands.commands['disable-nightly-review'], 'disable-nightly-review command registered');
 	await app.commands.commands['disable-nightly-review'].callback();
 	assert.equal(first.settings.nightlyReviewEnabled, false);
-	assert.equal(first.jobs.find(j => j.routine === 'daily-review').enabled, false);
+	assert.equal(first.jobs.find(j => j.routine === 'periodic-review').enabled, false);
 
 	assert.ok(app.commands.commands['enable-nightly-review'], 'enable-nightly-review command registered');
 	await app.commands.commands['enable-nightly-review'].callback();
 	assert.equal(first.settings.nightlyReviewEnabled, true);
-	assert.equal(first.jobs.find(j => j.routine === 'daily-review').enabled, true);
+	assert.equal(first.jobs.find(j => j.routine === 'periodic-review').enabled, true);
 
 	assert.ok(app.commands.commands['toggle-nightly-review'], 'toggle-nightly-review command registered');
 	await app.commands.commands['toggle-nightly-review'].callback();
@@ -295,7 +296,7 @@ async function main() {
 
 	assert.ok(app._pluginData, 'state persisted to data.json');
 	assert.equal(app._pluginData.jobs.length, 5, 'nightly + created + cron + 2 planned jobs persisted');
-	const nightly = app._pluginData.jobs.find(job => job.routine === 'daily-review');
+	const nightly = app._pluginData.jobs.find(job => job.routine === 'periodic-review');
 	assert.ok(nightly && nightly.schedule.kind === 'daily', 'nightly job persisted with a daily schedule');
 
 	// Simulate a crash mid-run, then reload: recovery must reset the status.
@@ -322,6 +323,37 @@ async function main() {
 	assert.equal(app.vault.getAbstractFileByPath(recovered.notePath), null, 'note trashed on deletion');
 	await second.notesSync.syncAll();
 	assert.ok(!second.jobs.some(j => j.title === 'Smoke task'), 'syncAll does not resurrect deleted job');
+
+	// Output writes stay out of hidden/config folders and never clobber user notes.
+	for (const unsafe of ['.obsidian/plugins/evil', '../outside', 'Notes/.hidden']) {
+		await assert.rejects(second.writeOutput(unsafe, 'main.js', 'x'), /unsafe folder/, 'rejects ' + unsafe);
+	}
+	await app.vault.createFolder('Journal');
+	await app.vault.create('Journal/today.md', 'my own note');
+	const sidePath = await second.writeOutput('Journal', 'today.md', 'AI output');
+	assert.equal(sidePath, 'Journal/today-2.md', 'existing user note gets a numbered sibling');
+	assert.equal(app.vault.getAbstractFileByPath('Journal/today.md')._content, 'my own note', 'user note untouched');
+	assert.equal(await second.writeOutput('Journal', 'report.txt', 'x'), 'Journal/report.txt.md', 'output forced to Markdown');
+
+	// AI-proposed follow-ups are created disabled and cannot pick an output path.
+	const parent = second.jobs.find(j => j.title === 'Cron task');
+	const before = second.jobs.length;
+	await second.processFollowUps('<assistant-scheduler>[{"title":"Injected","prompt":"p","schedule":{"kind":"cron","expression":"* * * * *"},"output":{"folder":"Journal","filename":"today.md"}}]</assistant-scheduler>', parent);
+	assert.equal(second.jobs.length, before + 1, 'follow-up created');
+	const followUp = second.jobs[second.jobs.length - 1];
+	assert.equal(followUp.enabled, false, 'follow-up starts disabled');
+	assert.equal(followUp.status, 'disabled');
+	assert.equal(followUp.output, null, 'follow-up output location dropped');
+	assert.equal(followUp.source, 'self-talk');
+
+	// Recurring schedule fields survive a save/reload round trip.
+	const monthly = await second.addJob({ title: 'Monthly', prompt: 'p', schedule: { kind: 'monthly', time: '09:00', dayOfMonth: 15, everyMonths: 2, startAt: '2026-01-15' } });
+	await second.saveState();
+	const third = new PluginClass(app, { id: 'ai-scheduler', version: '2.1.1' });
+	await third.onload();
+	const reloaded = third.jobs.find(j => j.id === monthly.id);
+	assert.deepEqual(reloaded.schedule, monthly.schedule, 'monthly schedule survives reload');
+	assert.equal(reloaded.schedule.dayOfMonth, 15);
 
 	await second.deleteAllJobs();
 	assert.equal(second.jobs.length, 1, 'nightly review job survives delete-all');
