@@ -136,6 +136,7 @@ export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date(
 		providerId: typeof raw.providerId === 'string' ? raw.providerId : null,
 		model: typeof raw.model === 'string' ? raw.model : null,
 		notePath: typeof raw.notePath === 'string' ? raw.notePath : null,
+		noteMovedByUser: raw.noteMovedByUser === true ? true : undefined,
 		lastOutputPath: typeof raw.lastOutputPath === 'string' ? raw.lastOutputPath : null,
 		lastOutputFiles: Array.isArray(raw.lastOutputFiles) ? raw.lastOutputFiles.map(String) : undefined,
 		cooldownMinutes: Number.isFinite(cooldownMinutes) && cooldownMinutes >= 0 ? cooldownMinutes : undefined,

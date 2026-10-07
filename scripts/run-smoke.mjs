@@ -328,6 +328,13 @@ async function main() {
 	assert.equal(noteLines[0], '---', 'first line of note is frontmatter fence');
 	assert.ok(noteLines.slice(1).includes('---'), 'closing frontmatter fence exists on its own line');
 
+	// A note the user moves out of the schedules folder is followed, not recreated.
+	const oldNotePath = recovered.notePath;
+	await app.fileManager.renameFile(noteFile, 'Elsewhere/moved-task.md');
+	await second.notesSync.syncAll();
+	assert.equal(recovered.notePath, 'Elsewhere/moved-task.md', 'note path follows the move');
+	assert.equal(app.vault.getAbstractFileByPath(oldNotePath), null, 'no duplicate recreated in the schedules folder');
+
 	// Test Deletion without resurrection
 	await second.deleteJob(recovered);
 	assert.ok(!second.jobs.some(j => j.title === 'Smoke task'), 'job removed from memory');

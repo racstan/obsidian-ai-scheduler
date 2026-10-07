@@ -10,3 +10,6 @@ MANUAL_TESTING_100.md
 *manual*.md
 .antigravitycli/
 .antigravity/
+
+# Built by 'npm run build'; ship it via the GitHub release assets, not git.
+main.js

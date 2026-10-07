@@ -12,7 +12,8 @@ import { Job, SCHEDULE_KINDS, TaskSchedule } from './types';
 import { cronFormFor, describeSchedule, getScheduleNextRun, previewSchedule } from './schedule';
 import { normalizeJob } from './settings';
 
-function definitionFromContent(content: string): NoteDefinition | null {
+/** Reads the plugin's definition from a schedule note's frontmatter. Exported for tests. */
+export function definitionFromContent(content: string): NoteDefinition | null {
 	const info = getFrontMatterInfo(content);
 	if (!info.exists) return null;
 	try {
@@ -27,7 +28,7 @@ function definitionFromContent(content: string): NoteDefinition | null {
 export const TABLE_START = '<!-- ai-scheduler:table:start -->';
 export const TABLE_END = '<!-- ai-scheduler:table:end -->';
 
-interface NoteDefinition {
+export interface NoteDefinition {
 	id?: string;
 	taskNumber?: number;
 	title?: string;
@@ -73,6 +74,11 @@ export class ScheduleNotesSync {
 		if (job.notePath && ScheduleNotesSync.isInside(this.folder, job.notePath)) {
 			return job.notePath;
 		}
+		// A note the user moved elsewhere stays there (no duplicate in the folder).
+		if (job.noteMovedByUser && job.notePath && this.plugin.app.vault.getAbstractFileByPath(job.notePath) instanceof TFile) {
+			return job.notePath;
+		}
+		job.noteMovedByUser = undefined;
 		const claimed = new Set(this.plugin.jobs.map(other => other.id !== job.id ? other.notePath : null).filter(Boolean) as string[]);
 		const base = `${String(job.taskNumber || '').padStart(2, '0')}-${slugify(job.title)}`;
 		let candidate = normalizePath(`${this.folder}/${base}.md`);
@@ -316,11 +322,16 @@ export class ScheduleNotesSync {
 		if (!file || !file.path) return;
 		const folder = this.folder;
 		const watchPath = eventType === 'rename' ? oldPath || file.path : file.path;
-		if (!ScheduleNotesSync.isInside(folder, watchPath) && !ScheduleNotesSync.isInside(folder, file.path)) return;
+		// Notes are watched inside the folder, plus tracked notes the user moved elsewhere.
+		const tracked = this.plugin.jobs.some(candidate => candidate.notePath === watchPath);
+		if (!tracked && !ScheduleNotesSync.isInside(folder, watchPath) && !ScheduleNotesSync.isInside(folder, file.path)) return;
 		if (eventType === 'rename') {
 			const job = this.plugin.jobs.find(candidate => candidate.notePath === oldPath);
-			if (job && ScheduleNotesSync.isInside(folder, file.path) && file instanceof TFile) {
+			if (job && file instanceof TFile) {
+				// Follow the user's move, even out of the folder, instead of recreating
+				// the note there on the next sync.
 				job.notePath = file.path;
+				job.noteMovedByUser = ScheduleNotesSync.isInside(folder, file.path) ? undefined : true;
 				this.lastWritten.delete(oldPath || '');
 				await this.plugin.saveState();
 			}
