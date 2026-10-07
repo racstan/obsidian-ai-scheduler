@@ -541,6 +541,7 @@ var TASK_LOG_HEADER = `# AI Scheduler \u2014 Task Log
 var DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 var DAY_SHORT_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 var MONTH_NAMES2 = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+var MONTH_SHORT_NAMES = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function parseClock(value) {
   const str = typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : "";
   const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(str);
@@ -3108,8 +3109,32 @@ function formatClockTime(d) {
   const hour12 = h % 12 === 0 ? 12 : h % 12;
   return `${hour12}:${m} ${ampm}`;
 }
+function getRelativeDayLabel(date) {
+  const now = /* @__PURE__ */ new Date();
+  const todayKey = toLocalDateKey(now);
+  const targetKey = toLocalDateKey(date);
+  if (targetKey === todayKey) {
+    return { text: "Today", cls: "is-today", isToday: true };
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (targetKey === toLocalDateKey(yesterday)) {
+    return { text: "Yesterday", cls: "is-yesterday", isToday: false };
+  }
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (targetKey === toLocalDateKey(tomorrow)) {
+    return { text: "Tomorrow", cls: "is-tomorrow", isToday: false };
+  }
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfTarget = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  if (startOfTarget < startOfToday) {
+    return { text: "Past date", cls: "is-past", isToday: false };
+  }
+  return { text: "Upcoming", cls: "is-upcoming", isToday: false };
+}
 var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
-  constructor(app, plugin, initialDate = /* @__PURE__ */ new Date()) {
+  constructor(app, plugin, initialDate = /* @__PURE__ */ new Date(), initialViewMode = "month") {
     super(app);
     this.activeFilter = "all";
     this.viewMode = "month";
@@ -3118,6 +3143,7 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
     this.currentYear = initialDate.getFullYear();
     this.currentMonth = initialDate.getMonth();
     this.selectedDate = new Date(initialDate);
+    this.viewMode = initialViewMode;
   }
   onOpen() {
     closeExistingSchedulerModals(this);
@@ -3179,6 +3205,15 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
     contentEl.addClass("ai-scheduler-content");
     contentEl.empty();
     const shell = contentEl.createDiv("ai-scheduler-shell ai-scheduler-shell-lg");
+    if (this.viewMode === "day") {
+      this.renderDayHeaderAndControls(shell);
+      const dayStart = new Date(this.selectedDate.getFullYear(), this.selectedDate.getMonth(), this.selectedDate.getDate(), 0, 0, 0, 0);
+      const dayEnd = new Date(this.selectedDate.getFullYear(), this.selectedDate.getMonth(), this.selectedDate.getDate(), 23, 59, 59, 999);
+      const occurrencesMap2 = this.buildOccurrencesMap(dayStart, dayEnd);
+      this.renderDayPage(shell, this.selectedDate, occurrencesMap2);
+      this.renderEventTasksSection(shell);
+      return;
+    }
     const header = shell.createDiv({ cls: "ai-scheduler-calendar-header" });
     const titleCol = header.createDiv();
     titleCol.createEl("h1", { text: "Schedule calendar", cls: "ai-scheduler-title" });
@@ -3199,7 +3234,7 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
       this.close();
       window.setTimeout(() => {
         new JobModal(this.app, this.plugin, normalizeJob({ prompt: "", title: "" }), () => {
-          new _CalendarModal(this.app, this.plugin, this.selectedDate).open();
+          new _CalendarModal(this.app, this.plugin, this.selectedDate, this.viewMode).open();
         }).open();
       }, 50);
     }, true);
@@ -3266,6 +3301,14 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
       this.viewMode = "agenda";
       this.render();
     };
+    const dayModeBtn = viewToggle.createEl("button", {
+      text: "\u{1F5D3} Day view",
+      cls: "ai-scheduler-cal-toggle-btn"
+    });
+    dayModeBtn.onclick = () => {
+      this.viewMode = "day";
+      this.render();
+    };
     const firstOfMonth = new Date(this.currentYear, this.currentMonth, 1);
     const lastOfMonth = new Date(this.currentYear, this.currentMonth + 1, 0, 23, 59, 59, 999);
     const startDayOfWeek = firstOfMonth.getDay();
@@ -3285,6 +3328,303 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
       this.renderAgendaView(shell, firstOfMonth, lastOfMonth, occurrencesMap);
     }
     this.renderEventTasksSection(shell);
+  }
+  renderDayHeaderAndControls(shell) {
+    const header = shell.createDiv({ cls: "ai-scheduler-calendar-header ai-scheduler-cal-day-header-wrap" });
+    const titleCol = header.createDiv({ cls: "ai-scheduler-cal-day-title-col" });
+    const backRow = titleCol.createDiv({ cls: "ai-scheduler-cal-back-bar" });
+    const backBtn = backRow.createEl("button", {
+      text: "\u2190 Back to Month View",
+      cls: "ai-scheduler-cal-back-btn"
+    });
+    backBtn.onclick = () => {
+      this.viewMode = "month";
+      this.render();
+    };
+    const formattedTitle = `${DAY_NAMES[this.selectedDate.getDay()]}, ${MONTH_NAMES2[this.selectedDate.getMonth() + 1]} ${this.selectedDate.getDate()}, ${this.selectedDate.getFullYear()}`;
+    titleCol.createEl("h1", { text: formattedTitle, cls: "ai-scheduler-title ai-scheduler-cal-day-page-title" });
+    titleCol.createEl("p", {
+      text: "Detailed schedule, task breakdowns, and execution actions for this date.",
+      cls: "ai-scheduler-subtitle"
+    });
+    const topActions = header.createDiv({ cls: "ai-scheduler-calendar-top-actions" });
+    makeButton(topActions, "\u{1F4CB} Task dashboard", () => {
+      this.close();
+      window.setTimeout(() => new AssistantModal(this.app, this.plugin).open(), 50);
+    });
+    makeButton(topActions, "\u26A1 Ask AI to plan", () => {
+      this.close();
+      window.setTimeout(() => new PlannerModal(this.app, this.plugin).open(), 50);
+    });
+    makeButton(topActions, "+ Schedule for this day", () => {
+      this.close();
+      window.setTimeout(() => {
+        const defaultJob = normalizeJob({
+          prompt: "",
+          title: "",
+          schedule: {
+            kind: "once",
+            at: new Date(this.selectedDate.getFullYear(), this.selectedDate.getMonth(), this.selectedDate.getDate(), 9, 0).toISOString()
+          }
+        });
+        new JobModal(this.app, this.plugin, defaultJob, () => {
+          new _CalendarModal(this.app, this.plugin, this.selectedDate, "day").open();
+        }).open();
+      }, 50);
+    }, true);
+    const controlsBar = shell.createDiv({ cls: "ai-scheduler-cal-controls ai-scheduler-cal-day-controls" });
+    const navGroup = controlsBar.createDiv({ cls: "ai-scheduler-cal-nav" });
+    const prevDayBtn = navGroup.createEl("button", { text: "\u2039 Previous day", cls: "ai-scheduler-cal-nav-btn ai-scheduler-cal-day-step-btn" });
+    prevDayBtn.onclick = () => {
+      const prev = new Date(this.selectedDate);
+      prev.setDate(prev.getDate() - 1);
+      this.selectedDate = prev;
+      this.currentYear = prev.getFullYear();
+      this.currentMonth = prev.getMonth();
+      this.render();
+    };
+    const todayBtn = navGroup.createEl("button", { text: "Today", cls: "ai-scheduler-cal-today-btn" });
+    todayBtn.onclick = () => {
+      const today = /* @__PURE__ */ new Date();
+      this.selectedDate = today;
+      this.currentYear = today.getFullYear();
+      this.currentMonth = today.getMonth();
+      this.render();
+    };
+    const nextDayBtn = navGroup.createEl("button", { text: "Next day \u203A", cls: "ai-scheduler-cal-nav-btn ai-scheduler-cal-day-step-btn" });
+    nextDayBtn.onclick = () => {
+      const next = new Date(this.selectedDate);
+      next.setDate(next.getDate() + 1);
+      this.selectedDate = next;
+      this.currentYear = next.getFullYear();
+      this.currentMonth = next.getMonth();
+      this.render();
+    };
+    const filterGroup = controlsBar.createDiv({ cls: "ai-scheduler-cal-filter-group" });
+    const filterSelect = filterGroup.createEl("select", { cls: "dropdown ai-scheduler-cal-select" });
+    filterSelect.createEl("option", { text: "All tasks", value: "all" });
+    filterSelect.createEl("option", { text: "Active tasks only", value: "active" });
+    filterSelect.createEl("option", { text: "Paused / disabled", value: "paused" });
+    filterSelect.value = this.activeFilter;
+    filterSelect.onchange = () => {
+      this.activeFilter = filterSelect.value;
+      this.render();
+    };
+    const viewToggle = filterGroup.createDiv({ cls: "ai-scheduler-cal-view-toggle" });
+    const monthModeBtn = viewToggle.createEl("button", {
+      text: "\u{1F4C5} Month view",
+      cls: "ai-scheduler-cal-toggle-btn"
+    });
+    monthModeBtn.onclick = () => {
+      this.viewMode = "month";
+      this.render();
+    };
+    const agendaModeBtn = viewToggle.createEl("button", {
+      text: "\u{1F4C6} Timeline",
+      cls: "ai-scheduler-cal-toggle-btn"
+    });
+    agendaModeBtn.onclick = () => {
+      this.viewMode = "agenda";
+      this.render();
+    };
+    const dayModeBtn = viewToggle.createEl("button", {
+      text: "\u{1F5D3} Day view",
+      cls: "ai-scheduler-cal-toggle-btn is-active"
+    });
+    dayModeBtn.onclick = () => {
+      this.viewMode = "day";
+      this.render();
+    };
+  }
+  renderDayPage(container, date, occurrencesMap) {
+    var _a, _b, _c, _d;
+    const key = toLocalDateKey(date);
+    const occurrences = occurrencesMap.get(key) || [];
+    const rel = getRelativeDayLabel(date);
+    const heroCard = makeCard(container, "ai-scheduler-cal-day-hero");
+    const heroTop = heroCard.createDiv({ cls: "ai-scheduler-cal-day-hero-top" });
+    const heroLeft = heroTop.createDiv();
+    const badgeRow = heroLeft.createDiv({ cls: "ai-scheduler-cal-day-badge-row" });
+    badgeRow.createSpan({ cls: `ai-scheduler-cal-day-rel-badge ${rel.cls}`, text: rel.text });
+    badgeRow.createSpan({
+      cls: "ai-scheduler-cal-day-count-badge",
+      text: occurrences.length === 0 ? "No tasks scheduled" : `${occurrences.length} task run${occurrences.length === 1 ? "" : "s"}`
+    });
+    const heroTitle = heroLeft.createEl("h2", {
+      cls: "ai-scheduler-cal-day-hero-title",
+      text: `${DAY_NAMES[date.getDay()]}, ${MONTH_NAMES2[date.getMonth() + 1]} ${date.getDate()}, ${date.getFullYear()}`
+    });
+    const heroSubtitle = heroLeft.createDiv({
+      cls: "ai-scheduler-cal-day-hero-subtitle",
+      text: occurrences.length === 0 ? "No AI tasks are set to execute on this date. You can add one anytime." : `${occurrences.filter((o) => o.isCompleted).length} completed \xB7 ${occurrences.filter((o) => !o.isCompleted && o.job.enabled).length} scheduled/pending`
+    });
+    const heroActions = heroTop.createDiv({ cls: "ai-scheduler-cal-day-hero-actions" });
+    makeButton(heroActions, "+ Schedule Task", () => {
+      this.close();
+      window.setTimeout(() => {
+        const defaultJob = normalizeJob({
+          prompt: "",
+          title: "",
+          schedule: {
+            kind: "once",
+            at: new Date(this.selectedDate.getFullYear(), this.selectedDate.getMonth(), this.selectedDate.getDate(), 9, 0).toISOString()
+          }
+        });
+        new JobModal(this.app, this.plugin, defaultJob, () => {
+          new _CalendarModal(this.app, this.plugin, this.selectedDate, "day").open();
+        }).open();
+      }, 50);
+    }, true);
+    if (occurrences.length > 0) {
+      const completedCount = occurrences.filter((o) => o.isCompleted).length;
+      const runningCount = occurrences.filter((o) => o.job.status === "running" || this.plugin.runningJobs.has(o.job.id)).length;
+      const pausedCount = occurrences.filter((o) => !o.job.enabled || o.job.status === "disabled").length;
+      const pendingCount = occurrences.length - completedCount - runningCount - pausedCount;
+      const statsGrid = heroCard.createDiv({ cls: "ai-scheduler-cal-day-stats-grid" });
+      const stat1 = statsGrid.createDiv({ cls: "ai-scheduler-cal-day-stat-card" });
+      stat1.createDiv({ cls: "ai-scheduler-cal-day-stat-num", text: String(occurrences.length) });
+      stat1.createDiv({ cls: "ai-scheduler-cal-day-stat-label", text: "Total Runs" });
+      const stat2 = statsGrid.createDiv({ cls: "ai-scheduler-cal-day-stat-card" });
+      stat2.createDiv({ cls: "ai-scheduler-cal-day-stat-num is-completed", text: String(completedCount) });
+      stat2.createDiv({ cls: "ai-scheduler-cal-day-stat-label", text: "Completed" });
+      const stat3 = statsGrid.createDiv({ cls: "ai-scheduler-cal-day-stat-card" });
+      stat3.createDiv({ cls: "ai-scheduler-cal-day-stat-num is-pending", text: String(Math.max(0, pendingCount)) });
+      stat3.createDiv({ cls: "ai-scheduler-cal-day-stat-label", text: "Pending / Due" });
+      const stat4 = statsGrid.createDiv({ cls: "ai-scheduler-cal-day-stat-card" });
+      stat4.createDiv({ cls: "ai-scheduler-cal-day-stat-num is-paused", text: String(pausedCount) });
+      stat4.createDiv({ cls: "ai-scheduler-cal-day-stat-label", text: "Paused" });
+    }
+    if (occurrences.length === 0) {
+      const emptyCard = makeCard(container, "ai-scheduler-cal-day-empty-card");
+      emptyCard.createDiv({ cls: "ai-scheduler-cal-day-empty-icon", text: "\u{1F5D3}\uFE0F" });
+      emptyCard.createEl("h3", { cls: "ai-scheduler-cal-day-empty-title", text: `No tasks scheduled for ${MONTH_SHORT_NAMES[date.getMonth() + 1]} ${date.getDate()}` });
+      emptyCard.createDiv({
+        cls: "ai-scheduler-cal-day-empty-desc",
+        text: "There are no active or scheduled AI tasks set for this day. You can schedule a one-time task, set up a recurring schedule, or ask the AI planner to organize your routine."
+      });
+      const emptyActions = emptyCard.createDiv({ cls: "ai-scheduler-cal-day-empty-actions" });
+      makeButton(emptyActions, "+ Schedule task for this date", () => {
+        this.close();
+        window.setTimeout(() => {
+          const defaultJob = normalizeJob({
+            prompt: "",
+            title: "",
+            schedule: {
+              kind: "once",
+              at: new Date(this.selectedDate.getFullYear(), this.selectedDate.getMonth(), this.selectedDate.getDate(), 9, 0).toISOString()
+            }
+          });
+          new JobModal(this.app, this.plugin, defaultJob, () => {
+            new _CalendarModal(this.app, this.plugin, this.selectedDate, "day").open();
+          }).open();
+        }, 50);
+      }, true);
+      makeButton(emptyActions, "\u26A1 Ask AI to plan", () => {
+        this.close();
+        window.setTimeout(() => new PlannerModal(this.app, this.plugin).open(), 50);
+      });
+      makeButton(emptyActions, "\u2190 Back to Month View", () => {
+        this.viewMode = "month";
+        this.render();
+      });
+      return;
+    }
+    const timelineContainer = container.createDiv({ cls: "ai-scheduler-cal-day-timeline" });
+    for (const occ of occurrences) {
+      const job = occ.job;
+      const isRunning = job.status === "running" || this.plugin.runningJobs.has(job.id);
+      const card = timelineContainer.createDiv({
+        cls: `ai-scheduler-cal-day-card ${isRunning ? "is-running" : ""} ${occ.isCompleted ? "is-completed" : ""} ${!job.enabled ? "is-paused" : ""}`
+      });
+      const timeCol = card.createDiv({ cls: "ai-scheduler-cal-day-time-col" });
+      timeCol.createSpan({ cls: "ai-scheduler-cal-day-time-badge", text: occ.timeStr });
+      timeCol.createDiv({ cls: "ai-scheduler-cal-day-kind-tag", text: ((_a = job.schedule) == null ? void 0 : _a.kind) ? String(job.schedule.kind).toUpperCase() : "TASK" });
+      const body = card.createDiv({ cls: "ai-scheduler-cal-day-body" });
+      const headRow = body.createDiv({ cls: "ai-scheduler-cal-day-card-head" });
+      const titleText = occ.isReview ? "Periodic Review" : `#${(_b = job.taskNumber) != null ? _b : "?"} ${job.title}`;
+      headRow.createEl("h3", {
+        text: titleText,
+        cls: `ai-scheduler-cal-day-card-title ${occ.isCompleted ? "is-completed-title" : ""}`
+      });
+      const badgesRow = body.createDiv({ cls: "ai-scheduler-cal-day-badges" });
+      if (occ.isCompleted) {
+        badgesRow.createSpan({ cls: "ai-scheduler-badge ai-scheduler-badge-completed", text: "\u2713 Completed" });
+      } else if (isRunning) {
+        badgesRow.createSpan({ cls: "ai-scheduler-badge ai-scheduler-badge-running", text: "\u25B6 Running now" });
+      } else if (!job.enabled || job.status === "disabled") {
+        badgesRow.createSpan({ cls: "ai-scheduler-badge ai-scheduler-badge-paused", text: "\u23F8 Paused" });
+      } else {
+        badgesRow.createSpan({ cls: "ai-scheduler-badge ai-scheduler-badge-active", text: "\u23F3 Scheduled" });
+      }
+      badgesRow.createSpan({ cls: "ai-scheduler-badge", text: describeSchedule(job) });
+      badgesRow.createSpan({ cls: "ai-scheduler-badge ai-scheduler-badge-backend", text: describeBinding(job) });
+      if ((_c = job.output) == null ? void 0 : _c.folder) {
+        badgesRow.createSpan({ cls: "ai-scheduler-badge ai-scheduler-badge-folder", text: `\u{1F4C1} ${job.output.folder}` });
+      }
+      if (job.contextPaths && job.contextPaths.length > 0) {
+        badgesRow.createSpan({ cls: "ai-scheduler-badge", text: `\u{1F4CE} ${job.contextPaths.length} file${job.contextPaths.length === 1 ? "" : "s"}` });
+      }
+      if (job.prompt && !occ.isReview) {
+        const promptBox = body.createDiv({ cls: "ai-scheduler-cal-day-prompt-box" });
+        promptBox.createDiv({ cls: "ai-scheduler-cal-day-prompt-label", text: "Prompt / Instruction:" });
+        const promptSnippet = job.prompt.length > 220 ? `${job.prompt.slice(0, 220)}...` : job.prompt;
+        promptBox.createDiv({ cls: "ai-scheduler-cal-day-prompt-text", text: promptSnippet });
+      }
+      if (job.lastRunAt) {
+        const lastRunRow = body.createDiv({ cls: "ai-scheduler-cal-day-last-run" });
+        lastRunRow.createSpan({ cls: "ai-scheduler-cal-day-last-run-label", text: "Last executed:" });
+        lastRunRow.createSpan({ text: formatDate(job.lastRunAt) });
+        if (job.lastStatus) {
+          lastRunRow.createSpan({ cls: "ai-scheduler-cal-day-last-run-result", text: `(${job.lastStatus})` });
+        }
+      }
+      const actions = card.createDiv({ cls: "ai-scheduler-cal-day-actions" });
+      makeButton(actions, occ.isCompleted ? "\u25B6 Run again" : "\u25B6 Run now", () => {
+        void (async () => {
+          var _a2;
+          new import_obsidian7.Notice(`Starting Task #${(_a2 = job.taskNumber) != null ? _a2 : ""} (${job.title})...`);
+          await this.plugin.retryJob(job);
+          this.render();
+        })();
+      });
+      makeButton(actions, job.enabled ? "\u23F8 Pause" : "\u25B6 Resume", () => {
+        void (async () => {
+          var _a2;
+          job.enabled = !job.enabled;
+          job.status = job.enabled ? "scheduled" : "disabled";
+          await this.plugin.saveState();
+          new import_obsidian7.Notice(`Task #${(_a2 = job.taskNumber) != null ? _a2 : ""} ${job.enabled ? "resumed" : "paused"}.`);
+          this.render();
+        })();
+      });
+      makeButton(actions, "\u270F Edit", () => {
+        this.close();
+        window.setTimeout(() => {
+          new JobModal(this.app, this.plugin, job, () => {
+            new _CalendarModal(this.app, this.plugin, this.selectedDate, "day").open();
+          }).open();
+        }, 50);
+      });
+      makeButton(actions, "\u{1F441} Details", () => {
+        this.close();
+        window.setTimeout(() => {
+          new TaskViewModal(this.app, this.plugin, job, () => {
+            new _CalendarModal(this.app, this.plugin, this.selectedDate, "day").open();
+          }).open();
+        }, 50);
+      });
+      if ((_d = job.output) == null ? void 0 : _d.folder) {
+        const outputFolder = job.output.folder.trim();
+        makeButton(actions, "\u{1F4C4} Vault output", () => {
+          const folder = this.app.vault.getAbstractFileByPath(outputFolder);
+          if (folder) {
+            new import_obsidian7.Notice(`Output location: ${outputFolder}`);
+          } else {
+            new import_obsidian7.Notice(`Output folder "${outputFolder}" configured for task.`);
+          }
+        });
+      }
+    }
   }
   renderMonthGrid(container, gridStart, gridEnd, occurrencesMap) {
     var _a;
@@ -3308,6 +3648,7 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
       const cell = daysGrid.createDiv({
         cls: `ai-scheduler-cal-day-cell ${isCurrentMonth ? "" : "is-outside"} ${isToday ? "is-today" : ""} ${isSelected ? "is-selected" : ""}`
       });
+      cell.setAttribute("title", `Click to open full Day View for ${MONTH_SHORT_NAMES[cellDate.getMonth() + 1]} ${cellDate.getDate()}`);
       const cellTop = cell.createDiv({ cls: "ai-scheduler-cal-cell-top" });
       cellTop.createSpan({ cls: "ai-scheduler-cal-day-num", text: String(cellDate.getDate()) });
       if (occurrences.length > 0) {
@@ -3315,7 +3656,7 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
           cls: "ai-scheduler-cal-count-badge",
           text: String(occurrences.length)
         });
-        countBadge.setAttribute("title", `${occurrences.length} task(s) on this day`);
+        countBadge.setAttribute("title", `${occurrences.length} task(s) on this day \u2014 click to view`);
       }
       const chipsContainer = cell.createDiv({ cls: "ai-scheduler-cal-chips" });
       for (const occ of occurrences) {
@@ -3333,6 +3674,7 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
       }
       cell.onclick = () => {
         this.selectedDate = cellDate;
+        this.viewMode = "day";
         this.render();
       };
       cur.setDate(cur.getDate() + 1);
@@ -3352,6 +3694,10 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
       text: occurrences.length === 0 ? "No scheduled tasks for this date." : `${occurrences.length} task run${occurrences.length === 1 ? "" : "s"} scheduled`
     });
     const headActions = panelHead.createDiv({ cls: "ai-scheduler-cal-panel-actions" });
+    makeButton(headActions, "\u{1F5D3} Open Day View Page", () => {
+      this.viewMode = "day";
+      this.render();
+    }, true);
     makeButton(headActions, "+ Schedule Task", () => {
       this.close();
       window.setTimeout(() => {
@@ -3364,7 +3710,7 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
           }
         });
         new JobModal(this.app, this.plugin, defaultJob, () => {
-          new _CalendarModal(this.app, this.plugin, this.selectedDate).open();
+          new _CalendarModal(this.app, this.plugin, this.selectedDate, this.viewMode).open();
         }).open();
       }, 50);
     });
@@ -3373,7 +3719,7 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
       empty.createDiv({ cls: "ai-scheduler-empty-title", text: "No tasks scheduled on this day" });
       empty.createDiv({
         cls: "ai-scheduler-empty-desc",
-        text: "You can create a new recurring or one-time AI task to run on this day."
+        text: 'Click "Open Day View Page" or create a new scheduled task to plan ahead.'
       });
       return;
     }
@@ -3416,7 +3762,7 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
         this.close();
         window.setTimeout(() => {
           new JobModal(this.app, this.plugin, job, () => {
-            new _CalendarModal(this.app, this.plugin, this.selectedDate).open();
+            new _CalendarModal(this.app, this.plugin, this.selectedDate, this.viewMode).open();
           }).open();
         }, 50);
       });
@@ -3424,7 +3770,7 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
         this.close();
         window.setTimeout(() => {
           new TaskViewModal(this.app, this.plugin, job, () => {
-            new _CalendarModal(this.app, this.plugin, this.selectedDate).open();
+            new _CalendarModal(this.app, this.plugin, this.selectedDate, this.viewMode).open();
           }).open();
         }, 50);
       });
@@ -3488,11 +3834,16 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
           this.render();
         })();
       });
+      makeButton(actions, "\u{1F5D3} Day page", () => {
+        this.selectedDate = occ.date;
+        this.viewMode = "day";
+        this.render();
+      });
       makeButton(actions, "\u{1F441} View", () => {
         this.close();
         window.setTimeout(() => {
           new TaskViewModal(this.app, this.plugin, job, () => {
-            new _CalendarModal(this.app, this.plugin, this.selectedDate).open();
+            new _CalendarModal(this.app, this.plugin, this.selectedDate, this.viewMode).open();
           }).open();
         }, 50);
       });
@@ -3537,7 +3888,7 @@ var CalendarModal = class _CalendarModal extends import_obsidian7.Modal {
         this.close();
         window.setTimeout(() => {
           new JobModal(this.app, this.plugin, job, () => {
-            new _CalendarModal(this.app, this.plugin, this.selectedDate).open();
+            new _CalendarModal(this.app, this.plugin, this.selectedDate, this.viewMode).open();
           }).open();
         }, 50);
       });

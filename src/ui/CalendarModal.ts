@@ -1,9 +1,9 @@
-import { App, Modal, Notice } from 'obsidian';
+import { App, Modal, Notice, TFile } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
 import { Job } from '../types';
 import { normalizeJob } from '../settings';
 import { describeBinding, formatDate, isNightlyReviewJob } from '../util';
-import { describeSchedule, getScheduleOccurrencesInRange, DAY_SHORT_NAMES, DAY_NAMES, MONTH_NAMES } from '../schedule';
+import { describeSchedule, getScheduleOccurrencesInRange, DAY_SHORT_NAMES, DAY_NAMES, MONTH_NAMES, MONTH_SHORT_NAMES } from '../schedule';
 import { closeExistingSchedulerModals, makeButton, makeCard } from './dom';
 import { JobModal } from './JobModal';
 import { PlannerModal } from './PlannerModal';
@@ -34,21 +34,57 @@ function formatClockTime(d: Date): string {
 	return `${hour12}:${m} ${ampm}`;
 }
 
+function getRelativeDayLabel(date: Date): { text: string; cls: string; isToday: boolean } {
+	const now = new Date();
+	const todayKey = toLocalDateKey(now);
+	const targetKey = toLocalDateKey(date);
+
+	if (targetKey === todayKey) {
+		return { text: 'Today', cls: 'is-today', isToday: true };
+	}
+
+	const yesterday = new Date(now);
+	yesterday.setDate(yesterday.getDate() - 1);
+	if (targetKey === toLocalDateKey(yesterday)) {
+		return { text: 'Yesterday', cls: 'is-yesterday', isToday: false };
+	}
+
+	const tomorrow = new Date(now);
+	tomorrow.setDate(tomorrow.getDate() + 1);
+	if (targetKey === toLocalDateKey(tomorrow)) {
+		return { text: 'Tomorrow', cls: 'is-tomorrow', isToday: false };
+	}
+
+	const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+	const startOfTarget = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+
+	if (startOfTarget < startOfToday) {
+		return { text: 'Past date', cls: 'is-past', isToday: false };
+	}
+	return { text: 'Upcoming', cls: 'is-upcoming', isToday: false };
+}
+
 export class CalendarModal extends Modal {
 	plugin: AISchedulerPlugin;
 	currentYear: number;
 	currentMonth: number; // 0-indexed
 	selectedDate: Date;
 	activeFilter: 'all' | 'active' | 'paused' = 'all';
-	viewMode: 'month' | 'agenda' = 'month';
+	viewMode: 'month' | 'agenda' | 'day' = 'month';
 	private refreshTimer: number | null = null;
 
-	constructor(app: App, plugin: AISchedulerPlugin, initialDate: Date = new Date()) {
+	constructor(
+		app: App,
+		plugin: AISchedulerPlugin,
+		initialDate: Date = new Date(),
+		initialViewMode: 'month' | 'agenda' | 'day' = 'month',
+	) {
 		super(app);
 		this.plugin = plugin;
 		this.currentYear = initialDate.getFullYear();
 		this.currentMonth = initialDate.getMonth();
 		this.selectedDate = new Date(initialDate);
+		this.viewMode = initialViewMode;
 	}
 
 	onOpen(): void {
@@ -121,7 +157,17 @@ export class CalendarModal extends Modal {
 
 		const shell = contentEl.createDiv('ai-scheduler-shell ai-scheduler-shell-lg');
 
-		// Header row with Title and Navigation actions
+		if (this.viewMode === 'day') {
+			this.renderDayHeaderAndControls(shell);
+			const dayStart = new Date(this.selectedDate.getFullYear(), this.selectedDate.getMonth(), this.selectedDate.getDate(), 0, 0, 0, 0);
+			const dayEnd = new Date(this.selectedDate.getFullYear(), this.selectedDate.getMonth(), this.selectedDate.getDate(), 23, 59, 59, 999);
+			const occurrencesMap = this.buildOccurrencesMap(dayStart, dayEnd);
+			this.renderDayPage(shell, this.selectedDate, occurrencesMap);
+			this.renderEventTasksSection(shell);
+			return;
+		}
+
+		// Month or Agenda view header
 		const header = shell.createDiv({ cls: 'ai-scheduler-calendar-header' });
 		const titleCol = header.createDiv();
 		titleCol.createEl('h1', { text: 'Schedule calendar', cls: 'ai-scheduler-title' });
@@ -143,7 +189,7 @@ export class CalendarModal extends Modal {
 			this.close();
 			window.setTimeout(() => {
 				new JobModal(this.app, this.plugin, normalizeJob({ prompt: '', title: '' }), () => {
-					new CalendarModal(this.app, this.plugin, this.selectedDate).open();
+					new CalendarModal(this.app, this.plugin, this.selectedDate, this.viewMode).open();
 				}).open();
 			}, 50);
 		}, true);
@@ -223,6 +269,15 @@ export class CalendarModal extends Modal {
 			this.render();
 		};
 
+		const dayModeBtn = viewToggle.createEl('button', {
+			text: '🗓 Day view',
+			cls: 'ai-scheduler-cal-toggle-btn',
+		});
+		dayModeBtn.onclick = () => {
+			this.viewMode = 'day';
+			this.render();
+		};
+
 		// Date Boundaries for current view
 		const firstOfMonth = new Date(this.currentYear, this.currentMonth, 1);
 		const lastOfMonth = new Date(this.currentYear, this.currentMonth + 1, 0, 23, 59, 59, 999);
@@ -250,6 +305,364 @@ export class CalendarModal extends Modal {
 
 		// Render vault event tasks section if any exist
 		this.renderEventTasksSection(shell);
+	}
+
+	private renderDayHeaderAndControls(shell: HTMLElement): void {
+		// Header row with Back button and actions
+		const header = shell.createDiv({ cls: 'ai-scheduler-calendar-header ai-scheduler-cal-day-header-wrap' });
+
+		const titleCol = header.createDiv({ cls: 'ai-scheduler-cal-day-title-col' });
+		const backRow = titleCol.createDiv({ cls: 'ai-scheduler-cal-back-bar' });
+		const backBtn = backRow.createEl('button', {
+			text: '← Back to Month View',
+			cls: 'ai-scheduler-cal-back-btn',
+		});
+		backBtn.onclick = () => {
+			this.viewMode = 'month';
+			this.render();
+		};
+
+		const formattedTitle = `${DAY_NAMES[this.selectedDate.getDay()]}, ${MONTH_NAMES[this.selectedDate.getMonth() + 1]} ${this.selectedDate.getDate()}, ${this.selectedDate.getFullYear()}`;
+		titleCol.createEl('h1', { text: formattedTitle, cls: 'ai-scheduler-title ai-scheduler-cal-day-page-title' });
+		titleCol.createEl('p', {
+			text: 'Detailed schedule, task breakdowns, and execution actions for this date.',
+			cls: 'ai-scheduler-subtitle',
+		});
+
+		const topActions = header.createDiv({ cls: 'ai-scheduler-calendar-top-actions' });
+		makeButton(topActions, '📋 Task dashboard', () => {
+			this.close();
+			window.setTimeout(() => new AssistantModal(this.app, this.plugin).open(), 50);
+		});
+		makeButton(topActions, '⚡ Ask AI to plan', () => {
+			this.close();
+			window.setTimeout(() => new PlannerModal(this.app, this.plugin).open(), 50);
+		});
+		makeButton(topActions, '+ Schedule for this day', () => {
+			this.close();
+			window.setTimeout(() => {
+				const defaultJob = normalizeJob({
+					prompt: '',
+					title: '',
+					schedule: {
+						kind: 'once',
+						at: new Date(this.selectedDate.getFullYear(), this.selectedDate.getMonth(), this.selectedDate.getDate(), 9, 0).toISOString(),
+					},
+				});
+				new JobModal(this.app, this.plugin, defaultJob, () => {
+					new CalendarModal(this.app, this.plugin, this.selectedDate, 'day').open();
+				}).open();
+			}, 50);
+		}, true);
+
+		// Navigation Bar for Day: Prev day, Next day, Today, View Toggles
+		const controlsBar = shell.createDiv({ cls: 'ai-scheduler-cal-controls ai-scheduler-cal-day-controls' });
+
+		const navGroup = controlsBar.createDiv({ cls: 'ai-scheduler-cal-nav' });
+		const prevDayBtn = navGroup.createEl('button', { text: '‹ Previous day', cls: 'ai-scheduler-cal-nav-btn ai-scheduler-cal-day-step-btn' });
+		prevDayBtn.onclick = () => {
+			const prev = new Date(this.selectedDate);
+			prev.setDate(prev.getDate() - 1);
+			this.selectedDate = prev;
+			this.currentYear = prev.getFullYear();
+			this.currentMonth = prev.getMonth();
+			this.render();
+		};
+
+		const todayBtn = navGroup.createEl('button', { text: 'Today', cls: 'ai-scheduler-cal-today-btn' });
+		todayBtn.onclick = () => {
+			const today = new Date();
+			this.selectedDate = today;
+			this.currentYear = today.getFullYear();
+			this.currentMonth = today.getMonth();
+			this.render();
+		};
+
+		const nextDayBtn = navGroup.createEl('button', { text: 'Next day ›', cls: 'ai-scheduler-cal-nav-btn ai-scheduler-cal-day-step-btn' });
+		nextDayBtn.onclick = () => {
+			const next = new Date(this.selectedDate);
+			next.setDate(next.getDate() + 1);
+			this.selectedDate = next;
+			this.currentYear = next.getFullYear();
+			this.currentMonth = next.getMonth();
+			this.render();
+		};
+
+		// Right controls: Filter & View Toggle
+		const filterGroup = controlsBar.createDiv({ cls: 'ai-scheduler-cal-filter-group' });
+
+		const filterSelect = filterGroup.createEl('select', { cls: 'dropdown ai-scheduler-cal-select' });
+		filterSelect.createEl('option', { text: 'All tasks', value: 'all' });
+		filterSelect.createEl('option', { text: 'Active tasks only', value: 'active' });
+		filterSelect.createEl('option', { text: 'Paused / disabled', value: 'paused' });
+		filterSelect.value = this.activeFilter;
+		filterSelect.onchange = () => {
+			this.activeFilter = filterSelect.value as typeof this.activeFilter;
+			this.render();
+		};
+
+		const viewToggle = filterGroup.createDiv({ cls: 'ai-scheduler-cal-view-toggle' });
+		const monthModeBtn = viewToggle.createEl('button', {
+			text: '📅 Month view',
+			cls: 'ai-scheduler-cal-toggle-btn',
+		});
+		monthModeBtn.onclick = () => {
+			this.viewMode = 'month';
+			this.render();
+		};
+
+		const agendaModeBtn = viewToggle.createEl('button', {
+			text: '📆 Timeline',
+			cls: 'ai-scheduler-cal-toggle-btn',
+		});
+		agendaModeBtn.onclick = () => {
+			this.viewMode = 'agenda';
+			this.render();
+		};
+
+		const dayModeBtn = viewToggle.createEl('button', {
+			text: '🗓 Day view',
+			cls: 'ai-scheduler-cal-toggle-btn is-active',
+		});
+		dayModeBtn.onclick = () => {
+			this.viewMode = 'day';
+			this.render();
+		};
+	}
+
+	private renderDayPage(
+		container: HTMLElement,
+		date: Date,
+		occurrencesMap: Map<string, CalendarOccurrence[]>,
+	): void {
+		const key = toLocalDateKey(date);
+		const occurrences = occurrencesMap.get(key) || [];
+		const rel = getRelativeDayLabel(date);
+
+		// Hero Card for the Selected Day
+		const heroCard = makeCard(container, 'ai-scheduler-cal-day-hero');
+		const heroTop = heroCard.createDiv({ cls: 'ai-scheduler-cal-day-hero-top' });
+
+		const heroLeft = heroTop.createDiv();
+		const badgeRow = heroLeft.createDiv({ cls: 'ai-scheduler-cal-day-badge-row' });
+		badgeRow.createSpan({ cls: `ai-scheduler-cal-day-rel-badge ${rel.cls}`, text: rel.text });
+		badgeRow.createSpan({
+			cls: 'ai-scheduler-cal-day-count-badge',
+			text: occurrences.length === 0 ? 'No tasks scheduled' : `${occurrences.length} task run${occurrences.length === 1 ? '' : 's'}`,
+		});
+
+		const heroTitle = heroLeft.createEl('h2', {
+			cls: 'ai-scheduler-cal-day-hero-title',
+			text: `${DAY_NAMES[date.getDay()]}, ${MONTH_NAMES[date.getMonth() + 1]} ${date.getDate()}, ${date.getFullYear()}`,
+		});
+
+		const heroSubtitle = heroLeft.createDiv({
+			cls: 'ai-scheduler-cal-day-hero-subtitle',
+			text: occurrences.length === 0
+				? 'No AI tasks are set to execute on this date. You can add one anytime.'
+				: `${occurrences.filter(o => o.isCompleted).length} completed · ${occurrences.filter(o => !o.isCompleted && o.job.enabled).length} scheduled/pending`,
+		});
+
+		const heroActions = heroTop.createDiv({ cls: 'ai-scheduler-cal-day-hero-actions' });
+		makeButton(heroActions, '+ Schedule Task', () => {
+			this.close();
+			window.setTimeout(() => {
+				const defaultJob = normalizeJob({
+					prompt: '',
+					title: '',
+					schedule: {
+						kind: 'once',
+						at: new Date(this.selectedDate.getFullYear(), this.selectedDate.getMonth(), this.selectedDate.getDate(), 9, 0).toISOString(),
+					},
+				});
+				new JobModal(this.app, this.plugin, defaultJob, () => {
+					new CalendarModal(this.app, this.plugin, this.selectedDate, 'day').open();
+				}).open();
+			}, 50);
+		}, true);
+
+		// Metrics row
+		if (occurrences.length > 0) {
+			const completedCount = occurrences.filter(o => o.isCompleted).length;
+			const runningCount = occurrences.filter(o => o.job.status === 'running' || this.plugin.runningJobs.has(o.job.id)).length;
+			const pausedCount = occurrences.filter(o => !o.job.enabled || o.job.status === 'disabled').length;
+			const pendingCount = occurrences.length - completedCount - runningCount - pausedCount;
+
+			const statsGrid = heroCard.createDiv({ cls: 'ai-scheduler-cal-day-stats-grid' });
+
+			const stat1 = statsGrid.createDiv({ cls: 'ai-scheduler-cal-day-stat-card' });
+			stat1.createDiv({ cls: 'ai-scheduler-cal-day-stat-num', text: String(occurrences.length) });
+			stat1.createDiv({ cls: 'ai-scheduler-cal-day-stat-label', text: 'Total Runs' });
+
+			const stat2 = statsGrid.createDiv({ cls: 'ai-scheduler-cal-day-stat-card' });
+			stat2.createDiv({ cls: 'ai-scheduler-cal-day-stat-num is-completed', text: String(completedCount) });
+			stat2.createDiv({ cls: 'ai-scheduler-cal-day-stat-label', text: 'Completed' });
+
+			const stat3 = statsGrid.createDiv({ cls: 'ai-scheduler-cal-day-stat-card' });
+			stat3.createDiv({ cls: 'ai-scheduler-cal-day-stat-num is-pending', text: String(Math.max(0, pendingCount)) });
+			stat3.createDiv({ cls: 'ai-scheduler-cal-day-stat-label', text: 'Pending / Due' });
+
+			const stat4 = statsGrid.createDiv({ cls: 'ai-scheduler-cal-day-stat-card' });
+			stat4.createDiv({ cls: 'ai-scheduler-cal-day-stat-num is-paused', text: String(pausedCount) });
+			stat4.createDiv({ cls: 'ai-scheduler-cal-day-stat-label', text: 'Paused' });
+		}
+
+		// Main Task Timeline List or Empty State
+		if (occurrences.length === 0) {
+			const emptyCard = makeCard(container, 'ai-scheduler-cal-day-empty-card');
+			emptyCard.createDiv({ cls: 'ai-scheduler-cal-day-empty-icon', text: '🗓️' });
+			emptyCard.createEl('h3', { cls: 'ai-scheduler-cal-day-empty-title', text: `No tasks scheduled for ${MONTH_SHORT_NAMES[date.getMonth() + 1]} ${date.getDate()}` });
+			emptyCard.createDiv({
+				cls: 'ai-scheduler-cal-day-empty-desc',
+				text: 'There are no active or scheduled AI tasks set for this day. You can schedule a one-time task, set up a recurring schedule, or ask the AI planner to organize your routine.',
+			});
+
+			const emptyActions = emptyCard.createDiv({ cls: 'ai-scheduler-cal-day-empty-actions' });
+			makeButton(emptyActions, '+ Schedule task for this date', () => {
+				this.close();
+				window.setTimeout(() => {
+					const defaultJob = normalizeJob({
+						prompt: '',
+						title: '',
+						schedule: {
+							kind: 'once',
+							at: new Date(this.selectedDate.getFullYear(), this.selectedDate.getMonth(), this.selectedDate.getDate(), 9, 0).toISOString(),
+						},
+					});
+					new JobModal(this.app, this.plugin, defaultJob, () => {
+						new CalendarModal(this.app, this.plugin, this.selectedDate, 'day').open();
+					}).open();
+				}, 50);
+			}, true);
+			makeButton(emptyActions, '⚡ Ask AI to plan', () => {
+				this.close();
+				window.setTimeout(() => new PlannerModal(this.app, this.plugin).open(), 50);
+			});
+			makeButton(emptyActions, '← Back to Month View', () => {
+				this.viewMode = 'month';
+				this.render();
+			});
+			return;
+		}
+
+		// Render chronological tasks
+		const timelineContainer = container.createDiv({ cls: 'ai-scheduler-cal-day-timeline' });
+
+		for (const occ of occurrences) {
+			const job = occ.job;
+			const isRunning = job.status === 'running' || this.plugin.runningJobs.has(job.id);
+			const card = timelineContainer.createDiv({
+				cls: `ai-scheduler-cal-day-card ${isRunning ? 'is-running' : ''} ${occ.isCompleted ? 'is-completed' : ''} ${!job.enabled ? 'is-paused' : ''}`,
+			});
+
+			// Left column: Time and cadence
+			const timeCol = card.createDiv({ cls: 'ai-scheduler-cal-day-time-col' });
+			timeCol.createSpan({ cls: 'ai-scheduler-cal-day-time-badge', text: occ.timeStr });
+			timeCol.createDiv({ cls: 'ai-scheduler-cal-day-kind-tag', text: job.schedule?.kind ? String(job.schedule.kind).toUpperCase() : 'TASK' });
+
+			// Middle column: Main details
+			const body = card.createDiv({ cls: 'ai-scheduler-cal-day-body' });
+			const headRow = body.createDiv({ cls: 'ai-scheduler-cal-day-card-head' });
+
+			const titleText = occ.isReview ? 'Periodic Review' : `#${job.taskNumber ?? '?'} ${job.title}`;
+			headRow.createEl('h3', {
+				text: titleText,
+				cls: `ai-scheduler-cal-day-card-title ${occ.isCompleted ? 'is-completed-title' : ''}`,
+			});
+
+			// Status badges row
+			const badgesRow = body.createDiv({ cls: 'ai-scheduler-cal-day-badges' });
+
+			if (occ.isCompleted) {
+				badgesRow.createSpan({ cls: 'ai-scheduler-badge ai-scheduler-badge-completed', text: '✓ Completed' });
+			} else if (isRunning) {
+				badgesRow.createSpan({ cls: 'ai-scheduler-badge ai-scheduler-badge-running', text: '▶ Running now' });
+			} else if (!job.enabled || job.status === 'disabled') {
+				badgesRow.createSpan({ cls: 'ai-scheduler-badge ai-scheduler-badge-paused', text: '⏸ Paused' });
+			} else {
+				badgesRow.createSpan({ cls: 'ai-scheduler-badge ai-scheduler-badge-active', text: '⏳ Scheduled' });
+			}
+
+			badgesRow.createSpan({ cls: 'ai-scheduler-badge', text: describeSchedule(job) });
+			badgesRow.createSpan({ cls: 'ai-scheduler-badge ai-scheduler-badge-backend', text: describeBinding(job) });
+
+			if (job.output?.folder) {
+				badgesRow.createSpan({ cls: 'ai-scheduler-badge ai-scheduler-badge-folder', text: `📁 ${job.output.folder}` });
+			}
+
+			if (job.contextPaths && job.contextPaths.length > 0) {
+				badgesRow.createSpan({ cls: 'ai-scheduler-badge', text: `📎 ${job.contextPaths.length} file${job.contextPaths.length === 1 ? '' : 's'}` });
+			}
+
+			// Prompt preview
+			if (job.prompt && !occ.isReview) {
+				const promptBox = body.createDiv({ cls: 'ai-scheduler-cal-day-prompt-box' });
+				promptBox.createDiv({ cls: 'ai-scheduler-cal-day-prompt-label', text: 'Prompt / Instruction:' });
+				const promptSnippet = job.prompt.length > 220 ? `${job.prompt.slice(0, 220)}...` : job.prompt;
+				promptBox.createDiv({ cls: 'ai-scheduler-cal-day-prompt-text', text: promptSnippet });
+			}
+
+			// Execution history / last run note
+			if (job.lastRunAt) {
+				const lastRunRow = body.createDiv({ cls: 'ai-scheduler-cal-day-last-run' });
+				lastRunRow.createSpan({ cls: 'ai-scheduler-cal-day-last-run-label', text: 'Last executed:' });
+				lastRunRow.createSpan({ text: formatDate(job.lastRunAt) });
+				if (job.lastStatus) {
+					lastRunRow.createSpan({ cls: 'ai-scheduler-cal-day-last-run-result', text: `(${job.lastStatus})` });
+				}
+			}
+
+			// Right column: Actions
+			const actions = card.createDiv({ cls: 'ai-scheduler-cal-day-actions' });
+			makeButton(actions, occ.isCompleted ? '▶ Run again' : '▶ Run now', () => {
+				void (async () => {
+					new Notice(`Starting Task #${job.taskNumber ?? ''} (${job.title})...`);
+					await this.plugin.retryJob(job);
+					this.render();
+				})();
+			});
+
+			makeButton(actions, job.enabled ? '⏸ Pause' : '▶ Resume', () => {
+				void (async () => {
+					job.enabled = !job.enabled;
+					job.status = job.enabled ? 'scheduled' : 'disabled';
+					await this.plugin.saveState();
+					new Notice(`Task #${job.taskNumber ?? ''} ${job.enabled ? 'resumed' : 'paused'}.`);
+					this.render();
+				})();
+			});
+
+			makeButton(actions, '✏ Edit', () => {
+				this.close();
+				window.setTimeout(() => {
+					new JobModal(this.app, this.plugin, job, () => {
+						new CalendarModal(this.app, this.plugin, this.selectedDate, 'day').open();
+					}).open();
+				}, 50);
+			});
+
+			makeButton(actions, '👁 Details', () => {
+				this.close();
+				window.setTimeout(() => {
+					new TaskViewModal(this.app, this.plugin, job, () => {
+						new CalendarModal(this.app, this.plugin, this.selectedDate, 'day').open();
+					}).open();
+				}, 50);
+			});
+
+			// If note output folder exists, check for generated notes
+			if (job.output?.folder) {
+				const outputFolder = job.output.folder.trim();
+				makeButton(actions, '📄 Vault output', () => {
+					const folder = this.app.vault.getAbstractFileByPath(outputFolder);
+					if (folder) {
+						new Notice(`Output location: ${outputFolder}`);
+					} else {
+						new Notice(`Output folder "${outputFolder}" configured for task.`);
+					}
+				});
+			}
+		}
 	}
 
 	private renderMonthGrid(
@@ -284,6 +697,7 @@ export class CalendarModal extends Modal {
 			const cell = daysGrid.createDiv({
 				cls: `ai-scheduler-cal-day-cell ${isCurrentMonth ? '' : 'is-outside'} ${isToday ? 'is-today' : ''} ${isSelected ? 'is-selected' : ''}`,
 			});
+			cell.setAttribute('title', `Click to open full Day View for ${MONTH_SHORT_NAMES[cellDate.getMonth() + 1]} ${cellDate.getDate()}`);
 
 			const cellTop = cell.createDiv({ cls: 'ai-scheduler-cal-cell-top' });
 			cellTop.createSpan({ cls: 'ai-scheduler-cal-day-num', text: String(cellDate.getDate()) });
@@ -293,10 +707,10 @@ export class CalendarModal extends Modal {
 					cls: 'ai-scheduler-cal-count-badge',
 					text: String(occurrences.length),
 				});
-				countBadge.setAttribute('title', `${occurrences.length} task(s) on this day`);
+				countBadge.setAttribute('title', `${occurrences.length} task(s) on this day — click to view`);
 			}
 
-			// Task chips inside cell (fully scrollable within the fixed window)
+			// Task chips inside cell
 			const chipsContainer = cell.createDiv({ cls: 'ai-scheduler-cal-chips' });
 
 			for (const occ of occurrences) {
@@ -315,6 +729,7 @@ export class CalendarModal extends Modal {
 
 			cell.onclick = () => {
 				this.selectedDate = cellDate;
+				this.viewMode = 'day';
 				this.render();
 			};
 
@@ -344,6 +759,12 @@ export class CalendarModal extends Modal {
 		});
 
 		const headActions = panelHead.createDiv({ cls: 'ai-scheduler-cal-panel-actions' });
+
+		makeButton(headActions, '🗓 Open Day View Page', () => {
+			this.viewMode = 'day';
+			this.render();
+		}, true);
+
 		makeButton(headActions, '+ Schedule Task', () => {
 			this.close();
 			window.setTimeout(() => {
@@ -356,7 +777,7 @@ export class CalendarModal extends Modal {
 					},
 				});
 				new JobModal(this.app, this.plugin, defaultJob, () => {
-					new CalendarModal(this.app, this.plugin, this.selectedDate).open();
+					new CalendarModal(this.app, this.plugin, this.selectedDate, this.viewMode).open();
 				}).open();
 			}, 50);
 		});
@@ -366,7 +787,7 @@ export class CalendarModal extends Modal {
 			empty.createDiv({ cls: 'ai-scheduler-empty-title', text: 'No tasks scheduled on this day' });
 			empty.createDiv({
 				cls: 'ai-scheduler-empty-desc',
-				text: 'You can create a new recurring or one-time AI task to run on this day.',
+				text: 'Click "Open Day View Page" or create a new scheduled task to plan ahead.',
 			});
 			return;
 		}
@@ -422,7 +843,7 @@ export class CalendarModal extends Modal {
 				this.close();
 				window.setTimeout(() => {
 					new JobModal(this.app, this.plugin, job, () => {
-						new CalendarModal(this.app, this.plugin, this.selectedDate).open();
+						new CalendarModal(this.app, this.plugin, this.selectedDate, this.viewMode).open();
 					}).open();
 				}, 50);
 			});
@@ -430,7 +851,7 @@ export class CalendarModal extends Modal {
 				this.close();
 				window.setTimeout(() => {
 					new TaskViewModal(this.app, this.plugin, job, () => {
-						new CalendarModal(this.app, this.plugin, this.selectedDate).open();
+						new CalendarModal(this.app, this.plugin, this.selectedDate, this.viewMode).open();
 					}).open();
 				}, 50);
 			});
@@ -508,11 +929,16 @@ export class CalendarModal extends Modal {
 					this.render();
 				})();
 			});
+			makeButton(actions, '🗓 Day page', () => {
+				this.selectedDate = occ.date;
+				this.viewMode = 'day';
+				this.render();
+			});
 			makeButton(actions, '👁 View', () => {
 				this.close();
 				window.setTimeout(() => {
 					new TaskViewModal(this.app, this.plugin, job, () => {
-						new CalendarModal(this.app, this.plugin, this.selectedDate).open();
+						new CalendarModal(this.app, this.plugin, this.selectedDate, this.viewMode).open();
 					}).open();
 				}, 50);
 			});
@@ -557,10 +983,11 @@ export class CalendarModal extends Modal {
 				this.close();
 				window.setTimeout(() => {
 					new JobModal(this.app, this.plugin, job, () => {
-						new CalendarModal(this.app, this.plugin, this.selectedDate).open();
+						new CalendarModal(this.app, this.plugin, this.selectedDate, this.viewMode).open();
 					}).open();
 				}, 50);
 			});
 		}
 	}
 }
+
