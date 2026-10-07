@@ -2,7 +2,7 @@
  * original onload migration logic), plus the two new opt-in note settings. */
 import { ActivityEntry, AISettings, Job, JobOutput, SCHEDULE_KINDS, TaskSchedule } from './types';
 import { getScheduleNextRun } from './schedule';
-import { id } from './util';
+import { id, localDateKey } from './util';
 
 export const DEFAULT_SETTINGS: AISettings = {
 	assistantTab: 1,
@@ -66,6 +66,16 @@ export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date(
 		dayOfMonth: intInRange(scheduleRaw.dayOfMonth, 1, 31),
 		month: intInRange(scheduleRaw.month, 1, 12),
 	};
+	// "Every N days/weeks/months" needs an anchor to count from; without one the
+	// step was ignored (weeks/months) or restarted on every reschedule (days).
+	// Default it to the day the job was created, which is then persisted.
+	const stepped = (normalizedSchedule.kind === 'daily' && (normalizedSchedule.everyDays ?? 1) > 1)
+		|| (normalizedSchedule.kind === 'weekly' && (normalizedSchedule.everyWeeks ?? 1) > 1)
+		|| (normalizedSchedule.kind === 'monthly' && (normalizedSchedule.everyMonths ?? 1) > 1);
+	if (stepped && !normalizedSchedule.startAt) {
+		const created = typeof raw.createdAt === 'string' && !Number.isNaN(new Date(raw.createdAt).getTime()) ? new Date(raw.createdAt) : now;
+		normalizedSchedule.startAt = localDateKey(created);
+	}
 	// Drop absent optional fields so stored and round-tripped schedules stay identical.
 	for (const key of Object.keys(normalizedSchedule) as (keyof TaskSchedule)[]) {
 		if (normalizedSchedule[key] === undefined) delete normalizedSchedule[key];
@@ -182,7 +192,11 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 	if (!['daily', 'weekly', 'every-n-days', 'hourly'].includes(settings.periodicReviewCadence as string)) {
 		settings.periodicReviewCadence = 'daily';
 	}
-	if (!Array.isArray(settings.periodicReviewDays)) settings.periodicReviewDays = [5];
+	// Keep only valid weekdays; fall back to the default (Monday) like a fresh install.
+	settings.periodicReviewDays = Array.isArray(settings.periodicReviewDays)
+		? [...new Set(settings.periodicReviewDays.map(Number).filter(day => Number.isInteger(day) && day >= 0 && day <= 6))]
+		: [];
+	if (!settings.periodicReviewDays.length) settings.periodicReviewDays = [1];
 	if (typeof settings.periodicReviewEveryDays !== 'number' || settings.periodicReviewEveryDays < 1) settings.periodicReviewEveryDays = 2;
 	if (typeof settings.periodicReviewHours !== 'number' || settings.periodicReviewHours < 1) settings.periodicReviewHours = 12;
 

@@ -53,6 +53,10 @@ export class AISchedulerPlugin extends Plugin {
 	lastTickError: string | null = null;
 	notesSync: ScheduleNotesSync = new ScheduleNotesSync(this);
 	pendingVaultEvents: string[] = [];
+	private lastTickAt = Date.now();
+	private unloaded = false;
+	/** Identifies each job's current run so a reply arriving after a reset is ignored. */
+	private activeRuns = new Map<string, symbol>();
 	runningJobs = new Set<string>();
 	isPlanning = false;
 	activePlanningGoal: string | null = null;
@@ -262,9 +266,14 @@ export class AISchedulerPlugin extends Plugin {
 		}
 		this.statusBarEl?.remove();
 		this.statusBarEl = null;
+		this.notesSync?.dispose();
+		// Runs still in flight finish in the background; stop them from saving, or
+		// an old instance could overwrite the reloaded/updated plugin's data.json.
+		this.unloaded = true;
 	}
 
 	async saveState(): Promise<void> {
+		if (this.unloaded) return;
 		try {
 			await this.saveData({
 				version: 6,
@@ -334,6 +343,21 @@ export class AISchedulerPlugin extends Plugin {
 	}
 
 	async tick(): Promise<void> {
+		const nowMs = Date.now();
+		const previousTick = this.lastTickAt;
+		this.lastTickAt = nowMs;
+		// A long gap between ticks means the computer slept with Obsidian open.
+		// Jobs that fell due during the gap follow the same catch-up policy as a
+		// restart instead of all firing at once on wake.
+		if (nowMs - previousTick > TICK_MS * 8) {
+			const dueDuringGap = this.jobs.filter(job => job.nextRunAt && new Date(job.nextRunAt).getTime() < previousTick);
+			const plan = planStartupCatchUp(dueDuringGap, this.settings, nowMs);
+			if (plan.stale.length) {
+				for (const job of plan.stale) skipMissedJob(job);
+				this.logActivity('startup', `Skipped ${plan.stale.length} task(s) missed while the computer was asleep`);
+				await this.saveState();
+			}
+		}
 		if (this.running) return;
 		const due = dueJobs(this.jobs, Date.now());
 		if (!due.length) {
@@ -347,6 +371,9 @@ export class AISchedulerPlugin extends Plugin {
 		try {
 			for (const job of due) {
 				if (this.runningJobs.has(job.id)) continue;
+				// Earlier jobs can run for minutes; skip any deleted, disabled or
+				// rescheduled meanwhile.
+				if (!this.jobs.includes(job) || !job.enabled || !job.nextRunAt || new Date(job.nextRunAt).getTime() > Date.now()) continue;
 				await this.executeJob(job);
 			}
 		} finally {
@@ -371,7 +398,13 @@ export class AISchedulerPlugin extends Plugin {
 	}
 
 	private async runJobBody(job: Job): Promise<void> {
+		const runId = Symbol(job.id);
+		this.activeRuns.set(job.id, runId);
+		const cancelled = () => this.activeRuns.get(job.id) !== runId;
 		job.status = 'running';
+		const previousRunAt = job.lastRunAt;
+		const outputBeforeRun = job.lastOutputPath;
+		job.lastOutputPath = null;
 		job.lastRunAt = new Date().toISOString();
 		job.attempts = Number(job.attempts || 0) + 1;
 		this.logActivity('running', `Task #${job.taskNumber} started: ${job.title}`, job.id);
@@ -395,10 +428,18 @@ export class AISchedulerPlugin extends Plugin {
 			const prompt = isReview
 				? ''
 				// Follow-ups may not propose further follow-ups, which caps the chain at one level.
-				: executionPrompt(job.prompt, context.paths, job.source !== 'self-talk');
+				: executionPrompt(
+					job.schedule.kind === 'event' && job.lastEventPath
+						? `${job.prompt}\n\nThis run was triggered by a change to: ${job.lastEventPath}`
+						: job.prompt,
+					context.paths,
+					job.source !== 'self-talk',
+				);
 			const reply = isReview
-				? await this.runDailyReview(false, execution, 'periodic')
+				? await this.runDailyReview(false, execution, 'periodic', previousRunAt)
 				: await backends.sendToAI(this, prompt, execution, context);
+			// Reset by the user while waiting: don't record, write or follow up.
+			if (cancelled()) return;
 			const trimmedReply = (reply || '').trim();
 			if (!trimmedReply) {
 				throw new Error('The AI returned an empty response.');
@@ -408,23 +449,23 @@ export class AISchedulerPlugin extends Plugin {
 			job.lastError = null;
 			job.status = 'completed';
 			job.runCount = Number(job.runCount || 0) + 1;
-			if (job.source !== 'self-talk') await this.processFollowUps(reply, job);
 			// Reviews write their own report in runDailyReview.
 			if (!isReview) {
 				const folder = job.output?.folder || this.getDefaultOutputFolder();
 				// Without a fixed filename every run gets its own note, so jobs sharing a
 				// folder (or a job running several times a day) don't replace each other.
 				const filename = job.output?.filename || `${localTimestampKey()} ${outputTitle(job.title)}`;
-				const writtenPath = await this.writeOutput(folder, filename, reply);
-				job.lastOutputPath = writtenPath;
-				if (!job.lastOutputFiles) job.lastOutputFiles = [];
-				if (!job.lastOutputFiles.includes(writtenPath)) {
-					job.lastOutputFiles.push(writtenPath);
-				}
+				this.recordOutput(job, await this.writeOutput(folder, filename, reply));
 			}
+			// After the output is safely written; follow-up problems are logged, not fatal.
+			if (job.source !== 'self-talk') await this.processFollowUps(reply, job);
 			reconcileAfterRun(job);
 			this.logActivity('completed', `Task #${job.taskNumber} finished: ${job.title}`, job.id);
-			await this.appendTaskLogRow(job, 'completed', job.lastOutputFiles ?? []);
+			// Log only what this run wrote, not the job's whole output history.
+			// (lastOutputPath was cleared at the start of the run.)
+			const runOutputs = job.lastOutputPath ? [job.lastOutputPath] : [];
+			if (!job.lastOutputPath) job.lastOutputPath = outputBeforeRun;
+			await this.appendTaskLogRow(job, 'completed', runOutputs);
 			if (this.settings.notifyOnCompletion && job.notify !== false) {
 				new Notice(`AI completed: ${job.title}`, 5000);
 			}
@@ -432,6 +473,8 @@ export class AISchedulerPlugin extends Plugin {
 				sendSystemNotification('AI Scheduler', `AI completed: ${job.title}`);
 			}
 		} catch (error) {
+			if (!job.lastOutputPath) job.lastOutputPath = outputBeforeRun;
+			if (cancelled()) return; // already marked cancelled by resetRunningJob
 			job.status = 'failed';
 			job.lastStatus = 'failed';
 			job.lastError = errorText(error);
@@ -457,7 +500,7 @@ export class AISchedulerPlugin extends Plugin {
 			return;
 		}
 		if (this.running) {
-			this.pendingVaultEvents.push(file.path);
+			if (!this.pendingVaultEvents.includes(file.path)) this.pendingVaultEvents.push(file.path);
 			return;
 		}
 		const eventJobs = this.jobs.filter(job => job.enabled && job.schedule && job.schedule.kind === 'event'
@@ -466,7 +509,8 @@ export class AISchedulerPlugin extends Plugin {
 		const now = Date.now();
 		let changed = false;
 		for (const job of eventJobs) {
-			const cooldown = Math.max(0, Number(job.cooldownMinutes) || 10) * 60000;
+			const minutes = Number(job.cooldownMinutes ?? 10); // 0 is a valid cooldown
+			const cooldown = (Number.isFinite(minutes) && minutes >= 0 ? minutes : 10) * 60000;
 			if (job.lastRunAt && now - new Date(job.lastRunAt).getTime() < cooldown) continue;
 			if (job.nextRunAt) continue; // already queued to run
 			job.nextRunAt = new Date(now + 2000).toISOString();
@@ -517,7 +561,8 @@ export class AISchedulerPlugin extends Plugin {
 		} else if (cadence === 'every-n-days') {
 			const everyDays = Math.max(1, Number(this.settings.periodicReviewEveryDays) || 2);
 			const time = validClock(this.settings.reviewTime) ? this.settings.reviewTime : '22:00';
-			schedule = { kind: 'daily', time, everyDays };
+			// Keep the existing anchor so the N-day cycle isn't restarted on every load.
+			schedule = { kind: 'daily', time, everyDays, startAt: job?.schedule.everyDays ? job.schedule.startAt : undefined };
 		} else if (cadence === 'weekly') {
 			const days = Array.isArray(this.settings.periodicReviewDays) && this.settings.periodicReviewDays.length
 				? this.settings.periodicReviewDays
@@ -579,7 +624,7 @@ export class AISchedulerPlugin extends Plugin {
 		});
 	}
 
-	async runDailyReview(manual: boolean, execution: backends.ResolvedExecution | null = null, kind: 'daily' | 'nightly' | 'periodic' = 'periodic'): Promise<string> {
+	async runDailyReview(manual: boolean, execution: backends.ResolvedExecution | null = null, kind: 'daily' | 'nightly' | 'periodic' = 'periodic', since?: string | null): Promise<string> {
 		if (this.reviewRunning) {
 			throw new Error('A review is already in progress.');
 		}
@@ -588,14 +633,25 @@ export class AISchedulerPlugin extends Plugin {
 		try {
 			const now = new Date();
 			const today = localDateKey(now);
+			const reviewJob = this.jobs.find(candidate => candidate.routine === 'daily-review' || candidate.routine === 'periodic-review');
+			// A periodic review covers everything since the previous review (weekly
+			// reviews see the whole week), capped at 31 days; the daily preview and
+			// first runs cover today.
 			const start = new Date();
 			start.setHours(0, 0, 0, 0);
+			const previous = kind === 'daily' ? null : new Date(since ?? reviewJob?.lastRunAt ?? '');
+			const cap = Date.now() - 31 * 86400000;
+			if (previous && !Number.isNaN(previous.getTime()) && previous.getTime() < start.getTime()) {
+				start.setTime(Math.max(previous.getTime(), cap));
+			}
+			const sinceToday = start.getTime() === new Date(now).setHours(0, 0, 0, 0);
 			const files = this.app.vault.getMarkdownFiles()
 				.filter(file => this.includeReviewFile(file, start))
 				.sort((a, b) => b.stat.mtime - a.stat.mtime);
-			const fileList = files.length ? files.map(file => `- ${file.path}`).join('\n') : '- No Markdown files were created or modified today.';
+			const fileList = files.length
+				? files.map(file => `- ${file.path}`).join('\n')
+				: `- No Markdown files were created or modified ${sinceToday ? 'today' : `since ${formatDate(start.toISOString())}`}.`;
 			const prompt = reviewPrompt(kind === 'daily' ? 'daily' : 'nightly', today, fileList);
-			const reviewJob = this.jobs.find(candidate => candidate.routine === 'daily-review' || candidate.routine === 'periodic-review');
 			const model = this.settings.nightlyReviewModel || this.settings.dailyReviewModel;
 			const resolved = execution || (reviewJob
 				? await backends.resolveJobExecution(this, reviewJob)
@@ -608,13 +664,7 @@ export class AISchedulerPlugin extends Plugin {
 			const reportFolder = this.getPeriodicReviewFolder();
 			// writeOutput picks a free name if this timestamp is already taken.
 			const path = await this.writeOutput(reportFolder, timestamp, `# ${reportTitle} - ${today}\n\nGenerated: ${formatDate(now.toISOString())}\n\n${report}`);
-			if (reviewJob) {
-				reviewJob.lastOutputPath = path;
-				if (!reviewJob.lastOutputFiles) reviewJob.lastOutputFiles = [];
-				if (!reviewJob.lastOutputFiles.includes(path)) {
-					reviewJob.lastOutputFiles.push(path);
-				}
-			}
+			if (reviewJob) this.recordOutput(reviewJob, path);
 			this.logActivity('review', `Periodic review written to ${path}`);
 			if (manual || this.settings.notifyOnCompletion) {
 				new Notice(`Review written to ${path}`, 6000);
@@ -635,7 +685,9 @@ export class AISchedulerPlugin extends Plugin {
 		const normPath = normalizePath(file.path);
 		const normReport = this.getPeriodicReviewFolder();
 		const normSchedule = normalizePath(this.settings.scheduleFolder || 'AI Schedules');
-		if (ScheduleNotesSync.isInside(normReport, normPath) || ScheduleNotesSync.isInside(normSchedule, normPath)) {
+		// Skip the plugin's own writing (reports, schedule notes, task output and logs).
+		const ownFolders = [normReport, normSchedule, normalizePath(this.getDefaultOutputFolder()), normalizePath(this.getTaskLogFolder())];
+		if (ownFolders.some(folder => ScheduleNotesSync.isInside(folder, normPath))) {
 			return false;
 		}
 		if (this.settings.reviewContextMode === 'all-markdown') return true;
@@ -662,6 +714,12 @@ export class AISchedulerPlugin extends Plugin {
 		const context = getPathsContext(this.app, job && job.contextPaths);
 		if (context.missingPaths.length) throw new Error(`Selected context no longer exists: ${context.missingPaths.join(', ')}`);
 		return context;
+	}
+
+	/** Remembers a file a job wrote, keeping only the most recent 20 in data.json. */
+	recordOutput(job: Job, path: string): void {
+		job.lastOutputPath = path;
+		job.lastOutputFiles = [...(job.lastOutputFiles ?? []).filter(existing => existing !== path), path].slice(-20);
 	}
 
 	/**
@@ -819,7 +877,7 @@ export class AISchedulerPlugin extends Plugin {
 	jobFromPlan(plan: Record<string, unknown>, fallbackTab: number, source: string): Partial<Job> & Record<string, unknown> {
 		const schedule = (plan.schedule || {}) as Record<string, unknown>;
 		const normalized: TaskSchedule = {
-			kind: (String(schedule.kind) || 'once') as ScheduleKind,
+			kind: (typeof schedule.kind === 'string' && schedule.kind ? schedule.kind : 'once') as ScheduleKind,
 			at: schedule.at as string | undefined,
 			time: schedule.time as string | undefined,
 			days: schedule.days as number[] | undefined,
@@ -896,21 +954,29 @@ export class AISchedulerPlugin extends Plugin {
 				.filter((item): item is Record<string, unknown> => Boolean(item));
 			if (!plans.length) throw new Error('The AI returned no valid schedule. Ask it for a concrete time or cadence.');
 			const jobs: Job[] = [];
+			const skipped: string[] = [];
 			for (const plan of plans.slice(0, 10)) {
-				const planRecord = plan as { contextPaths?: string[]; context?: { paths?: string[] }; output?: JobOutput | null };
-				const newJob = await this.addJob(Object.assign(
-					this.jobFromPlan(Object.assign({}, plan, {
-						contextPaths: planRecord.contextPaths || (planRecord.context && planRecord.context.paths) || validatedPaths,
-						output: planRecord.output || (resultFolder ? { folder: resultFolder } : null),
-					}), execution.tab as number, 'planner'),
-					{ profile: execution.modelRef, conversationId: execution.conversationId, providerId: execution.providerId, model: execution.model },
-				));
-				jobs.push(newJob);
-				if (newJob.doubt) {
-					new Notice(`AI Planning Note: ${newJob.doubt}`, 9000);
+				// One malformed plan must not abort the others (some may already be added).
+				try {
+					const planRecord = plan as { contextPaths?: string[]; context?: { paths?: string[] }; output?: JobOutput | null };
+					const newJob = await this.addJob(Object.assign(
+						this.jobFromPlan(Object.assign({}, plan, {
+							contextPaths: planRecord.contextPaths || (planRecord.context && planRecord.context.paths) || validatedPaths,
+							output: planRecord.output || (resultFolder ? { folder: resultFolder } : null),
+						}), execution.tab as number, 'planner'),
+						{ profile: execution.modelRef, conversationId: execution.conversationId, providerId: execution.providerId, model: execution.model },
+					));
+					jobs.push(newJob);
+					if (newJob.doubt) {
+						new Notice(`AI Planning Note: ${newJob.doubt}`, 9000);
+					}
+					this.logActivity('planned', `AI created Task #${newJob.taskNumber}: ${newJob.title}${newJob.doubt ? ` (${newJob.doubt})` : ''}`, newJob.id);
+				} catch (error) {
+					skipped.push(errorText(error));
 				}
-				this.logActivity('planned', `AI created Task #${newJob.taskNumber}: ${newJob.title}${newJob.doubt ? ` (${newJob.doubt})` : ''}`, newJob.id);
 			}
+			if (!jobs.length) throw new Error(skipped[0] || 'The AI returned no valid schedule.');
+			if (skipped.length) new Notice(`Skipped ${skipped.length} invalid planned ${skipped.length === 1 ? 'task' : 'tasks'}: ${skipped[0]}`, 9000);
 			await this.saveState();
 			return { reply, jobs };
 		} finally {
@@ -1127,6 +1193,16 @@ export class AISchedulerPlugin extends Plugin {
 		job.lastStatus = null;
 		job.lastError = null;
 		rescheduleEnabledJob(job);
+		this.logActivity('status', `Task #${job.taskNumber} enabled`, job.id);
+		await this.saveState();
+	}
+
+	async disableJob(job: Job): Promise<void> {
+		job.enabled = false;
+		job.nextRunAt = null;
+		job.status = 'disabled';
+		job.lastStatus = 'disabled';
+		this.logActivity('status', `Task #${job.taskNumber} disabled`, job.id);
 		await this.saveState();
 	}
 
@@ -1205,6 +1281,7 @@ export class AISchedulerPlugin extends Plugin {
 
 	async resetRunningJob(job: Job): Promise<void> {
 		this.runningJobs.delete(job.id);
+		this.activeRuns.delete(job.id); // the in-flight reply, if it ever arrives, is discarded
 		job.status = 'failed';
 		job.lastStatus = 'cancelled';
 		job.lastError = 'Cancelled or reset by user';
@@ -1212,6 +1289,20 @@ export class AISchedulerPlugin extends Plugin {
 		this.logActivity('cancelled', `Task #${job.taskNumber} cancelled/reset by user: ${job.title}`, job.id);
 		this.updateStatusBar();
 		await this.saveState();
+	}
+
+	/** Changes whenever anything the dashboard/calendar shows changes (drives their live refresh). */
+	stateSignature(): string {
+		const running = this.runningJobs.size > 0 || this.isPlanning || this.reviewRunning;
+		return JSON.stringify([
+			this.jobs.map(job => [job.id, job.title, job.status, job.enabled, job.nextRunAt, job.lastRunAt, job.lastStatus, job.runCount, job.taskNumber]),
+			this.deletedJobs.length,
+			this.activity[0]?.id,
+			this.isPlanning,
+			this.reviewRunning,
+			// Running timers tick every second.
+			running ? Math.floor(Date.now() / 1000) : 0,
+		]);
 	}
 
 	updateStatusBar(): void {

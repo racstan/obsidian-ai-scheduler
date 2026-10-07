@@ -23,6 +23,25 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.7.19',
+		date: '2026-10-07',
+		title: 'Streamlined Calendar Day View',
+		changed: [
+			'Streamlined the calendar Day View and removed duplicate headers.',
+		],
+		fixed: [
+			'Fixed the layout of the calendar navigation buttons.',
+		],
+	},
+	{
+		version: '2.1.7.18',
+		date: '2026-10-07',
+		title: 'Full-Page Day View in the Schedule Calendar',
+		added: [
+			'Added a full-page Day View to the schedule calendar with a timeline breakdown, metric counters and back navigation.',
+		],
+	},
+	{
 		version: '2.1.7.17',
 		date: '2026-10-07',
 		title: 'Calendar Layout Overhaul, Completed Task Strikethrough & Periodic Review Refactor',
@@ -762,11 +781,25 @@ export function getLatestRelease(): ReleaseChangelog {
 	return CHANGELOG_DATA[0];
 }
 
+/** Numeric, segment-by-segment version comparison ("2.1.10" > "2.1.9"). */
+export function compareVersions(a: string, b: string): number {
+	const left = a.split('.').map(part => Number(part) || 0);
+	const right = b.split('.').map(part => Number(part) || 0);
+	for (let i = 0; i < Math.max(left.length, right.length); i++) {
+		const diff = (left[i] ?? 0) - (right[i] ?? 0);
+		if (diff !== 0) return diff;
+	}
+	return 0;
+}
+
 export function getReleasesSince(previousVersion: string | null | undefined): ReleaseChangelog[] {
 	if (!previousVersion) return [CHANGELOG_DATA[0]];
 	const index = CHANGELOG_DATA.findIndex(r => r.version === previousVersion);
 	if (index === -1) {
-		return [CHANGELOG_DATA[0]];
+		// Unknown previous version (e.g. a release missing from this list): show
+		// every release newer than it rather than guessing.
+		const newer = CHANGELOG_DATA.filter(r => compareVersions(r.version, previousVersion) > 0);
+		return newer.length ? newer : [CHANGELOG_DATA[0]];
 	}
 	if (index === 0) {
 		return [CHANGELOG_DATA[0]];

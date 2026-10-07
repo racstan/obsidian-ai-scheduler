@@ -2,7 +2,7 @@ import { App, Modal, Notice, Setting } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
 import { formatDate, formatDuration, describeBinding, isDisabledTask, isNightlyReviewJob, summarizeTasks } from '../util';
 import { describeSchedule, getScheduleNextRun } from '../schedule';
-import { closeExistingSchedulerModals, makeButton, makeCard } from './dom';
+import { closeExistingSchedulerModals, liveRefresh, makeButton, makeCard } from './dom';
 import { JobModal } from './JobModal';
 import { PlannerModal } from './PlannerModal';
 import { TaskViewModal } from './TaskViewModal';
@@ -113,9 +113,8 @@ export class AssistantModal extends Modal {
 		closeExistingSchedulerModals(this);
 		this.render();
 		// Live auto-refresh every 3s so task progress and state transitions update in real time
-		this.refreshTimer = window.setInterval(() => {
-			this.render();
-		}, 3000);
+		const refresh = liveRefresh(this.modalEl, () => this.plugin.stateSignature(), () => this.render());
+		this.refreshTimer = window.setInterval(refresh, 3000);
 	}
 
 	private isJobPastDue(job: Job): { isPastDue: boolean; originalTime?: string } {
@@ -346,11 +345,7 @@ export class AssistantModal extends Modal {
 
 			if (!isRunning) {
 				makeButton(controls, 'Disable', async () => {
-					job.enabled = false;
-					job.nextRunAt = null;
-					job.status = 'disabled';
-					job.lastStatus = 'disabled';
-					await this.plugin.saveState();
+					await this.plugin.disableJob(job);
 					this.render();
 				}, false, false);
 			}

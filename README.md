@@ -10,7 +10,7 @@
 
 **AI Scheduler** is an Obsidian plugin that runs your AI tasks automatically in the background — on a schedule, at a set time, or when files in your vault change.
 
-Instead of manually opening a chat sidebar every time, you describe what you want once, set a cadence, and the plugin handles execution for you: running nightly reviews, summarizing notes, processing project folders, generating reports, and more — while you work or sleep.
+Instead of manually opening a chat sidebar every time, you describe what you want once, set a cadence, and the plugin handles execution for you: running periodic vault reviews, summarizing notes, processing project folders, generating reports, and more — while you work or sleep.
 
 It works with two backends you likely already have installed:
 
@@ -25,9 +25,9 @@ AI Scheduler does not call AI providers directly. It drives Claudian or Copilot 
 
 **Scheduled tasks** — Create jobs that run on any cadence: every morning at 9 AM, every 30 minutes, on specific weekdays, or with a full 5-field cron expression. Set a prompt once and let it run repeatedly.
 
-**Nightly review** — At your chosen time, the plugin automatically gathers today's modified notes, sends them to your AI backend for analysis, and saves a structured report (key progress, open loops, recommendations) as a Markdown file in your vault.
+**Periodic review** — Daily, weekly, every N days or every N hours, the plugin gathers the notes you changed since the previous review, sends them to your AI backend for analysis, and saves a structured report (key progress, open loops, recommendations) as a Markdown file in your vault.
 
-**Event-driven triggers** — Watch a folder or note for changes. When files are modified, the scheduler fires the job automatically after a cooldown period you choose.
+**Event-driven triggers** — Run a job when a note in your vault is modified or created (the plugin's own output, review and schedule folders are ignored). The job fires at most once per cooldown period you choose, and the AI is told which file changed.
 
 **Natural language planner** — Type a goal like "every Friday afternoon, summarize this week's project notes and write a brief to the AI Reviews folder" and the planner converts it into a properly configured scheduled job.
 
@@ -48,7 +48,7 @@ AI Scheduler does not call AI providers directly. It drives Claudian or Copilot 
 | **Cron** | Full 5-field cron expression (`0 9 * * 1-5`) |
 | **Multi-rule** | Multiple weekday + time combinations in one job |
 | **Once** | Runs once at a specific future date and time |
-| **Vault event** | Runs when files in a watched folder change |
+| **Vault event** | Runs when any note in the vault is modified or created (with a cooldown) |
 
 All schedule types support an optional **max iterations** limit — the job stops automatically after N runs.
 
@@ -81,9 +81,9 @@ AI Scheduler needs one of these backends installed and working first:
 Then in **Settings → AI Scheduler**:
 
 1. Pick your **Active backend** (Claudian or Obsidian Copilot).
-2. Choose model profiles for Planning, Task Execution, and Nightly Review.
+2. Choose models for **Planning model**, **Scheduled task model**, **Daily preview model** and **Periodic review model**.
 3. Optionally enable **Schedule notes** to mirror tasks as vault Markdown files.
-4. Optionally enable **Nightly review**, set a time, and pick a report output folder.
+4. Optionally enable **Periodic AI review**, choose its cadence and time, and pick a review folder.
 
 ---
 
@@ -100,6 +100,9 @@ The dashboard shows:
 
 From here you can create tasks, edit them, run them on demand, pause, restore from trash, or open the AI Planner.
 
+## Schedule calendar
+ **AI Scheduler: Open schedule calendar** to see every task's runs in a month grid, an agenda list, or a full-page day view with a timeline. Past runs show as completed only when the task actually ran; you can create, run, pause and resume tasks directly from the calendar.
+
 ---
 
 ## Commands
@@ -109,12 +112,13 @@ All commands are available from the command palette (`Ctrl/Cmd + P`):
 | Command | What it does |
 | --- | --- |
 | `Open assistant dashboard` | Opens the scheduling dashboard |
+| `Open schedule calendar` | Opens the month / agenda / day calendar of upcoming runs |
 | `Ask AI to plan a schedule` | Opens the natural language planner |
 | `Run AI daily preview` | Runs today's preview report immediately |
-| `Run AI nightly review now` | Runs the nightly review immediately |
-| `Enable nightly AI review` | Turns on recurring nightly reviews |
-| `Disable nightly AI review` | Turns off recurring nightly reviews |
-| `Toggle nightly AI review` | Toggles nightly review on/off |
+| `Run AI periodic review now` | Runs the periodic review immediately |
+| `Enable periodic AI review` | Turns on recurring periodic reviews |
+| `Disable periodic AI review` | Turns off recurring periodic reviews |
+| `Toggle periodic AI review` | Toggles the periodic review on/off |
 | `Enable all scheduled tasks` | Resumes all paused tasks |
 | `Disable all scheduled tasks` | Pauses all tasks |
 | `Restore last deleted task` | Restores the most recently deleted task |
@@ -127,7 +131,9 @@ All commands are available from the command palette (`Ctrl/Cmd + P`):
 
 - No third-party servers, no telemetry, no analytics.
 - Prompts and vault files go only to your configured backend (Claudian or Copilot) and then to whatever AI provider you have set up there.
-- Nightly reviews and automated note reading are opt-in.
+- Periodic reviews and automated note reading are opt-in.
+- Follow-up tasks that the AI proposes in its replies are created **disabled** — you review and enable them yourself.
+- Task output is written as new Markdown notes; the plugin never overwrites a note it did not create, and never writes into hidden or `.obsidian` folders.
 - You control iteration limits and can pause or delete any task at any time.
 
 ---

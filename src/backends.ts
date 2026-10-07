@@ -332,16 +332,27 @@ export async function sendToCopilot(host: BackendHost, prompt: string, context: 
 	const llmMessage = chatManager.getLLMMessage(messageId);
 	if (!llmMessage) throw new Error('Obsidian Copilot did not prepare the scheduler message.');
 	let reply = '';
+	const abort = new AbortController();
 	const run = chain.runChain(
 		llmMessage,
-		new AbortController(),
+		abort,
 		(message: unknown) => { reply = typeof message === 'string' ? message : contentFromMessage(message) || reply; },
 		(message: unknown) => { reply = contentFromMessage(message) || reply; },
 		{ debug: false },
 	);
-	await withTimeout(run, AGENT_TIMEOUT_MS, 'AI task timed out after 30 minutes');
+	try {
+		await withTimeout(run, AGENT_TIMEOUT_MS, `AI task timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes`);
+	} catch (error) {
+		abort.abort(); // stop the chain instead of letting it keep running unseen
+		throw error;
+	}
 	return (reply || '').trim();
 }
+
+/* Scheduled runs, the planner and manual reviews can overlap. They share the
+ * backend's chat tab, and replies are read back as "the last assistant
+ * message", so sends are serialized: each waits for the previous one. */
+let backendQueue: Promise<unknown> = Promise.resolve();
 
 export function sendToAI(
 	host: BackendHost,
@@ -349,9 +360,12 @@ export function sendToAI(
 	execution: Partial<ResolvedExecution> = {},
 	context: JobContext | null = null,
 ): Promise<string> {
-	return host.settings.backendMode === 'copilot'
+	const send = () => host.settings.backendMode === 'copilot'
 		? sendToCopilot(host, prompt, context)
 		: sendToClaudian(host, prompt, execution.tab as number | undefined, execution.conversationId || null, context);
+	const result = backendQueue.then(send, send);
+	backendQueue = result.catch(() => undefined);
+	return result;
 }
 
 export function getProviderName(providerId: string | null | undefined): string {
@@ -548,7 +562,12 @@ export async function resolveModel(host: BackendHost, value: string | null | und
 	}
 	if (!conversation || !conversation.id) throw new Error(`Claudian returned no conversation for ${action}.`);
 	if (conversation.id && typeof claudian.renameConversation === 'function') {
-		await claudian.renameConversation(conversation.id, 'AI Scheduler - Planning');
+		// Cosmetic only: a failed rename must not fail the run.
+		try {
+			await claudian.renameConversation(conversation.id, `AI Scheduler - ${action.charAt(0).toUpperCase()}${action.slice(1)}`);
+		} catch (error) {
+			console.warn('[ai-scheduler] Could not rename Claudian conversation:', errorText(error));
+		}
 	}
 	return { modelRef: selected, tab: host.settings.assistantTab, conversationId: conversation.id, providerId: profile.providerId, model: profile.model || null };
 }

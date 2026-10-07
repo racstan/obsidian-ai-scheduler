@@ -231,3 +231,25 @@ test('getScheduleOccurrencesInRange projects runs across a date range', () => {
 });
 
 
+
+test('every-N-days keeps its wall time across spring-forward (America/New_York)', () => {
+	const next = new Date(getScheduleNextRun({ kind: 'daily', time: '22:00', everyDays: 2, startAt: '2027-03-01' }, at(2027, 3, 19, 12))!);
+	assert.equal(next.getTime(), at(2027, 3, 19, 22).getTime());
+});
+
+test('every-N-weeks does not skip a run across spring-forward', () => {
+	const schedule: TaskSchedule = { kind: 'weekly', time: '09:00', days: [1], everyWeeks: 2, startAt: '2027-03-01' };
+	assert.equal(new Date(getScheduleNextRun(schedule, at(2027, 3, 10))!).getTime(), at(2027, 3, 15, 9).getTime());
+});
+
+test('date-only startAt is a local date, not UTC midnight', () => {
+	const schedule: TaskSchedule = { kind: 'monthly', time: '09:00', dayOfMonth: 5, everyMonths: 2, startAt: '2026-10-01' };
+	assert.equal(new Date(getScheduleNextRun(schedule, at(2026, 10, 7))!).getTime(), at(2026, 12, 5, 9).getTime());
+});
+
+test('stepped schedules without a start date are anchored to their creation day', () => {
+	const job = normalizeJob({ title: 't', prompt: 'p', createdAt: at(2026, 10, 5, 8).toISOString(), schedule: { kind: 'weekly', time: '09:00', days: [1], everyWeeks: 2 } });
+	assert.equal(job.schedule.startAt, '2026-10-05');
+	const plain = normalizeJob({ title: 't', prompt: 'p', schedule: { kind: 'weekly', time: '09:00', days: [1] } });
+	assert.equal(plain.schedule.startAt, undefined);
+});
