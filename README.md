@@ -87,6 +87,8 @@ Then in **Settings → AI Scheduler**:
 3. Optionally enable **Schedule notes** to mirror tasks as vault Markdown files.
 4. Optionally enable **Periodic AI review**, choose its cadence and time, and pick a review folder.
 
+On first install the plugin creates a short **AI Scheduler - Getting started** note with these steps; reopen it any time with **AI Scheduler: Open getting started guide**. The dashboard, planner and task editor always show your backend's status with a button to open its settings.
+
 ---
 
 ## Dashboard
@@ -146,6 +148,7 @@ All commands are available from the command palette (`Ctrl/Cmd + P`):
 | `Restore last deleted task` | Restores the most recently deleted task |
 | `Sync schedule notes now` | Reconciles vault notes with active schedules |
 | `Export schedule to calendar file (.ics)` | Writes upcoming runs to the calendar file |
+| `Open getting started guide` | Opens (or recreates) the setup guide note |
 | `View changelog / what's new` | Opens the release history |
 
 ---

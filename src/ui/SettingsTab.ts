@@ -569,6 +569,12 @@ export class AssistantSettingTab extends PluginSettingTab {
 		// -------------------------------------------------------------------------
 		new Setting(containerEl).setName('Help & community').setHeading();
 		new Setting(containerEl)
+			.setName('Getting started guide')
+			.setDesc('Step-by-step setup: install a backend (Claudian or Obsidian Copilot), set up its providers and models, then connect AI Scheduler. Opens the guide note, creating it if needed.')
+			.addButton(button => button.setButtonText('Open guide').onClick(() => {
+				void this.plugin.openGettingStarted().catch(error => new Notice(`Could not open the guide: ${errorText(error)}`, 8000));
+			}));
+		new Setting(containerEl)
 			.setName('Facing a problem?')
 			.setDesc('Found a bug or have a suggestion? Create an issue on GitHub to get help from the community.')
 			.addButton(button => button.setButtonText('Report an issue').onClick(() => {

@@ -6,6 +6,7 @@ import { DAY_SHORT_NAMES, MONTH_NAMES, formatMultiRules, getScheduleNextRun, nor
 import { validateCron } from '../cron';
 import { createContextPicker } from './contextPicker';
 import { closeExistingSchedulerModals, linkLabel, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
+import { renderBackendBar } from './backendBar';
 import { FolderSuggest } from './folderSuggest';
 import { attachLinkHighlight } from './linkHighlight';
 import { AssistantModal } from './AssistantModal';
@@ -243,22 +244,10 @@ export class JobModal extends Modal {
 			text: 'Example: "Change time to 1:50 PM every weekday", "Add daily summary notes folder", or "Rewrite instructions to check recent meetings".'
 		});
 
-		const readiness = this.plugin.getBackendReadiness();
-		if (!readiness.ok) {
-			const banner = aiSection.createDiv({ cls: 'ai-scheduler-alert-banner' });
-			const content = banner.createDiv({ cls: 'ai-scheduler-alert-content' });
-			content.createSpan({ cls: 'ai-scheduler-alert-icon', text: '⚠️' });
-			const textCol = content.createDiv();
-			textCol.createDiv({ cls: 'ai-scheduler-alert-title', text: 'AI backend not configured' });
-			textCol.createDiv({ cls: 'ai-scheduler-alert-desc', text: readiness.message });
-			const btn = banner.createEl('button', { text: 'Open settings', cls: 'mod-cta ai-scheduler-alert-btn' });
-			btn.onclick = () => {
-				this.close();
-				window.setTimeout(() => {
-					this.plugin.openSettingsTab();
-				}, 50);
-			};
-		}
+		renderBackendBar(aiSection, this.plugin, then => {
+			this.close();
+			window.setTimeout(then, 50);
+		});
 
 		const request = aiSection.createEl('textarea', {
 			placeholder: 'Describe your requested change (type @ to attach notes or folders)...',

@@ -2783,3 +2783,45 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
 }
+
+/* ---- AI backend status bar (see src/ui/backendBar.ts) ---- */
+.ai-scheduler-backend-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-4-3);
+	margin: var(--size-4-2) 0 var(--size-4-4);
+	padding: var(--size-4-3) var(--size-4-4);
+	border: 1px solid var(--background-modifier-border);
+	border-left: 3px solid var(--interactive-accent);
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+}
+
+.ai-scheduler-backend-bar.is-warning {
+	border-left-color: var(--color-orange);
+	background: rgba(var(--color-orange-rgb), 0.08);
+}
+
+.ai-scheduler-backend-bar-text {
+	flex: 1 1 280px;
+	min-width: 0;
+}
+
+.ai-scheduler-backend-bar-title {
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+}
+
+.ai-scheduler-backend-bar-desc {
+	margin-top: 2px;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+.ai-scheduler-backend-bar-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-4-2);
+}

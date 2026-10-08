@@ -3,6 +3,7 @@ import { AISchedulerPlugin } from '../main';
 import { formatDate, formatDuration, describeBinding, isDisabledTask, isNightlyReviewJob, summarizeTasks } from '../util';
 import { describeSchedule, getScheduleNextRun } from '../schedule';
 import { closeExistingSchedulerModals, liveRefresh, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
+import { renderBackendBar } from './backendBar';
 import { JobModal } from './JobModal';
 import { PlannerModal } from './PlannerModal';
 import { TaskViewModal } from './TaskViewModal';
@@ -146,22 +147,10 @@ export class AssistantModal extends Modal {
 		shell.createEl('h1', { text: 'AI Scheduler' }).addClass('ai-scheduler-title');
 		shell.createEl('p', { text: 'Plan work, run reviews, and manage scheduled tasks from one place.' }).addClass('ai-scheduler-subtitle');
 
-		const readiness = this.plugin.getBackendReadiness();
-		if (!readiness.ok) {
-			const banner = shell.createDiv('ai-scheduler-alert-banner');
-			const content = banner.createDiv('ai-scheduler-alert-content');
-			content.createSpan('ai-scheduler-alert-icon').setText('⚠️');
-			const textCol = content.createDiv();
-			textCol.createDiv('ai-scheduler-alert-title').setText('AI backend not configured');
-			textCol.createDiv('ai-scheduler-alert-desc').setText(readiness.message);
-			const btn = banner.createEl('button', { text: 'Open settings', cls: 'mod-cta ai-scheduler-alert-btn' });
-			btn.onclick = () => {
-				this.close();
-				window.setTimeout(() => {
-					this.plugin.openSettingsTab();
-				}, 50);
-			};
-		}
+		renderBackendBar(shell, this.plugin, then => {
+			this.close();
+			window.setTimeout(then, 50);
+		});
 
 		if (this.plugin.isPlanning) {
 			const livePlan = makeCard(shell, 'ai-scheduler-planning-live-card');

@@ -39,6 +39,7 @@ import { AssistantSettingTab } from './ui/SettingsTab';
 import { ChangelogModal } from './ui/ChangelogModal';
 import { ScheduleNotesSync } from './notes';
 import { buildIcs } from './ics';
+import { GETTING_STARTED_PATH, gettingStartedNote } from './gettingStarted';
 
 const TICK_MS = 15000;
 
@@ -77,6 +78,7 @@ export class AISchedulerPlugin extends Plugin {
 
 	async onload(): Promise<void> {
 		const data = await this.loadData() as Record<string, unknown> | null;
+		const freshInstall = !data;
 		const parsed = parseStoredData(data);
 		this.settings = parsed.settings;
 		this.jobs = parsed.jobs;
@@ -212,6 +214,13 @@ export class AISchedulerPlugin extends Plugin {
 			callback: () => new ChangelogModal(this.app, this).open(),
 		});
 		this.addCommand({
+			id: 'open-getting-started',
+			name: 'Open getting started guide',
+			callback: () => {
+				void this.openGettingStarted().catch(error => new Notice(`Could not open the guide: ${errorText(error)}`, 8000));
+			},
+		});
+		this.addCommand({
 			id: 'export-calendar',
 			name: 'Export schedule to calendar file (.ics)',
 			callback: () => {
@@ -265,10 +274,28 @@ export class AISchedulerPlugin extends Plugin {
 				void this.notesSync.handleVaultChange(file, 'rename', oldPath);
 			}));
 			void (async () => {
+				// First install only: show the setup guide once. Existing users can open it
+				// from the command or settings.
+				if (freshInstall && !this.settings.gettingStartedShown) {
+					this.settings.gettingStartedShown = true;
+					await this.saveState();
+					// A problem showing the guide must not stop the startup steps below.
+					await this.openGettingStarted().catch(error => console.warn('[ai-scheduler] Could not open the getting started guide:', errorText(error)));
+				}
 				if (this.settings.scheduleNotesEnabled) await this.notesSync.syncAll();
 				await this.catchUpOnStart();
 			})().catch(error => console.error('[ai-scheduler] Startup tasks failed:', error));
 		});
+	}
+
+	/** Opens the getting-started note in a new tab, creating it first if it doesn't exist. */
+	async openGettingStarted(): Promise<void> {
+		let file = this.app.vault.getAbstractFileByPath(GETTING_STARTED_PATH);
+		if (!(file instanceof TFile)) {
+			this.markSelfWrite(GETTING_STARTED_PATH);
+			file = await this.app.vault.create(GETTING_STARTED_PATH, gettingStartedNote());
+		}
+		if (file instanceof TFile) await this.app.workspace.getLeaf(true).openFile(file);
 	}
 
 	onunload(): void {
@@ -1080,12 +1107,13 @@ export class AISchedulerPlugin extends Plugin {
 		return backends.refreshModels(this);
 	}
 
-	openSettingsTab(): void {
+	/** Opens Obsidian settings on a tab: AI Scheduler's by default, or another plugin's / a core tab by id. */
+	openSettingsTab(tabId: string = this.manifest.id): void {
 		const appWithSetting = this.app as unknown as { setting?: { open: () => void; openTabById: (id: string) => void } };
 		if (appWithSetting.setting && typeof appWithSetting.setting.open === 'function') {
 			appWithSetting.setting.open();
 			if (typeof appWithSetting.setting.openTabById === 'function') {
-				appWithSetting.setting.openTabById(this.manifest.id);
+				appWithSetting.setting.openTabById(tabId);
 			}
 		}
 	}

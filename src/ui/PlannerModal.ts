@@ -9,6 +9,7 @@ import { errorText, formatDate } from '../util';
 import { cronFormFor, describeSchedule, previewSchedule } from '../schedule';
 import { createContextPicker } from './contextPicker';
 import { closeExistingSchedulerModals, linkLabel, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
+import { renderBackendBar } from './backendBar';
 import { FolderSuggest } from './folderSuggest';
 import { attachLinkHighlight } from './linkHighlight';
 import { AssistantModal } from './AssistantModal';
@@ -71,22 +72,10 @@ export class PlannerModal extends Modal {
 		shell.createEl('h1', { text: 'Plan scheduled work', cls: 'ai-scheduler-title ai-scheduler-title-sm' });
 		shell.createEl('p', { text: 'Describe your goal in plain English. Your active AI backend will design and configure the scheduled jobs.', cls: 'ai-scheduler-subtitle' });
 
-		const readiness = this.plugin.getBackendReadiness();
-		if (!readiness.ok) {
-			const banner = shell.createDiv({ cls: 'ai-scheduler-alert-banner' });
-			const content = banner.createDiv({ cls: 'ai-scheduler-alert-content' });
-			content.createSpan({ cls: 'ai-scheduler-alert-icon', text: '⚠️' });
-			const textCol = content.createDiv();
-			textCol.createDiv({ cls: 'ai-scheduler-alert-title', text: 'AI backend not configured' });
-			textCol.createDiv({ cls: 'ai-scheduler-alert-desc', text: readiness.message });
-			const btn = banner.createEl('button', { text: 'Open settings', cls: 'mod-cta ai-scheduler-alert-btn' });
-			btn.onclick = () => {
-				this.close();
-				window.setTimeout(() => {
-					this.plugin.openSettingsTab();
-				}, 50);
-			};
-		}
+		renderBackendBar(shell, this.plugin, then => {
+			this.close();
+			window.setTimeout(then, 50);
+		});
 
 		const goalLabel = shell.createDiv({ cls: 'ai-scheduler-form-label', text: 'What would you like AI Scheduler to do?' });
 		const textarea = shell.createEl('textarea', { cls: 'ai-scheduler-textarea ai-scheduler-textarea-tall' });

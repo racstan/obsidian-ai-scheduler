@@ -5,6 +5,15 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.22] - 2026-10-08
+
+### Highlights
+- **Getting started guide**: on first install, a short *AI Scheduler - Getting started* note explains the setup order: install Claudian or Obsidian Copilot, set up its providers and models in its own settings, then connect AI Scheduler. Reopen it any time with **AI Scheduler: Open getting started guide** or from settings.
+- **Backend shortcuts**: the dashboard, planner and AI task editor show the backend's status, always with a button to open its settings (Claudian or Obsidian Copilot), where providers, keys and models are managed.
+
+### Added
+- When no backend is ready, the status bar offers to install or enable Claudian or Obsidian Copilot, or to choose one in AI Scheduler settings.
+
 ## [2.1.21] - 2026-10-08
 
 ### Highlights

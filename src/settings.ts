@@ -33,6 +33,7 @@ export const DEFAULT_SETTINGS: AISettings = {
 	icsExportEnabled: false,
 	icsExportPath: 'AI Scheduler/AI Scheduler.ics',
 	icsExportDays: 30,
+	gettingStartedShown: false,
 };
 
 const VALID_STATUSES = new Set(['scheduled', 'running', 'completed', 'failed', 'missed', 'disabled']);
@@ -198,6 +199,7 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 	if (typeof settings.taskLoggingEnabled !== 'boolean') settings.taskLoggingEnabled = false;
 	if (typeof settings.taskLogFolder !== 'string') settings.taskLogFolder = '';
 	settings.icsExportEnabled = settings.icsExportEnabled === true;
+	settings.gettingStartedShown = settings.gettingStartedShown === true;
 	if (typeof settings.icsExportPath !== 'string' || !settings.icsExportPath.trim()) settings.icsExportPath = DEFAULT_SETTINGS.icsExportPath;
 	const rawIcsDays = Number(settings.icsExportDays);
 	settings.icsExportDays = Number.isInteger(rawIcsDays) && rawIcsDays >= 1 && rawIcsDays <= 366 ? rawIcsDays : DEFAULT_SETTINGS.icsExportDays;

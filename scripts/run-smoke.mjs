@@ -151,7 +151,13 @@ function fakeApp() {
 	const app = {
 		_pluginData: null,
 		_savedCount: 0,
-		workspace: { getActiveFile: () => null, on() { return {}; }, onLayoutReady(cb) { cb(); } },
+		workspace: {
+			getActiveFile: () => null,
+			on() { return {}; },
+			onLayoutReady(cb) { cb(); },
+			_opened: [],
+			getLeaf() { return { openFile: async (file) => { app.workspace._opened.push(file.path); } }; },
+		},
 		plugins: { plugins: {} },
 		commands: { commands: {}, executeCommand() {} },
 		fileManager: {
@@ -240,6 +246,12 @@ async function main() {
 	await first.onload();
 	assert.ok(Array.isArray(first.jobs));
 	assert.equal(first.jobs.length, 0, 'fresh install starts with no jobs');
+	// A fresh install creates and opens the getting-started guide once.
+	await new Promise(resolve => setTimeout(resolve, 50));
+	const guide = app.vault.getAbstractFileByPath('AI Scheduler - Getting started.md');
+	assert.ok(guide && guide._content.includes('needs an AI backend'), 'getting-started guide created on first install');
+	assert.deepEqual(app.workspace._opened, ['AI Scheduler - Getting started.md'], 'guide opened once');
+	assert.equal(first.settings.gettingStartedShown, true);
 
 	// Wire the plugin to the stubbed Claudian model enumeration.
 	const modelValue = first.getModelOptions()[0].value;
@@ -447,6 +459,8 @@ async function main() {
 	second.settings.reviewTime = '06:30';
 	await second.ensurePeriodicReviewJob();
 	assert.notEqual(review.nextRunAt, overdue, 'changed review cadence reschedules');
+
+	assert.equal(app.workspace._opened.length, 1, 'the guide is not reopened when the plugin reloads');
 
 	await second.deleteAllJobs();
 	assert.equal(second.jobs.length, 1, 'nightly review job survives delete-all');

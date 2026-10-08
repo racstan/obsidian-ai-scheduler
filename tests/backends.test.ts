@@ -82,3 +82,11 @@ test('Claudian errors inside the reply are recognized, normal answers are not', 
 	assert.equal(claudianErrorFromReply('Here is your summary.\n\n- **Error:** handling section is fine'), null);
 	assert.equal(claudianErrorFromReply('All done.'), null);
 });
+
+test('backend plugins are detected as enabled, installed-but-disabled, or missing', async () => {
+	const { backendInstallState } = await import('../src/ui/backendBar');
+	const app = (plugins: Record<string, unknown>, manifests: Record<string, unknown>) => ({ plugins: { plugins, manifests } }) as unknown as import('obsidian').App;
+	assert.equal(backendInstallState(app({ realclaudian: {} }, { realclaudian: {} }), 'claudian'), 'enabled');
+	assert.equal(backendInstallState(app({}, { copilot: {} }), 'copilot'), 'disabled');
+	assert.equal(backendInstallState(app({}, {}), 'claudian'), 'missing');
+});

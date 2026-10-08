@@ -135,6 +135,8 @@ export interface AISettings {
 	icsExportPath: string;
 	/** How many days ahead the .ics file covers. */
 	icsExportDays: number;
+	/** The getting-started note was shown on first install. */
+	gettingStartedShown: boolean;
 }
 
 export interface ActivityEntry {

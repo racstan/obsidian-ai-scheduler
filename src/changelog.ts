@@ -23,6 +23,19 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.22',
+		date: '2026-10-08',
+		title: 'Getting Started Guide & Backend Shortcuts',
+		highlights: [
+			'Getting started guide: on first install, a short "AI Scheduler - Getting started" note explains the setup order (install Claudian or Obsidian Copilot, set up its providers and models in its own settings, then connect AI Scheduler). Reopen it any time from the command palette or settings.',
+			'Backend status bar in the dashboard, planner and AI task editor, always with a button to open your backend\'s settings (Claudian or Obsidian Copilot), where providers, keys and models are managed.',
+		],
+		added: [
+			'When no backend is ready, the bar offers to install or enable Claudian or Obsidian Copilot, or to choose one in AI Scheduler settings.',
+			'"Open getting started guide" command and settings button.',
+		],
+	},
+	{
 		version: '2.1.21',
 		date: '2026-10-08',
 		title: 'Clear Errors from Claudian and Copilot',
