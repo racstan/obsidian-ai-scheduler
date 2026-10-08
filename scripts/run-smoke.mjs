@@ -113,6 +113,8 @@ function makeClaudian() {
 		controllers: {
 			inputController: {
 				sendMessage: async (payload) => {
+					// Simulates Claudian's "Message was not sent": nothing is added.
+					if (tab.rejectSends > 0) { tab.rejectSends--; return; }
 					const content = payload && payload.content || '';
 					tab.state.messages.push({
 						role: 'assistant',
@@ -131,6 +133,7 @@ function makeClaudian() {
 	};
 	const view = { getTabManager: () => manager, getActiveTab: () => tab };
 	return {
+		_tab: tab,
 		getAllViews: () => [view],
 		activateView: async () => {},
 		createConversation: async () => ({ id: 'conv-1' }),
@@ -276,6 +279,17 @@ async function main() {
 	assert.equal(plan.jobs[0].schedule.kind, 'cron');
 	assert.equal(plan.jobs[0].schedule.expression, '0 9 * * 1-5');
 	assert.ok(plan.jobs[1].nextRunAt, 'once plan resolves a next run');
+
+	// A send Claudian refuses ("Message was not sent") is retried; if it keeps
+	// refusing, the planner reports that instead of "no valid schedule".
+	const claudianTab = app.plugins.plugins.realclaudian._tab;
+	claudianTab.rejectSends = 1;
+	const retried = await first.planAndCreate('Every weekday morning, review my notes');
+	assert.equal(retried.jobs.length, 2, 'planning succeeds after a refused send');
+	claudianTab.rejectSends = 3;
+	await assert.rejects(first.planAndCreate('Every weekday morning, review my notes'), /did not accept the message/);
+	claudianTab.rejectSends = 0;
+	for (const job of retried.jobs) await first.deleteJob(job);
 
 	// Test command palette commands: disable, enable, toggle nightly review, and bulk tasks
 	assert.ok(app.commands.commands['disable-nightly-review'], 'disable-nightly-review command registered');

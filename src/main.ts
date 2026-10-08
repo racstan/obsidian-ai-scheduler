@@ -998,6 +998,8 @@ export class AISchedulerPlugin extends Plugin {
 			const prompt = plannerPrompt(goal, validatedPaths);
 			const context = getPathsContext(this.app, validatedPaths);
 			const reply = await backends.sendToAI(this, prompt, execution, context);
+			// Tell "no answer at all" apart from "an answer without a usable schedule".
+			if (!reply.trim()) throw new Error('The AI backend sent no reply. Check the conversation in your AI backend, then try again.');
 			const plans = extractJson(reply)
 				.map(item => validateJobSchema(item))
 				.filter((item): item is Record<string, unknown> => Boolean(item));

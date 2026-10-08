@@ -279,7 +279,6 @@ export async function sendToClaudian(
 		await sleep(300);
 	}
 	const active = getActiveTab(view, manager) || target;
-	const beforeCount = getTabMessages(host, view, active).length;
 	const controller = active?.controllers?.inputController;
 	if (!controller || typeof controller.sendMessage !== 'function') throw new Error('Claudian input controller is unavailable.');
 
@@ -288,26 +287,42 @@ export async function sendToClaudian(
 	if (context && context.externalContextPaths && context.externalContextPaths.length) {
 		turnRequest.externalContextPaths = context.externalContextPaths;
 	}
-	if (signal?.aborted) throw new Error('Cancelled by user.');
 	// Stop Claudian's stream on timeout or when the user resets the run, instead
 	// of leaving the agent working unseen.
 	const cancel = () => {
 		try { controller.cancelStreaming?.(); } catch { /* best effort */ }
 	};
-	signal?.addEventListener('abort', cancel, { once: true });
-	try {
-		const send = controller.sendMessage({ content: prompt, turnRequestOverride: turnRequest });
-		await withTimeout(send, AGENT_TIMEOUT_MS, `AI task timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes`);
-		await waitForTabIdle(view, active, signal);
-	} catch (error) {
-		cancel();
-		throw error;
-	} finally {
-		signal?.removeEventListener('abort', cancel);
+
+	// Claudian can refuse a send while a freshly opened conversation is still
+	// being set up: it shows "Message was not sent" and adds nothing to the
+	// conversation. A refused send never reached the AI, so it is safe to retry.
+	for (let attempt = 1; ; attempt++) {
+		if (signal?.aborted) throw new Error('Cancelled by user.');
+		const beforeCount = getTabMessages(host, view, active).length;
+		signal?.addEventListener('abort', cancel, { once: true });
+		try {
+			const send = controller.sendMessage({ content: prompt, turnRequestOverride: turnRequest });
+			await withTimeout(send, AGENT_TIMEOUT_MS, `AI task timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes`);
+			await waitForTabIdle(view, active, signal);
+		} catch (error) {
+			cancel();
+			throw error;
+		} finally {
+			signal?.removeEventListener('abort', cancel);
+		}
+		await sleep(300);
+		if (getTabMessages(host, view, active).length > beforeCount) {
+			return lastAssistantReply(host, view, active, beforeCount);
+		}
+		if (attempt >= CLAUDIAN_SEND_ATTEMPTS) {
+			throw new Error('Claudian did not accept the message ("Message was not sent"), even after retrying. It may still be setting up the conversation; please try again in a moment.');
+		}
+		await sleep(1500 * attempt);
 	}
-	await sleep(300);
-	return lastAssistantReply(host, view, active, beforeCount);
 }
+
+/** Sends Claudian refused (see sendToClaudian) are retried up to this many attempts in total. */
+const CLAUDIAN_SEND_ATTEMPTS = 3;
 
 export function getCopilotPlugin(host: BackendHost): CopilotPlugin | null {
 	const plugins = pluginRegistry(host);
