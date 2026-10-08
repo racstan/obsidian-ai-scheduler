@@ -23,6 +23,17 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.20',
+		date: '2026-10-08',
+		title: 'Calendar Subscription Guide',
+		added: [
+			'Guide for keeping Google Calendar, Outlook or Apple Calendar up to date by subscribing to the exported .ics file through a public link from your own sync service (README and Calendar export setting).',
+		],
+		changed: [
+			'The Calendar export setting explains import vs. subscribe and that anyone with a public link can read task titles and prompts.',
+		],
+	},
+	{
 		version: '2.1.19',
 		date: '2026-10-08',
 		title: 'Calendar Export, Folder Picker & Linked Mentions',

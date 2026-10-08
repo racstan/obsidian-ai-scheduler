@@ -391,7 +391,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Calendar export').setHeading();
 		new Setting(containerEl)
 			.setName('Keep a calendar file of upcoming runs')
-			.setDesc('Writes an .ics file listing every scheduled run and keeps it up to date. Import it into Google Calendar, Outlook or Apple Calendar, or subscribe to it if you sync the file to a service that gives it a public link. One-way: changes made in your calendar app are not read back.')
+			.setDesc('Writes an .ics file listing every scheduled run and keeps it up to date. Import it into Google Calendar, Outlook or Apple Calendar for a one-time copy. To stay in sync, sync the file with a service that gives it a public direct-download link (e.g. Dropbox) and subscribe to that link from your calendar app; the plugin itself never uploads anything. Anyone with the link can read your task titles and prompts. One-way: changes made in your calendar app are not read back.')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.icsExportEnabled)
 				.onChange(value => {

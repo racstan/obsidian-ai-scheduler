@@ -5,6 +5,14 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.20] - 2026-10-08
+
+### Added
+- Guide for keeping Google Calendar, Outlook or Apple Calendar up to date by subscribing to the exported `.ics` file through a public link from your own sync service (README → *See your AI tasks in Google Calendar, Outlook or Apple Calendar*, and the Calendar export setting). The plugin itself still never uploads anything.
+
+### Changed
+- The Calendar export setting explains import vs. subscribe, and that anyone with a public link can read task titles and prompts.
+
 ## [2.1.19] - 2026-10-08
 
 ### Highlights

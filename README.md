@@ -103,7 +103,27 @@ The dashboard shows:
 From here you can create tasks, edit them, run them on demand, pause, restore from trash, or open the AI Planner.
 
 ## Schedule calendar
- **AI Scheduler: Open schedule calendar** to see every task's runs in a month grid, an agenda list, or a full-page day view with a timeline. Past runs show as completed only when the task actually ran; you can create, run, pause and resume tasks directly from the calendar.
+
+Run **AI Scheduler: Open schedule calendar** to see every task's runs in a month grid, an agenda list, or a full-page day view with a timeline. Past runs show as completed only when the task actually ran; you can create, run, pause and resume tasks directly from the calendar.
+
+### See your AI tasks in Google Calendar, Outlook or Apple Calendar
+
+Turn on **Settings → AI Scheduler → Calendar export**. The plugin then keeps an `.ics` file (by default `AI Scheduler/AI Scheduler.ics`) listing your upcoming runs, and rewrites it whenever your tasks change. There are two ways to use it:
+
+**Import (one-time snapshot).** Import the file in your calendar app (Google Calendar: *Settings → Import & export*). This copies the runs listed at that moment; later changes need another import.
+
+**Subscribe (stays up to date).** Calendar apps can follow a calendar from a web address and re-download it periodically. The plugin itself never uploads anything — you give the file a public link with whatever already syncs your vault:
+
+1. Make sure the `.ics` file is synced to a service that can share a *direct download* link — for example the Dropbox desktop app, or a plugin such as Remotely Save syncing to Dropbox. (Change the end of a Dropbox share link from `?dl=0` to `?dl=1`.) Sync services without public links (Obsidian Sync, iCloud, Syncthing) can't be used for this, and OneDrive / Google Drive share links usually open a web page rather than the file.
+2. Subscribe to that link:
+   - **Google Calendar:** *Other calendars → + → From URL*
+   - **Outlook:** *Add calendar → Subscribe from web*
+   - **Apple Calendar:** *File → New Calendar Subscription*
+
+Good to know:
+- **Updates aren't instant.** Your calendar app decides when to re-download the file; Google can take several hours to a day. Outlook and Apple usually refresh sooner.
+- **Anyone with the link can read the file**, which includes task titles and prompts. Treat the link like a password and don't share it.
+- **One-way.** Events edited or deleted in your calendar app don't change your tasks.
 
 ---
 
