@@ -30,6 +30,9 @@ export const DEFAULT_SETTINGS: AISettings = {
 	defaultOutputFolder: '',
 	taskLoggingEnabled: false,
 	taskLogFolder: '',
+	icsExportEnabled: false,
+	icsExportPath: 'AI Scheduler/AI Scheduler.ics',
+	icsExportDays: 30,
 };
 
 const VALID_STATUSES = new Set(['scheduled', 'running', 'completed', 'failed', 'missed', 'disabled']);
@@ -194,6 +197,10 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 	if (typeof settings.defaultOutputFolder !== 'string') settings.defaultOutputFolder = '';
 	if (typeof settings.taskLoggingEnabled !== 'boolean') settings.taskLoggingEnabled = false;
 	if (typeof settings.taskLogFolder !== 'string') settings.taskLogFolder = '';
+	settings.icsExportEnabled = settings.icsExportEnabled === true;
+	if (typeof settings.icsExportPath !== 'string' || !settings.icsExportPath.trim()) settings.icsExportPath = DEFAULT_SETTINGS.icsExportPath;
+	const rawIcsDays = Number(settings.icsExportDays);
+	settings.icsExportDays = Number.isInteger(rawIcsDays) && rawIcsDays >= 1 && rawIcsDays <= 366 ? rawIcsDays : DEFAULT_SETTINGS.icsExportDays;
 	if (!['daily', 'weekly', 'every-n-days', 'hourly'].includes(settings.periodicReviewCadence as string)) {
 		settings.periodicReviewCadence = 'daily';
 	}

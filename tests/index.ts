@@ -8,3 +8,4 @@ import './changelog.test';
 import './backends.test';
 import './notes.test';
 import './prompts.test';
+import './ics.test';

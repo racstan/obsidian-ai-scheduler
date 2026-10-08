@@ -403,6 +403,14 @@ async function main() {
 	assert.ok(rows[1].startsWith('| 2 |'), 'rows are numbered');
 	second.settings.taskLoggingEnabled = false;
 
+	// The calendar export writes an .ics file and refuses unsafe paths.
+	const icsPath = await second.exportIcs();
+	assert.equal(icsPath, 'AI Scheduler/AI Scheduler.ics');
+	assert.ok(app.vault.getAbstractFileByPath(icsPath)._content.includes('BEGIN:VEVENT'), 'calendar file lists runs');
+	second.settings.icsExportPath = '.obsidian/evil.ics';
+	await assert.rejects(second.exportIcs(), /not a valid calendar file path/);
+	second.settings.icsExportPath = 'AI Scheduler/AI Scheduler.ics';
+
 	// Re-ensuring the periodic review with unchanged settings keeps its next run.
 	const review = second.jobs.find(j => j.routine === 'periodic-review');
 	const overdue = iso(-60_000);

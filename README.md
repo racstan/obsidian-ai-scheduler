@@ -33,6 +33,8 @@ AI Scheduler does not call AI providers directly. It drives Claudian or Copilot 
 
 **Vault-synced schedule notes** — Optionally mirror every task as a Markdown note with YAML frontmatter. Edit the note in Obsidian or edit the dashboard UI — both stay in sync.
 
+**Calendar export** — Keep an `.ics` file of upcoming runs up to date and import it into Google Calendar, Outlook or Apple Calendar (or subscribe to it, if you sync the file somewhere with a public link). One-way: the plugin only writes the file.
+
 **Trash & restore** — Deleted tasks go to a trash section. You can restore them individually, restore all at once, or permanently delete them.
 
 ---
@@ -123,6 +125,7 @@ All commands are available from the command palette (`Ctrl/Cmd + P`):
 | `Disable all scheduled tasks` | Pauses all tasks |
 | `Restore last deleted task` | Restores the most recently deleted task |
 | `Sync schedule notes now` | Reconciles vault notes with active schedules |
+| `Export schedule to calendar file (.ics)` | Writes upcoming runs to the calendar file |
 | `View changelog / what's new` | Opens the release history |
 
 ---

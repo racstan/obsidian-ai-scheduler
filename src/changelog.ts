@@ -23,10 +23,11 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
-		version: '2.1.18',
+		version: '2.1.19',
 		date: '2026-10-08',
-		title: 'Folder Picker, Linked Mentions & Theme-Aware Sizing',
+		title: 'Calendar Export, Folder Picker & Linked Mentions',
 		highlights: [
+			'Calendar export: keep an .ics file of upcoming runs to import into Google Calendar, Outlook or Apple Calendar (Settings → Calendar export, or the "Export schedule to calendar file" command).',
 			'Result folder: type a path or pick any folder (subfolders included) from a dropdown in the planner, the task editor and settings.',
 			'@ mentions now find folders as well as notes and files, and [[links]] in prompts are highlighted.',
 			'Text sizes and corner rounding follow your Obsidian appearance settings and theme.',

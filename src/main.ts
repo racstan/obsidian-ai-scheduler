@@ -38,6 +38,7 @@ import { CalendarModal } from './ui/CalendarModal';
 import { AssistantSettingTab } from './ui/SettingsTab';
 import { ChangelogModal } from './ui/ChangelogModal';
 import { ScheduleNotesSync } from './notes';
+import { buildIcs } from './ics';
 
 const TICK_MS = 15000;
 
@@ -55,6 +56,8 @@ export class AISchedulerPlugin extends Plugin {
 	pendingVaultEvents: string[] = [];
 	private lastTickAt = Date.now();
 	private unloaded = false;
+	private icsTimer: number | null = null;
+	private lastIcsExportAt = 0;
 	/** Each job's current run: aborting it stops the backend, and a reply arriving after a reset is ignored. */
 	private activeRuns = new Map<string, AbortController>();
 	runningJobs = new Set<string>();
@@ -208,6 +211,15 @@ export class AISchedulerPlugin extends Plugin {
 			name: 'View changelog / what\'s new',
 			callback: () => new ChangelogModal(this.app, this).open(),
 		});
+		this.addCommand({
+			id: 'export-calendar',
+			name: 'Export schedule to calendar file (.ics)',
+			callback: () => {
+				void this.exportIcs()
+					.then(path => new Notice(`Calendar file written to ${path}. Import it into Google Calendar, Outlook or Apple Calendar.`, 8000))
+					.catch(error => new Notice(`Could not export calendar: ${errorText(error)}`, 8000));
+			},
+		});
 		this.addSettingTab(new AssistantSettingTab(this.app, this));
 
 		this.registerInterval(window.setInterval(() => { void this.tick(); }, TICK_MS));
@@ -267,6 +279,8 @@ export class AISchedulerPlugin extends Plugin {
 		this.statusBarEl?.remove();
 		this.statusBarEl = null;
 		this.notesSync?.dispose();
+		if (this.icsTimer !== null) window.clearTimeout(this.icsTimer);
+		this.icsTimer = null;
 		// Runs still in flight finish in the background; stop them from saving, or
 		// an old instance could overwrite the reloaded/updated plugin's data.json.
 		this.unloaded = true;
@@ -286,6 +300,48 @@ export class AISchedulerPlugin extends Plugin {
 			console.error('[ai-scheduler] Failed to save state:', error);
 		}
 		this.notesSync.requestSync();
+		this.requestIcsExport();
+	}
+
+	/** Refreshes the .ics calendar file shortly after changes (debounced), when enabled. */
+	requestIcsExport(): void {
+		if (!this.settings.icsExportEnabled || this.unloaded) return;
+		if (this.icsTimer !== null) window.clearTimeout(this.icsTimer);
+		this.icsTimer = window.setTimeout(() => {
+			this.icsTimer = null;
+			this.exportIcs().catch(error => console.warn('[ai-scheduler] Calendar export failed:', errorText(error)));
+		}, 2000);
+	}
+
+	/**
+	 * Writes upcoming runs to the configured .ics file and returns its path. The
+	 * file is only rewritten when its content changed. Like task output, it must
+	 * stay out of hidden/config folders.
+	 */
+	async exportIcs(): Promise<string> {
+		const path = normalizePath(this.settings.icsExportPath.trim() || DEFAULT_SETTINGS.icsExportPath);
+		const segments = path.split('/');
+		if (!path.toLowerCase().endsWith('.ics')
+			|| segments.some(segment => segment === '..' || segment.startsWith('.') || segment.includes(':'))
+			|| segments[0] === this.app.vault.configDir) {
+			throw new Error(`"${path}" is not a valid calendar file path. Use a vault path ending in .ics, outside hidden folders.`);
+		}
+		const now = new Date();
+		const content = buildIcs(this.jobs, now, new Date(now.getTime() + this.settings.icsExportDays * 86400000));
+		this.lastIcsExportAt = Date.now();
+		const existing = this.app.vault.getAbstractFileByPath(path);
+		if (existing instanceof TFile) {
+			if (await this.app.vault.read(existing) === content) return path;
+			this.markSelfWrite(path);
+			await this.app.vault.modify(existing, content);
+		} else if (existing) {
+			throw new Error(`"${path}" is a folder.`);
+		} else {
+			await this.ensureFolder(segments.slice(0, -1).join('/'));
+			this.markSelfWrite(path);
+			await this.app.vault.create(path, content);
+		}
+		return path;
 	}
 
 	assignTaskNumbers(): void {
@@ -346,6 +402,8 @@ export class AISchedulerPlugin extends Plugin {
 		const nowMs = Date.now();
 		const previousTick = this.lastTickAt;
 		this.lastTickAt = nowMs;
+		// The exported window moves with time (past runs drop off, new days join).
+		if (this.settings.icsExportEnabled && nowMs - this.lastIcsExportAt > 3600000) this.requestIcsExport();
 		// A long gap between ticks means the computer slept with Obsidian open.
 		// Jobs that fell due during the gap follow the same catch-up policy as a
 		// restart instead of all firing at once on wake.

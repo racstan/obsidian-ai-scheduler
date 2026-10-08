@@ -129,6 +129,12 @@ export interface AISettings {
 	 *  (or 'AI Scheduler') if empty. The log file is always named
 	 *  'AI SCHEDULER LOGS.md' inside this folder. */
 	taskLogFolder: string;
+	/** Keep an .ics calendar file of upcoming runs up to date. */
+	icsExportEnabled: boolean;
+	/** Vault path of the .ics file. */
+	icsExportPath: string;
+	/** How many days ahead the .ics file covers. */
+	icsExportDays: number;
 }
 
 export interface ActivityEntry {

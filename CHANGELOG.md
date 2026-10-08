@@ -5,9 +5,10 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.1.18] - 2026-10-08
+## [2.1.19] - 2026-10-08
 
 ### Highlights
+- **Calendar export**: keep an `.ics` file of upcoming runs up to date and import it into Google Calendar, Outlook or Apple Calendar (Settings → Calendar export, or the *Export schedule to calendar file (.ics)* command). One-way; nothing is sent anywhere.
 - **Result folder picker**: type a path or pick any folder (subfolders included) from a dropdown in the planner, the task editor and settings.
 - **Better @ mentions**: `@` now finds folders as well as notes and files, and `[[links]]` in prompts are highlighted.
 - **Theme-aware sizing**: text sizes and corner rounding follow your Obsidian appearance settings and theme.

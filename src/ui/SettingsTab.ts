@@ -386,6 +386,61 @@ export class AssistantSettingTab extends PluginSettingTab {
 		}
 
 		// -------------------------------------------------------------------------
+		// Calendar export (.ics)
+		// -------------------------------------------------------------------------
+		new Setting(containerEl).setName('Calendar export').setHeading();
+		new Setting(containerEl)
+			.setName('Keep a calendar file of upcoming runs')
+			.setDesc('Writes an .ics file listing every scheduled run and keeps it up to date. Import it into Google Calendar, Outlook or Apple Calendar, or subscribe to it if you sync the file to a service that gives it a public link. One-way: changes made in your calendar app are not read back.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.icsExportEnabled)
+				.onChange(value => {
+					void (async () => {
+						this.plugin.settings.icsExportEnabled = value;
+						await this.plugin.saveState();
+						this.renderSettings();
+					})();
+				}));
+		if (this.plugin.settings.icsExportEnabled) {
+			new Setting(containerEl)
+				.setName('Calendar file')
+				.setDesc('Vault path of the .ics file.')
+				.addText(text => text
+					.setPlaceholder('AI Scheduler/AI Scheduler.ics')
+					.setValue(this.plugin.settings.icsExportPath)
+					.onChange(value => {
+						void (async () => {
+							this.plugin.settings.icsExportPath = value.trim() || 'AI Scheduler/AI Scheduler.ics';
+							await this.plugin.saveState();
+						})();
+					}));
+			new Setting(containerEl)
+				.setName('Days ahead')
+				.setDesc('How far into the future the calendar file lists runs (1–366).')
+				.addText(text => text
+					.setPlaceholder('30')
+					.setValue(String(this.plugin.settings.icsExportDays))
+					.onChange(value => {
+						void (async () => {
+							const days = Number(value);
+							if (!Number.isInteger(days) || days < 1 || days > 366) return;
+							this.plugin.settings.icsExportDays = days;
+							await this.plugin.saveState();
+						})();
+					}));
+		}
+		new Setting(containerEl)
+			.setName('Export calendar file now')
+			.setDesc('Writes the .ics file immediately (also available as a command).')
+			.addButton(button => button
+				.setButtonText('Export')
+				.onClick(() => {
+					void this.plugin.exportIcs()
+						.then(path => new Notice(`Calendar file written to ${path}.`, 6000))
+						.catch(error => new Notice(`Could not export calendar: ${errorText(error)}`, 8000));
+				}));
+
+		// -------------------------------------------------------------------------
 		// Section 4: Background Execution & Notifications
 		// -------------------------------------------------------------------------
 		new Setting(containerEl).setName('Background execution & notifications').setHeading();
