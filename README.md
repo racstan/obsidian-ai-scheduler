@@ -14,8 +14,8 @@ Instead of manually opening a chat sidebar every time, you describe what you wan
 
 It works with two backends you likely already have installed:
 
-- **[Claudian](https://github.com/YishenTu/claudian)** — for Claude (Anthropic) models with deep tool use
-- **[Obsidian Copilot](https://github.com/logancyang/obsidian-copilot)** — for OpenAI, Gemini, local Ollama, and more
+- **[Claudian](https://github.com/YishenTu/claudian)**
+- **[Obsidian Copilot](https://github.com/logancyang/obsidian-copilot)**
 
 AI Scheduler does not call AI providers directly. It drives Claudian or Copilot — whichever you have configured — and owns only the scheduling and execution layer.
 
@@ -105,10 +105,10 @@ All schedule types support an optional **max iterations** limit — the job stop
 
 ## Setup
 
-AI Scheduler needs one of these backends installed and working first:
+AI Scheduler needs one of these backends installed and working first. Install it from the community plugin store, then set up your providers and models in its own settings:
 
-- **[Claudian](https://github.com/YishenTu/claudian)** — install from the community plugin store, configure your Anthropic API key inside Claudian.
-- **[Obsidian Copilot](https://github.com/logancyang/obsidian-copilot)** — install from the community plugin store, configure your provider (OpenAI, Gemini, Ollama, etc.) inside Copilot.
+- **[Claudian](https://github.com/YishenTu/claudian)**
+- **[Obsidian Copilot](https://github.com/logancyang/obsidian-copilot)**
 
 Then in **Settings → AI Scheduler**:
 

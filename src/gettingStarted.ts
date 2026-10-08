@@ -17,8 +17,8 @@ AI Scheduler runs AI tasks for you in the background: on a schedule, at a set ti
 
 Pick one (you can switch later):
 
-- **Claudian**: Claude and other providers, with tools that can read and edit your notes. [Open in Community plugins](obsidian://show-plugin?id=realclaudian)
-- **Obsidian Copilot**: OpenAI, Gemini, local Ollama and more. [Open in Community plugins](obsidian://show-plugin?id=copilot)
+- **Claudian**: [Open in Community plugins](obsidian://show-plugin?id=realclaudian)
+- **Obsidian Copilot**: [Open in Community plugins](obsidian://show-plugin?id=copilot)
 
 Then enable it: **Settings → Community plugins**, and turn it on.
 

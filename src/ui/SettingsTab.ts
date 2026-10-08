@@ -74,7 +74,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('AI backend')
-			.setDesc('Select Claudian (for Claude and custom providers) or Obsidian Copilot (for OpenAI, Gemini, Ollama, etc.).')
+			.setDesc('Select Claudian or Obsidian Copilot. Providers and models are set up in that plugin\'s own settings.')
 			.addDropdown(dropdown => dropdown
 				.addOption('none', 'Select an AI backend...')
 				.addOption('claudian', 'Claudian')
