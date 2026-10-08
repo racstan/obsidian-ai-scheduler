@@ -104,6 +104,45 @@ export interface ClaudianSettings {
 	};
 	settingsProvider?: string;
 	model?: string;
+	/** Per-provider setup (Claudian 2.x): which providers are on and which models are visible. */
+	providerConfigs?: Record<string, ClaudianProviderConfig>;
+}
+
+export interface ClaudianProviderConfig {
+	enabled?: boolean;
+	/** Model ids shown in Claudian's chat model picker, in order. */
+	visibleModels?: string[] | null;
+	selectedModels?: Array<{ label?: string; rawId?: string; encodedId?: string; id?: string }>;
+	modelAliases?: Record<string, string>;
+}
+
+/** Claudian prefixes some providers' model ids in conversations (e.g. "opencode:<id>"). */
+const CLAUDIAN_MODEL_PREFIX: Record<string, string> = { opencode: 'opencode:' };
+
+/**
+ * The models Claudian itself offers: the visible models of every enabled
+ * provider. Returns null for older Claudian versions without provider configs.
+ */
+export function configuredClaudianModels(settings: ClaudianSettings | undefined): ModelOption[] | null {
+	const configs = settings?.providerConfigs;
+	if (!configs || typeof configs !== 'object') return null;
+	const options: ModelOption[] = [];
+	for (const [providerId, config] of Object.entries(configs)) {
+		if (!config || config.enabled === false) continue;
+		const selected = Array.isArray(config.selectedModels) ? config.selectedModels : [];
+		const ids = Array.isArray(config.visibleModels) && config.visibleModels.length
+			? config.visibleModels
+			: selected.map(model => model.encodedId || model.rawId || model.id || '');
+		for (const rawId of ids) {
+			if (typeof rawId !== 'string' || !rawId.trim()) continue;
+			const prefix = CLAUDIAN_MODEL_PREFIX[providerId] ?? '';
+			const model = prefix && !rawId.startsWith(prefix) ? `${prefix}${rawId}` : rawId;
+			const details = selected.find(entry => [entry.encodedId, entry.rawId, entry.id].includes(rawId));
+			const label = config.modelAliases?.[rawId]?.trim() || details?.label || rawId;
+			options.push({ value: modelValue(providerId, model), label: `${getProviderName(providerId)} / ${label}`, providerId, model });
+		}
+	}
+	return options;
 }
 
 export interface ClaudianPlugin {
@@ -470,9 +509,16 @@ export function getModelOptions(host: BackendHost): ModelOption[] {
 		seen.add(key);
 		profiles.push(profile);
 	};
+	const claudian = getClaudianPlugin(host);
+	// Claudian's own model setup is the source of truth: exactly the models it
+	// offers, so removed models disappear and newly added ones show up.
+	const configured = configuredClaudianModels(claudian?.settings || claudian?.providerHost?.settings);
+	// (An empty list can mean a provider relying on built-in defaults: fall back then.)
+	if (configured && configured.length) return configured;
+
+	// Older Claudian versions: infer models from open tabs and remembered choices.
 	const view = getClaudianViewSync(host);
 	const manager = getTabManager(view);
-	const claudian = getClaudianPlugin(host);
 	const tabs = manager && typeof manager.getAllTabs === 'function' ? manager.getAllTabs() : [];
 	tabs.forEach(tab => {
 		const conversation = tab.conversationId && claudian && typeof claudian.getConversationSync === 'function'

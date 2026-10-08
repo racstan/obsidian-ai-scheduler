@@ -1,6 +1,6 @@
 {
   "name": "obsidian-ai-scheduler",
-  "version": "2.1.22",
+  "version": "2.1.23",
   "description": "Run AI tasks on a schedule, when notes change, or as periodic vault reviews, using Claudian or Copilot.",
   "main": "main.js",
   "scripts": {

@@ -5,6 +5,14 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.23] - 2026-10-08
+
+### Fixed
+- The Claudian model list now shows exactly the models Claudian offers: the visible models of each provider enabled in Claudian's settings. Models removed in Claudian disappear and newly added ones appear after **Refresh models**. Previously the list was guessed from old conversations and remembered choices, so removed models lingered and new ones were missing.
+
+### Changed
+- A model setting whose saved model was removed in Claudian now says so and asks you to pick another.
+
 ## [2.1.22] - 2026-10-08
 
 ### Highlights

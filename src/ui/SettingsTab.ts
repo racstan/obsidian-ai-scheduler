@@ -108,7 +108,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 
 			new Setting(containerEl)
 				.setName('Available Claudian models')
-				.setDesc('Refresh this list after adding, removing, or changing models in Claudian.')
+				.setDesc('The models Claudian offers: the visible models of each provider enabled in Claudian\'s settings. Refresh after changing them there.')
 				.addButton(button => button.setButtonText('Refresh models').onClick(() => {
 					void (async () => {
 						button.setDisabled(true);
@@ -127,7 +127,10 @@ export class AssistantSettingTab extends PluginSettingTab {
 
 			const addModelSetting = (name: string, desc: string, key: 'planningModel' | 'executionModel' | 'dailyReviewModel' | 'nightlyReviewModel') => new Setting(containerEl)
 				.setName(name)
-				.setDesc(desc)
+				// A model removed in Claudian can't be used any more; say so instead of silently blanking it.
+				.setDesc(this.plugin.settings[key] && !models.some(model => model.value === this.plugin.settings[key])
+					? `${desc} The model chosen before is no longer available in Claudian: pick one from the list.`
+					: desc)
 				.addDropdown(dropdown => {
 					dropdown.addOption('', models.length ? 'Select a model' : 'No models found - open Claudian');
 					models.forEach(model => { dropdown.addOption(model.value, model.label); });

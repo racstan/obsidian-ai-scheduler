@@ -1,7 +1,7 @@
 {
   "id": "ai-scheduler",
   "name": "AI Scheduler",
-  "version": "2.1.22",
+  "version": "2.1.23",
   "minAppVersion": "1.6.6",
   "description": "Run AI tasks on a schedule, when notes change, or as periodic vault reviews, using Claudian or Copilot.",
   "author": "racstan",

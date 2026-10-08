@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BackendHost, claudianErrorFromReply, modelValue, parseProfileValue, resolveJobExecution, sendToAI } from '../src/backends';
+import { BackendHost, claudianErrorFromReply, configuredClaudianModels, modelValue, parseProfileValue, resolveJobExecution, sendToAI } from '../src/backends';
 import { DEFAULT_SETTINGS, normalizeJob } from '../src/settings';
 import { AISettings } from '../src/types';
 
@@ -89,4 +89,25 @@ test('backend plugins are detected as enabled, installed-but-disabled, or missin
 	assert.equal(backendInstallState(app({ realclaudian: {} }, { realclaudian: {} }), 'claudian'), 'enabled');
 	assert.equal(backendInstallState(app({}, { copilot: {} }), 'copilot'), 'disabled');
 	assert.equal(backendInstallState(app({}, {}), 'claudian'), 'missing');
+});
+
+test('Claudian models come from its enabled providers\' visible models, not stale settings', () => {
+	const options = configuredClaudianModels({
+		model: 'opencode:opencode-go/space-bunny-free', // removed in Claudian, still remembered here
+		settingsProvider: 'opencode',
+		savedProviderModel: { opencode: 'opencode:opencode-go/space-bunny-free' },
+		providerConfigs: {
+			claude: { enabled: false, visibleModels: [] },
+			codex: { enabled: true, visibleModels: [] },
+			opencode: { enabled: true, visibleModels: ['openrouter/openrouter/free'], selectedModels: [{ label: 'OpenRouter/Free Models Router', rawId: 'openrouter/openrouter/free' }] },
+			pi: { enabled: false, visibleModels: ['pi:openrouter/openrouter/free'] },
+		},
+	});
+	assert.deepEqual(options?.map(option => [option.providerId, option.model, option.label]), [
+		['opencode', 'opencode:openrouter/openrouter/free', 'OpenCode / OpenRouter/Free Models Router'],
+	]);
+	assert.equal(parseProfileValue(options![0].value)?.model, 'opencode:openrouter/openrouter/free');
+	// Aliases set in Claudian win, and older Claudian versions (no provider configs) fall back.
+	assert.equal(configuredClaudianModels({ providerConfigs: { claude: { visibleModels: ['sonnet'], modelAliases: { sonnet: 'Sonnet (work)' } } } })?.[0].label, 'Claude / Sonnet (work)');
+	assert.equal(configuredClaudianModels({ model: 'x' }), null);
 });

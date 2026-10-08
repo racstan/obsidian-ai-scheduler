@@ -23,6 +23,17 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.23',
+		date: '2026-10-08',
+		title: 'Claudian Model List Matches Claudian',
+		fixed: [
+			'The Claudian model list now shows exactly the models Claudian offers (the visible models of each provider enabled in Claudian\'s settings). Models removed in Claudian disappear and newly added ones appear after Refresh models; previously the list was guessed from old conversations and remembered choices.',
+		],
+		changed: [
+			'A model setting whose saved model was removed in Claudian now says so and asks you to pick another.',
+		],
+	},
+	{
 		version: '2.1.22',
 		date: '2026-10-08',
 		title: 'Getting Started Guide & Backend Shortcuts',
