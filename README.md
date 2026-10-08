@@ -19,6 +19,13 @@ It works with two backends you likely already have installed:
 
 AI Scheduler does not call AI providers directly. It drives Claudian or Copilot — whichever you have configured — and owns only the scheduling and execution layer.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/racstan/obsidian-ai-scheduler/main/docs/media/demo.gif" alt="Planning a task in plain English: AI Scheduler creates and schedules it" width="860">
+</p>
+
+<p align="center"><em>Describe a task in plain English → AI Scheduler plans it, schedules it and runs it.</em><br>
+▶️ <a href="https://github.com/racstan/obsidian-ai-scheduler/raw/main/docs/media/demo.mp4">Watch the full walkthrough (4 min, MP4)</a>: setup guide, settings, planning, calendar, and a task running to a finished note.</p>
+
 ---
 
 ## What it can do
@@ -36,6 +43,29 @@ AI Scheduler does not call AI providers directly. It drives Claudian or Copilot 
 **Calendar export** — Keep an `.ics` file of upcoming runs up to date and import it into Google Calendar, Outlook or Apple Calendar (or subscribe to it, if you sync the file somewhere with a public link). One-way: the plugin only writes the file.
 
 **Trash & restore** — Deleted tasks go to a trash section. You can restore them individually, restore all at once, or permanently delete them.
+
+---
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="https://raw.githubusercontent.com/racstan/obsidian-ai-scheduler/main/docs/media/dashboard.png" alt="Dashboard with backend status, task counters and disabled tasks"><br><sub><b>Dashboard</b>: backend status with a shortcut to its settings, task counts, and every task in one place.</sub></td>
+    <td width="50%"><img src="https://raw.githubusercontent.com/racstan/obsidian-ai-scheduler/main/docs/media/planner.png" alt="AI planner with a highlighted folder link and attached context"><br><sub><b>AI planner</b>: describe the task in plain English; <code>@</code> attaches notes or folders, shown as highlighted links.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="https://raw.githubusercontent.com/racstan/obsidian-ai-scheduler/main/docs/media/task-details.png" alt="Task details with status, schedule, created files and prompt"><br><sub><b>Task details</b>: status, schedule, the files it created, and the full prompt.</sub></td>
+    <td><img src="https://raw.githubusercontent.com/racstan/obsidian-ai-scheduler/main/docs/media/task-editor.png" alt="Task editor with manual and AI editing modes"><br><sub><b>Task editor</b>: edit the prompt and schedule yourself, or ask the AI to rewrite them.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="https://raw.githubusercontent.com/racstan/obsidian-ai-scheduler/main/docs/media/dashboard-tasks.png" alt="Past tasks and recent activity"><br><sub><b>History</b>: past runs with view / run again, and a recent-activity log.</sub></td>
+    <td><img src="https://raw.githubusercontent.com/racstan/obsidian-ai-scheduler/main/docs/media/settings-backend.png" alt="Settings: AI backend and models"><br><sub><b>Settings</b>: pick the backend and the model for each kind of work.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="https://raw.githubusercontent.com/racstan/obsidian-ai-scheduler/main/docs/media/settings-reviews.png" alt="Settings: periodic reviews and task outputs"><br><sub><b>Periodic reviews and outputs</b>: recurring vault summaries and where results are saved.</sub></td>
+    <td><img src="https://raw.githubusercontent.com/racstan/obsidian-ai-scheduler/main/docs/media/settings-calendar-export.png" alt="Settings: calendar export and notifications"><br><sub><b>Calendar export and notifications</b>: an <code>.ics</code> feed of upcoming runs, plus in-app and desktop notices.</sub></td>
+  </tr>
+</table>
 
 ---
 
@@ -87,7 +117,11 @@ Then in **Settings → AI Scheduler**:
 3. Optionally enable **Schedule notes** to mirror tasks as vault Markdown files.
 4. Optionally enable **Periodic AI review**, choose its cadence and time, and pick a review folder.
 
-On first install the plugin creates a short **AI Scheduler - Getting started** note with these steps; reopen it any time with **AI Scheduler: Open getting started guide**. The dashboard, planner and task editor always show your backend's status with a button to open its settings.
+On first install the plugin creates a short **AI Scheduler - Getting started** note with these steps; reopen it any time with **AI Scheduler: Open getting started guide** or from **Settings → AI Scheduler → Help & community**. The dashboard, planner and task editor always show your backend's status with a button to open its settings.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/racstan/obsidian-ai-scheduler/main/docs/media/settings-notes-help.png" alt="Settings: schedule notes, release notes and the getting started guide" width="640">
+</p>
 
 ---
 
