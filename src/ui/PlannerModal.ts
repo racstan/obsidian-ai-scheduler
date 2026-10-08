@@ -8,7 +8,9 @@ import { AISchedulerPlugin } from '../main';
 import { errorText, formatDate } from '../util';
 import { cronFormFor, describeSchedule, previewSchedule } from '../schedule';
 import { createContextPicker } from './contextPicker';
-import { closeExistingSchedulerModals, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
+import { closeExistingSchedulerModals, linkLabel, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
+import { FolderSuggest } from './folderSuggest';
+import { attachLinkHighlight } from './linkHighlight';
 import { AssistantModal } from './AssistantModal';
 import { Job } from '../types';
 import { attachMentionSuggest } from './mentionSuggest';
@@ -31,6 +33,7 @@ export class PlannerModal extends Modal {
 	plugin: AISchedulerPlugin;
 	private plannedJobs: Job[] | null = null;
 	private detachMention: (() => void) | null = null;
+	private detachHighlight: (() => void) | null = null;
 
 	constructor(app: AISchedulerPlugin['app'], plugin: AISchedulerPlugin, plannedJobs: Job[] | null = null) {
 		super(app);
@@ -85,13 +88,19 @@ export class PlannerModal extends Modal {
 			};
 		}
 
-		shell.createDiv({ cls: 'ai-scheduler-form-label', text: 'What would you like AI Scheduler to do?' });
-		const textarea = shell.createEl('textarea', { cls: 'ai-scheduler-textarea ai-scheduler-textarea-tall', attr: { 'aria-label': 'What would you like AI Scheduler to do?' } });
-		textarea.placeholder = 'E.g. Every weekday at 9:00 am, review notes modified in the last 24 hours, extract action items, and create an executive summary in AI reviews (type @ to attach files)...';
-		shell.createDiv({ cls: 'ai-scheduler-hint ai-scheduler-hint-gap', text: 'Tip: Type @ in the box above to quickly search and attach vault notes/files.' });
+		const goalLabel = shell.createDiv({ cls: 'ai-scheduler-form-label', text: 'What would you like AI Scheduler to do?' });
+		const textarea = shell.createEl('textarea', { cls: 'ai-scheduler-textarea ai-scheduler-textarea-tall' });
+		linkLabel(goalLabel, textarea);
+		textarea.placeholder = 'E.g. Every weekday at 9:00 am, review notes modified in the last 24 hours, extract action items, and create an executive summary in AI reviews (type @ to attach notes or folders)...';
+		this.detachHighlight?.();
+		this.detachHighlight = attachLinkHighlight(textarea);
+		shell.createDiv({ cls: 'ai-scheduler-hint ai-scheduler-hint-gap', text: 'Tip: Type @ in the box above to search and attach notes, files or folders.' });
 
-		shell.createDiv({ cls: 'ai-scheduler-form-label', text: 'Default result folder (optional)' });
-		const resultFolder = shell.createEl('input', { type: 'text', cls: 'ai-scheduler-input ai-scheduler-form-gap', attr: { 'aria-label': 'Default result folder (optional)' }, placeholder: 'Optional result folder, e.g. AI Reviews or Projects/Notes' });
+		// The plugin-wide default lives in settings; this is just for this plan.
+		const folderLabel = shell.createDiv({ cls: 'ai-scheduler-form-label', text: 'Result folder (optional)' });
+		const resultFolder = shell.createEl('input', { type: 'text', cls: 'ai-scheduler-input ai-scheduler-form-gap', placeholder: 'Type or pick a folder, e.g. AI Reviews or Projects/Notes' });
+		linkLabel(folderLabel, resultFolder);
+		new FolderSuggest(this.app, resultFolder);
 
 		const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), [], this.app);
 
@@ -99,9 +108,9 @@ export class PlannerModal extends Modal {
 		this.detachMention = attachMentionSuggest({
 			textarea,
 			app: this.app,
-			onSelect: file => {
-				contextPicker.addPath(file.path);
-				new Notice(`Attached to context: ${file.path}`);
+			onSelect: item => {
+				contextPicker.addPath(item.path);
+				new Notice(`Attached to context: ${item.path}`);
 			},
 		});
 
@@ -143,6 +152,8 @@ export class PlannerModal extends Modal {
 	private renderResults(): void {
 		this.detachMention?.();
 		this.detachMention = null;
+		this.detachHighlight?.();
+		this.detachHighlight = null;
 		const { contentEl } = this;
 		this.modalEl.addClass('ai-scheduler-modal');
 		this.modalEl.addClass('ai-scheduler-modal-lg');
@@ -260,6 +271,8 @@ export class PlannerModal extends Modal {
 	onClose(): void {
 		this.detachMention?.();
 		this.detachMention = null;
+		this.detachHighlight?.();
+		this.detachHighlight = null;
 		releaseSchedulerModal(this);
 		this.contentEl.empty();
 	}

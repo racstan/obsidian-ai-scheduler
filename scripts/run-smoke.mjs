@@ -53,6 +53,12 @@ class Notice { constructor(text) { Notice.last = String(text); } }
 class TFile { constructor() { this.stat = { mtime: 0 }; } }
 class TFolder { constructor() { this.children = []; } }
 class TAbstractFile {}
+class AbstractInputSuggest {
+	constructor(app, inputEl) { this.app = app; this.inputEl = inputEl; }
+	setValue(value) { this.inputEl.value = value; }
+	getValue() { return this.inputEl.value; }
+	close() {}
+}
 class FuzzySuggestModal extends Modal {
 	setPlaceholder() {}
 	getItems() { return []; }
@@ -61,7 +67,7 @@ class FuzzySuggestModal extends Modal {
 }
 const normalizePath = (p) => String(p || '').replace(/\\\\/g, '/');
 module.exports = {
-	Plugin, Modal, PluginSettingTab, Notice, TFile, TFolder, TAbstractFile,
+	Plugin, Modal, PluginSettingTab, Notice, TFile, TFolder, TAbstractFile, AbstractInputSuggest,
 	FuzzySuggestModal,
 	normalizePath,
 	parseYaml: (text) => {

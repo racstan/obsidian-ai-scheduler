@@ -1,8 +1,15 @@
-import { PluginSettingTab, App, Setting, Notice } from 'obsidian';
+import { PluginSettingTab, App, Setting, Notice, TextComponent } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
 import { AISettings, BACKEND_INFO, BackendMode } from '../types';
 import { errorText } from '../util';
 import { ChangelogModal } from './ChangelogModal';
+import { FolderSuggest } from './folderSuggest';
+
+/** Adds the type-or-pick folder dropdown to a settings text field. */
+function withFolderSuggest(app: App, text: TextComponent): TextComponent {
+	new FolderSuggest(app, text.inputEl);
+	return text;
+}
 
 export class AssistantSettingTab extends PluginSettingTab {
 	plugin: AISchedulerPlugin;
@@ -313,7 +320,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 				new Setting(containerEl)
 					.setName('Periodic review folder')
 					.setDesc(`Vault folder where periodic review summaries are saved. Defaults to "${defaultReviewFolder}". Each review creates a timestamped Markdown file (e.g. YYYY-MM-DD-HHmmss.md) so past summaries are permanently preserved.`)
-					.addText(text => text
+					.addText(text => withFolderSuggest(this.app, text)
 						.setPlaceholder(defaultReviewFolder)
 						.setValue(this.plugin.settings.reportFolder)
 						.onChange(value => {
@@ -340,7 +347,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Default output folder')
 			.setDesc('Vault folder where AI task results are saved when a prompt does not specify a save location. If empty, defaults to "AI Scheduler".')
-			.addText(text => text
+			.addText(text => withFolderSuggest(this.app, text)
 				.setPlaceholder('AI Scheduler')
 				.setValue(this.plugin.settings.defaultOutputFolder)
 				.onChange(value => {
@@ -367,7 +374,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 			new Setting(containerEl)
 				.setName('Task log folder')
 				.setDesc('Vault folder where "AI SCHEDULER LOGS.md" is stored. Leave blank to use the default output folder.')
-				.addText(text => text
+				.addText(text => withFolderSuggest(this.app, text)
 					.setPlaceholder(this.plugin.getDefaultOutputFolder())
 					.setValue(this.plugin.settings.taskLogFolder)
 					.onChange(value => {
@@ -458,7 +465,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 			new Setting(containerEl)
 				.setName('Schedule notes folder')
 				.setDesc('Existing notes keep working after a rename of this folder; new notes are created here.')
-				.addText(text => text.setValue(this.plugin.settings.scheduleFolder).onChange(value => {
+				.addText(text => withFolderSuggest(this.app, text).setValue(this.plugin.settings.scheduleFolder).onChange(value => {
 					void (async () => {
 						this.plugin.settings.scheduleFolder = value.trim() || 'AI Schedules';
 						await this.plugin.saveState();

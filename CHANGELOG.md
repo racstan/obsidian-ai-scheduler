@@ -5,6 +5,20 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.18] - 2026-10-08
+
+### Highlights
+- **Result folder picker**: type a path or pick any folder (subfolders included) from a dropdown in the planner, the task editor and settings.
+- **Better @ mentions**: `@` now finds folders as well as notes and files, and `[[links]]` in prompts are highlighted.
+- **Theme-aware sizing**: text sizes and corner rounding follow your Obsidian appearance settings and theme.
+
+### Changed
+- "Default result folder" is now "Result folder"; the plugin-wide default stays in settings.
+- Form fields no longer show a hover tooltip that repeats their label.
+
+### Fixed
+- Plugin description no longer mentions "Obsidian" (required by the plugin review).
+
 ## [2.1.17] - 2026-10-08
 
 Versioning returns to [Semantic Versioning](https://semver.org/) (`x.y.z`), which the Obsidian plugin review requires. 2.1.17 is newer than every earlier release, including 2.1.7.x.

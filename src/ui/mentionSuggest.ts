@@ -1,20 +1,20 @@
 /*
  * Autocomplete / @mention suggestion handler for prompt textareas.
- * Enables users to type "@" to search and attach vault notes/files in plain language.
+ * Enables users to type "@" to search and attach vault notes, files and folders.
  */
-import { App, TFile } from 'obsidian';
+import { App, TAbstractFile, TFile, TFolder } from 'obsidian';
 
 export interface MentionSuggestOptions {
 	textarea: HTMLTextAreaElement;
 	app: App;
-	onSelect?: (file: TFile) => void;
+	onSelect?: (item: TAbstractFile) => void;
 }
 
 export function attachMentionSuggest(options: MentionSuggestOptions): () => void {
 	const { textarea, app, onSelect } = options;
 	let popup: HTMLElement | null = null;
 	let selectedIndex = 0;
-	let matches: TFile[] = [];
+	let matches: TAbstractFile[] = [];
 	let queryStartIndex = -1;
 
 	const removePopup = () => {
@@ -29,18 +29,23 @@ export function attachMentionSuggest(options: MentionSuggestOptions): () => void
 		queryStartIndex = -1;
 	};
 
-	const getVaultFiles = (query: string): TFile[] => {
+	const nameOf = (item: TAbstractFile) => item instanceof TFile ? item.basename : item.name;
+
+	const getVaultItems = (query: string): TAbstractFile[] => {
 		const q = query.toLowerCase().trim();
-		const all = app.vault.getFiles().filter(f => !f.path.startsWith('.'));
+		// Files and folders (not the vault root), skipping hidden paths such as .obsidian.
+		const all = app.vault.getAllLoadedFiles().filter(f =>
+			(f instanceof TFile || (f instanceof TFolder && !f.isRoot()))
+			&& !f.path.split('/').some(part => part.startsWith('.')));
 		if (!q) {
 			return all.slice(0, 10);
 		}
 		const filtered = all.filter(f =>
-			f.basename.toLowerCase().includes(q) || f.path.toLowerCase().includes(q)
+			nameOf(f).toLowerCase().includes(q) || f.path.toLowerCase().includes(q)
 		);
 		filtered.sort((a, b) => {
-			const aBase = a.basename.toLowerCase();
-			const bBase = b.basename.toLowerCase();
+			const aBase = nameOf(a).toLowerCase();
+			const bBase = nameOf(b).toLowerCase();
 			if (aBase === q) return -1;
 			if (bBase === q) return 1;
 			if (aBase.startsWith(q) && !bBase.startsWith(q)) return -1;
@@ -50,21 +55,27 @@ export function attachMentionSuggest(options: MentionSuggestOptions): () => void
 		return filtered.slice(0, 10);
 	};
 
-	const insertSelection = (file: TFile) => {
+	const insertSelection = (item: TAbstractFile) => {
 		if (queryStartIndex < 0) return;
 		const text = textarea.value;
 		const cursor = textarea.selectionStart;
 		const before = text.slice(0, queryStartIndex);
 		const after = text.slice(cursor);
-		// Shortest unambiguous link text, so notes with duplicate basenames resolve correctly.
-		const mentionText = `[[${app.metadataCache.fileToLinktext(file, '')}]]`;
+		// Files: shortest unambiguous link text, so duplicate basenames resolve correctly.
+		// Folders can't be wikilinked, so they're shown as [[path/]]; the folder itself
+		// is passed to the AI through the attached context.
+		const mentionText = item instanceof TFile
+			? `[[${app.metadataCache.fileToLinktext(item, '')}]]`
+			: `[[${item.path}/]]`;
 		textarea.value = `${before}${mentionText} ${after}`;
 		const nextCursor = before.length + mentionText.length + 1;
 		textarea.setSelectionRange(nextCursor, nextCursor);
 		textarea.focus();
 		removePopup();
+		// Programmatic edits don't fire 'input'; listeners such as link highlighting need it.
+		textarea.dispatchEvent(new Event('input', { bubbles: true }));
 		if (onSelect) {
-			onSelect(file);
+			onSelect(item);
 		}
 	};
 
@@ -84,25 +95,25 @@ export function attachMentionSuggest(options: MentionSuggestOptions): () => void
 		popup.empty();
 
 		const header = popup.createDiv({ cls: 'ai-scheduler-mention-header' });
-		header.createSpan({ text: '📄 Vault files (press Enter to attach)' });
+		header.createSpan({ text: 'Notes, files and folders (press Enter to attach)' });
 
-		const list = popup.createDiv({ cls: 'ai-scheduler-mention-list', attr: { id: popupId, role: 'listbox', 'aria-label': 'Vault files' } });
-		matches.forEach((file, index) => {
+		const list = popup.createDiv({ cls: 'ai-scheduler-mention-list', attr: { id: popupId, role: 'listbox', 'aria-label': 'Notes, files and folders' } });
+		matches.forEach((item, index) => {
 			const isSelected = index === selectedIndex;
-			const item = list.createDiv({
+			const row = list.createDiv({
 				cls: `ai-scheduler-mention-item ${isSelected ? 'is-selected' : ''}`,
 				attr: { id: `${popupId}-${index}`, role: 'option', 'aria-selected': String(isSelected) },
 			});
-			item.createSpan({ cls: 'ai-scheduler-mention-icon', text: '📄' });
-			const info = item.createDiv({ cls: 'ai-scheduler-mention-info' });
-			info.createDiv({ cls: 'ai-scheduler-mention-name', text: file.basename });
-			if (file.parent && file.parent.path && file.parent.path !== '/') {
-				info.createDiv({ cls: 'ai-scheduler-mention-path', text: file.parent.path });
+			row.createSpan({ cls: 'ai-scheduler-mention-icon', text: item instanceof TFolder ? '📁' : '📄' });
+			const info = row.createDiv({ cls: 'ai-scheduler-mention-info' });
+			info.createDiv({ cls: 'ai-scheduler-mention-name', text: nameOf(item) });
+			if (item.parent && item.parent.path && item.parent.path !== '/') {
+				info.createDiv({ cls: 'ai-scheduler-mention-path', text: item.parent.path });
 			}
 
-			item.addEventListener('mousedown', (e) => {
+			row.addEventListener('mousedown', (e) => {
 				e.preventDefault();
-				insertSelection(file);
+				insertSelection(item);
 			});
 		});
 
@@ -124,7 +135,7 @@ export function attachMentionSuggest(options: MentionSuggestOptions): () => void
 		if (atMatch && atMatch.index !== undefined) {
 			queryStartIndex = atMatch.index;
 			const query = atMatch[1];
-			matches = getVaultFiles(query);
+			matches = getVaultItems(query);
 			selectedIndex = 0;
 			renderPopup();
 		} else {

@@ -34,3 +34,9 @@ export function getFrontMatterInfo(content: string): { exists: boolean; frontmat
 	const end = lines[0] === '---' ? lines.indexOf('---', 1) : -1;
 	return end < 0 ? { exists: false, frontmatter: '' } : { exists: true, frontmatter: lines.slice(1, end).join('\n') };
 }
+
+export class AbstractInputSuggest<T> {
+	constructor(public app: unknown, public inputEl: HTMLInputElement | HTMLDivElement) {}
+	close(): void {}
+	protected suggestionType?: T;
+}

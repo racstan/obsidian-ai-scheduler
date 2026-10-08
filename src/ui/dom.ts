@@ -46,6 +46,18 @@ export function liveRefresh(root: HTMLElement, signature: () => string, render: 
 	};
 }
 
+let labelCounter = 0;
+
+/**
+ * Names a form control after its visible label for screen readers. Uses
+ * aria-labelledby rather than aria-label, because Obsidian shows every
+ * aria-label as a hover tooltip, which duplicates the visible label.
+ */
+export function linkLabel(label: HTMLElement, control: HTMLElement): void {
+	if (!label.id) label.id = `ai-scheduler-label-${++labelCounter}`;
+	control.setAttribute('aria-labelledby', label.id);
+}
+
 /**
  * Makes a non-button element (badge, cell, chip) behave like a button for
  * keyboard and screen-reader users: focusable, labelled, and activated with

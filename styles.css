@@ -55,7 +55,7 @@
 }
 
 .ai-scheduler-title {
-	font-size: 28px;
+	font-size: calc(var(--font-ui-large) * 1.4);
 	font-weight: 700;
 	margin: 0 0 6px;
 	letter-spacing: -0.02em;
@@ -63,20 +63,20 @@
 }
 
 .ai-scheduler-title-sm {
-	font-size: 24px;
+	font-size: calc(var(--font-ui-large) * 1.2);
 }
 
 .ai-scheduler-subtitle {
 	margin: 0 0 20px;
 	color: var(--text-muted);
 	max-width: 580px;
-	font-size: 13.5px;
+	font-size: var(--font-ui-small);
 	line-height: 1.5;
 }
 
 .ai-scheduler-eyebrow {
 	color: var(--interactive-accent);
-	font-size: 11px;
+	font-size: var(--font-ui-smaller);
 	font-weight: 700;
 	letter-spacing: 0.1em;
 	text-transform: uppercase;
@@ -116,7 +116,7 @@
 }
 
 .ai-scheduler-stat-value {
-	font-size: 22px;
+	font-size: calc(var(--font-ui-large) * 1.1);
 	font-weight: 700;
 	color: var(--text-normal);
 	letter-spacing: -0.02em;
@@ -125,7 +125,7 @@
 
 .ai-scheduler-stat-label {
 	margin-top: 4px;
-	font-size: 10.5px;
+	font-size: var(--font-ui-smaller);
 	font-weight: 600;
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
@@ -141,14 +141,14 @@
 
 .ai-scheduler-section-title {
 	margin: 0;
-	font-size: 16px;
+	font-size: var(--font-ui-medium);
 	font-weight: 600;
 	color: var(--text-normal);
 }
 
 .ai-scheduler-section-desc {
 	color: var(--text-faint);
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 }
 
 .ai-scheduler-row-actions {
@@ -168,7 +168,7 @@
 
 .ai-scheduler-empty-sub {
 	margin-top: 4px;
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	color: var(--text-faint);
 }
 
@@ -191,33 +191,33 @@
 
 .ai-scheduler-task-title {
 	font-weight: 600;
-	font-size: 13.5px;
+	font-size: var(--font-ui-small);
 	color: var(--text-normal);
 }
 
 .ai-scheduler-task-meta {
 	margin-top: 4px;
 	color: var(--text-muted);
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 }
 
 .ai-scheduler-task-next {
 	margin-top: 5px;
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	font-weight: 500;
 	color: var(--interactive-accent);
 }
 
 .ai-scheduler-task-paused {
 	margin-top: 5px;
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	color: var(--text-faint);
 }
 
 .ai-scheduler-task-prompt {
 	margin-top: 8px;
 	white-space: pre-wrap;
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 }
 
 /* ---- Alert / Warning Banner -------------------------------------------- */
@@ -243,28 +243,28 @@
 }
 
 .ai-scheduler-alert-icon {
-	font-size: 22px;
+	font-size: calc(var(--font-ui-large) * 1.1);
 	line-height: 1;
 	flex-shrink: 0;
 }
 
 .ai-scheduler-alert-title {
 	font-weight: 600;
-	font-size: 13.5px;
+	font-size: var(--font-ui-small);
 	color: var(--text-normal);
 	margin-bottom: 2px;
 }
 
 .ai-scheduler-alert-desc {
 	color: var(--text-muted);
-	font-size: 12.5px;
+	font-size: var(--font-ui-small);
 	line-height: 1.45;
 }
 
 .ai-scheduler-alert-btn {
 	flex-shrink: 0;
 	white-space: nowrap;
-	font-size: 12.5px;
+	font-size: var(--font-ui-small);
 	font-weight: 500;
 	padding: 6px 14px;
 	border-radius: var(--radius-s, 4px);
@@ -287,7 +287,7 @@
 	height: 100%;
 	min-height: 120px;
 	color: var(--text-muted);
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 }
 
 .ai-scheduler-activity-row {
@@ -297,7 +297,7 @@
 	gap: 12px;
 	padding: 9px 0;
 	border-bottom: 1px solid var(--background-modifier-border);
-	font-size: 12.5px;
+	font-size: var(--font-ui-small);
 	color: var(--text-normal);
 }
 
@@ -320,10 +320,10 @@
 }
 
 .ai-scheduler-act-badge {
-	font-size: 10px;
+	font-size: var(--font-ui-smaller);
 	font-weight: 700;
 	padding: 2px 6px;
-	border-radius: 4px;
+	border-radius: var(--radius-s);
 	letter-spacing: 0.03em;
 	text-transform: uppercase;
 	flex-shrink: 0;
@@ -374,7 +374,7 @@
 
 .ai-scheduler-activity-time {
 	color: var(--text-faint);
-	font-size: 11px;
+	font-size: var(--font-ui-smaller);
 	white-space: nowrap;
 }
 
@@ -394,12 +394,12 @@
 
 .ai-scheduler-task-id-badge {
 	font-family: var(--font-monospace, monospace);
-	font-size: 11px;
+	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);
 	background: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
 	padding: 1px 6px;
-	border-radius: 4px;
+	border-radius: var(--radius-s);
 	cursor: pointer;
 	user-select: all;
 	transition: all 0.15s ease;
@@ -417,7 +417,7 @@
 	gap: 6px;
 	padding: 2px 8px;
 	border-radius: 9999px;
-	font-size: 11px;
+	font-size: var(--font-ui-smaller);
 	font-weight: 600;
 	letter-spacing: 0.02em;
 }
@@ -553,7 +553,7 @@
 	padding: 24px 16px;
 	text-align: center;
 	color: var(--text-muted);
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 }
 
 .ai-scheduler-button-danger {
@@ -578,7 +578,7 @@
 	border-radius: var(--radius-s, 4px);
 	background: var(--background-primary);
 	color: var(--text-normal);
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 }
 
 .ai-scheduler-input:focus {
@@ -601,7 +601,7 @@
 	border-radius: var(--radius-m, 8px);
 	background: var(--background-primary);
 	color: var(--text-normal);
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 }
 
 .ai-scheduler-textarea:focus {
@@ -633,7 +633,7 @@
 	border-radius: var(--radius-s, 4px);
 	background: var(--background-primary);
 	color: var(--text-normal);
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 }
 
 /* ---- Planner ------------------------------------------------------------ */
@@ -641,7 +641,7 @@
 .ai-scheduler-form-label {
 	color: var(--text-normal);
 	font-weight: 500;
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 	margin-bottom: 6px;
 }
 
@@ -651,7 +651,7 @@
 
 .ai-scheduler-hint {
 	color: var(--text-muted);
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	line-height: 1.4;
 }
 
@@ -690,14 +690,14 @@
 }
 
 .ai-scheduler-planning-title {
-	font-size: 15px;
+	font-size: var(--font-ui-medium);
 	font-weight: 600;
 	color: var(--text-normal);
 	margin-bottom: 6px;
 }
 
 .ai-scheduler-planning-subtitle {
-	font-size: 12.5px;
+	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 	max-width: 440px;
 	line-height: 1.45;
@@ -733,7 +733,7 @@
 .ai-scheduler-result-table {
 	width: 100%;
 	border-collapse: collapse;
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 	margin-bottom: 20px;
 }
 
@@ -759,14 +759,14 @@
 }
 
 .ai-scheduler-result-table code {
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 }
 
 /* ---- Job editor ---------------------------------------------------------- */
 
 .ai-scheduler-lead {
 	font-weight: 600;
-	font-size: 14px;
+	font-size: var(--font-ui-medium);
 	color: var(--text-normal);
 }
 
@@ -794,7 +794,7 @@
 }
 
 .ai-scheduler-field-label {
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 	margin: 10px 0 4px;
 }
@@ -807,7 +807,7 @@
 
 .ai-scheduler-preview {
 	margin-top: 10px;
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 	line-height: 1.6;
 }
@@ -817,7 +817,7 @@
 }
 
 .ai-scheduler-example {
-	font-size: 11px;
+	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);
 	margin-top: 6px;
 	line-height: 1.5;
@@ -834,7 +834,7 @@
 	border: 1px solid var(--background-modifier-border);
 	color: var(--text-muted);
 	padding: 5px 12px;
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	font-weight: 500;
 	border-radius: var(--radius-s, 4px);
 	cursor: pointer;
@@ -871,9 +871,9 @@
 	gap: 6px;
 	background: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 16px;
+	border-radius: var(--radius-xl);
 	padding: 4px 10px;
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	color: var(--text-normal);
 	transition: border-color 0.15s ease;
 }
@@ -883,12 +883,12 @@
 }
 
 .ai-scheduler-chip-icon {
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 }
 
 .ai-scheduler-chip-text {
 	font-family: var(--font-monospace, monospace);
-	font-size: 11.5px;
+	font-size: var(--font-ui-small);
 	max-width: 320px;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -898,7 +898,7 @@
 .ai-scheduler-chip-remove {
 	cursor: pointer;
 	color: var(--text-muted);
-	font-size: 11px;
+	font-size: var(--font-ui-smaller);
 	margin-left: 2px;
 	transition: color 0.15s ease;
 }
@@ -908,7 +908,7 @@
 }
 
 .ai-scheduler-context-empty {
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	color: var(--text-faint);
 	font-style: italic;
 	padding: 4px 0;
@@ -942,7 +942,7 @@
 
 .ai-scheduler-mention-header {
 	padding: 6px 12px;
-	font-size: 11px;
+	font-size: var(--font-ui-smaller);
 	font-weight: 600;
 	color: var(--text-muted);
 	border-bottom: 1px solid var(--background-modifier-border);
@@ -961,7 +961,7 @@
 	gap: 8px;
 	padding: 7px 12px;
 	cursor: pointer;
-	font-size: 12.5px;
+	font-size: var(--font-ui-small);
 	color: var(--text-normal);
 	transition: background-color 0.1s ease;
 }
@@ -973,7 +973,7 @@
 }
 
 .ai-scheduler-mention-icon {
-	font-size: 14px;
+	font-size: var(--font-ui-medium);
 	flex-shrink: 0;
 }
 
@@ -992,7 +992,7 @@
 }
 
 .ai-scheduler-mention-path {
-	font-size: 10.5px;
+	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -1036,14 +1036,14 @@
 
 .ai-scheduler-changelog-title {
 	margin: 0 0 4px 0;
-	font-size: 22px;
+	font-size: calc(var(--font-ui-large) * 1.1);
 	font-weight: 600;
 	color: var(--text-normal);
 }
 
 .ai-scheduler-changelog-subtitle {
 	margin: 0;
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 }
 
@@ -1061,7 +1061,7 @@
 	border: 1px solid var(--background-modifier-border);
 	color: var(--text-muted);
 	cursor: pointer;
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 	font-weight: 500;
 	transition: all 0.15s ease;
 }
@@ -1116,9 +1116,9 @@
 	background: var(--background-modifier-accent);
 	color: var(--text-normal);
 	font-weight: 700;
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	padding: 2px 8px;
-	border-radius: 12px;
+	border-radius: var(--radius-l);
 	border: 1px solid var(--background-modifier-border);
 }
 
@@ -1130,12 +1130,12 @@
 
 .ai-scheduler-release-name {
 	font-weight: 600;
-	font-size: 14px;
+	font-size: var(--font-ui-medium);
 	color: var(--text-normal);
 }
 
 .ai-scheduler-release-date {
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	color: var(--text-faint);
 }
 
@@ -1143,12 +1143,12 @@
 	background: var(--background-primary);
 	border-left: 3px solid var(--interactive-accent);
 	padding: 10px 14px;
-	border-radius: 4px;
+	border-radius: var(--radius-s);
 	margin-bottom: 12px;
 }
 
 .ai-scheduler-changelog-section-heading {
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	font-weight: 600;
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
@@ -1187,7 +1187,7 @@
 	border: 1px solid var(--background-modifier-border);
 	padding: 4px 10px;
 	border-radius: var(--radius-m, 6px);
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	color: var(--text-normal);
 	text-decoration: none;
 	transition: all 0.15s ease;
@@ -1209,7 +1209,7 @@
 
 .ai-scheduler-contributor-role {
 	color: var(--text-faint);
-	font-size: 11px;
+	font-size: var(--font-ui-smaller);
 }
 
 .ai-scheduler-release-card ul {
@@ -1218,7 +1218,7 @@
 }
 
 .ai-scheduler-release-card li {
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 	line-height: 1.5;
 	color: var(--text-normal);
 	margin-bottom: 4px;
@@ -1241,12 +1241,12 @@
 }
 
 .ai-scheduler-changelog-footer .setting-item-name {
-	font-size: 12.5px;
+	font-size: var(--font-ui-small);
 	font-weight: 500;
 }
 
 .ai-scheduler-changelog-footer .setting-item-description {
-	font-size: 11.5px;
+	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 }
 
@@ -1270,7 +1270,7 @@
 	background: var(--background-secondary);
 	border: 1px solid var(--background-modifier-border);
 	cursor: pointer;
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 	padding: 6px 14px;
 	border-radius: var(--radius-m, 6px);
 	transition: all 0.15s ease;
@@ -1306,20 +1306,20 @@
 
 .ai-scheduler-about-card .ai-scheduler-about-title {
 	margin: 0;
-	font-size: 16px;
+	font-size: var(--font-ui-medium);
 	font-weight: 600;
 	color: var(--text-normal);
 }
 
 .ai-scheduler-about-desc {
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 	line-height: 1.5;
 	color: var(--text-muted);
 	margin-bottom: 12px;
 }
 
 .ai-scheduler-about-meta {
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	color: var(--text-faint);
 	display: flex;
 	align-items: center;
@@ -1350,7 +1350,7 @@
 }
 
 .ai-scheduler-view-val {
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 	font-weight: 500;
 	color: var(--text-normal);
 	margin-top: 3px;
@@ -1390,7 +1390,7 @@
 }
 
 .ai-scheduler-file-icon {
-	font-size: 18px;
+	font-size: var(--font-ui-large);
 	flex-shrink: 0;
 }
 
@@ -1401,7 +1401,7 @@
 
 .ai-scheduler-file-path {
 	font-family: var(--font-monospace, monospace);
-	font-size: 12.5px;
+	font-size: var(--font-ui-small);
 	font-weight: 600;
 	color: var(--text-normal);
 	word-break: break-all;
@@ -1412,18 +1412,18 @@
 	align-items: center;
 	gap: 6px;
 	flex-wrap: wrap;
-	font-size: 11.5px;
+	font-size: var(--font-ui-small);
 	color: var(--text-faint);
 	margin-top: 3px;
 }
 
 .ai-scheduler-file-badge {
-	font-size: 10px;
+	font-size: var(--font-ui-smaller);
 	font-weight: 600;
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
 	padding: 1px 6px;
-	border-radius: 4px;
+	border-radius: var(--radius-s);
 	background: var(--background-modifier-hover);
 	color: var(--text-muted);
 	border: 1px solid var(--background-modifier-border);
@@ -1445,7 +1445,7 @@
 
 .ai-scheduler-open-file-btn {
 	padding: 4px 10px;
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	font-weight: 500;
 	border-radius: var(--radius-s, 4px);
 	flex-shrink: 0;
@@ -1453,7 +1453,7 @@
 }
 
 .ai-scheduler-prompt-preview {
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 	line-height: 1.5;
 	color: var(--text-normal);
 	white-space: pre-wrap;
@@ -1462,7 +1462,7 @@
 }
 
 .ai-scheduler-reply-preview {
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 	line-height: 1.55;
 	color: var(--text-normal);
 	white-space: pre-wrap;
@@ -1502,20 +1502,20 @@
 
 .ai-scheduler-planning-live-title {
 	font-weight: 600;
-	font-size: 13.5px;
+	font-size: var(--font-ui-small);
 	color: var(--text-accent);
 }
 
 .ai-scheduler-planning-live-goal {
 	margin-top: 6px;
-	font-size: 12.5px;
+	font-size: var(--font-ui-small);
 	color: var(--text-normal);
 	font-style: italic;
 }
 
 .ai-scheduler-planning-live-sub {
 	margin-top: 4px;
-	font-size: 11.5px;
+	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 }
 
@@ -1532,7 +1532,7 @@
 .ai-scheduler-past-due-desc {
 	margin-bottom: 20px;
 	color: var(--text-normal);
-	font-size: 13.5px;
+	font-size: var(--font-ui-small);
 	line-height: 1.5;
 }
 
@@ -1570,7 +1570,7 @@
 .ai-scheduler-tab-btn {
 	flex: 1;
 	padding: 8px 14px;
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 	font-weight: 500;
 	border-radius: var(--radius-s, 6px);
 	border: none;
@@ -1595,7 +1595,7 @@
 .ai-scheduler-required-asterisk {
 	color: var(--text-error);
 	font-weight: 700;
-	font-size: 13.5px;
+	font-size: var(--font-ui-small);
 	margin-left: 2px;
 	vertical-align: middle;
 	line-height: 1;
@@ -1615,7 +1615,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	display: inline-flex;
 	align-items: center;
 	padding: 2px 7px;
-	font-size: 11px;
+	font-size: var(--font-ui-smaller);
 	font-weight: 600;
 	border-radius: var(--radius-s, 4px);
 	background: rgba(var(--color-red-rgb), 0.12);
@@ -1686,7 +1686,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	padding: 0;
 	border-radius: var(--radius-s, 6px);
 	cursor: pointer;
-	font-size: 18px;
+	font-size: var(--font-ui-large);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -1700,7 +1700,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-month-title {
-	font-size: 15px;
+	font-size: var(--font-ui-medium);
 	font-weight: 700;
 	color: var(--text-normal);
 	min-width: 140px;
@@ -1709,7 +1709,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-cal-today-btn {
 	padding: 4px 10px;
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	font-weight: 600;
 	border-radius: var(--radius-s, 6px);
 	cursor: pointer;
@@ -1725,7 +1725,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-select {
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	padding: 4px 8px;
 	border-radius: var(--radius-s, 6px);
 }
@@ -1741,11 +1741,11 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-cal-toggle-btn {
 	padding: 4px 10px;
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	border: none;
 	background: transparent;
 	cursor: pointer;
-	border-radius: 4px;
+	border-radius: var(--radius-s);
 	color: var(--text-muted);
 	transition: all 0.15s ease;
 }
@@ -1797,7 +1797,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-cal-weekday-cell {
 	text-align: center;
-	font-size: 11.5px;
+	font-size: var(--font-ui-small);
 	font-weight: 700;
 	color: var(--text-muted);
 	text-transform: uppercase;
@@ -1860,16 +1860,16 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-day-num {
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	font-weight: 700;
 	color: var(--text-normal);
 }
 
 .ai-scheduler-cal-count-badge {
-	font-size: 10px;
+	font-size: var(--font-ui-smaller);
 	font-weight: 700;
 	padding: 1px 5px;
-	border-radius: 10px;
+	border-radius: var(--radius-l);
 	background: var(--interactive-accent);
 	color: var(--text-on-accent);
 	line-height: 1.2;
@@ -1893,13 +1893,13 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-cal-chips::-webkit-scrollbar-thumb {
 	background: var(--background-modifier-border);
-	border-radius: 3px;
+	border-radius: var(--radius-s);
 }
 
 .ai-scheduler-cal-chip {
-	font-size: 10.5px;
+	font-size: var(--font-ui-smaller);
 	padding: 2px 5px;
-	border-radius: 4px;
+	border-radius: var(--radius-s);
 	background: var(--background-modifier-hover);
 	border: 1px solid var(--background-modifier-border);
 	display: flex;
@@ -1954,7 +1954,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-chip-check {
-	font-size: 10px;
+	font-size: var(--font-ui-smaller);
 	font-weight: 800;
 	color: var(--color-green);
 	flex-shrink: 0;
@@ -1964,7 +1964,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 .ai-scheduler-cal-chip-time {
 	font-weight: 700;
 	color: var(--text-accent, var(--interactive-accent));
-	font-size: 9.5px;
+	font-size: var(--font-ui-smaller);
 	flex-shrink: 0;
 }
 
@@ -1977,7 +1977,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-chip-more {
-	font-size: 10px;
+	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
 	text-align: center;
 	padding: 1px 0;
@@ -2014,13 +2014,13 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-warning-icon {
-	font-size: 18px;
+	font-size: var(--font-ui-large);
 	flex-shrink: 0;
 	line-height: 1.2;
 }
 
 .ai-scheduler-warning-body {
-	font-size: 12.5px;
+	font-size: var(--font-ui-small);
 	line-height: 1.5;
 	color: var(--text-normal);
 }
@@ -2050,13 +2050,13 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-cal-panel-title {
 	margin: 0;
-	font-size: 15px;
+	font-size: var(--font-ui-medium);
 	font-weight: 700;
 	color: var(--text-normal);
 }
 
 .ai-scheduler-cal-panel-subtitle {
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 	margin-top: 2px;
 }
@@ -2102,10 +2102,10 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-time-badge {
-	font-size: 11.5px;
+	font-size: var(--font-ui-small);
 	font-weight: 700;
 	padding: 3px 8px;
-	border-radius: 4px;
+	border-radius: var(--radius-s);
 	background: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
 	color: var(--interactive-accent);
@@ -2126,7 +2126,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-cal-item-title {
 	margin: 0;
-	font-size: 14px;
+	font-size: var(--font-ui-medium);
 	font-weight: 600;
 	color: var(--text-normal);
 }
@@ -2146,12 +2146,12 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-prompt-preview {
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 	font-style: italic;
 	background: var(--background-primary);
 	padding: 6px 10px;
-	border-radius: 4px;
+	border-radius: var(--radius-s);
 	border-left: 2px solid var(--interactive-accent);
 	line-height: 1.4;
 }
@@ -2172,7 +2172,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-agenda-date-header {
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 	font-weight: 700;
 	color: var(--text-accent, var(--interactive-accent));
 	padding: 10px 0 4px;
@@ -2195,7 +2195,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-agenda-time {
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	font-weight: 600;
 	width: 75px;
 	flex-shrink: 0;
@@ -2208,13 +2208,13 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-agenda-title {
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 	font-weight: 600;
 	color: var(--text-normal);
 }
 
 .ai-scheduler-cal-agenda-sub {
-	font-size: 11.5px;
+	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 	margin-top: 2px;
 }
@@ -2237,12 +2237,12 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-cal-event-head h4 {
 	margin: 0 0 4px 0;
-	font-size: 14px;
+	font-size: var(--font-ui-medium);
 	font-weight: 600;
 }
 
 .ai-scheduler-cal-event-desc {
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 }
 
@@ -2258,7 +2258,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	gap: 4px;
 	padding: 10px;
 	background: var(--background-secondary-alt);
-	border-radius: 6px;
+	border-radius: var(--radius-s);
 	border: 1px solid var(--background-modifier-border);
 }
 
@@ -2270,11 +2270,11 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-cal-event-title {
 	font-weight: 600;
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 }
 
 .ai-scheduler-cal-event-sub {
-	font-size: 11.5px;
+	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 }
 
@@ -2303,7 +2303,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	background: var(--background-secondary);
 	border: 1px solid var(--background-modifier-border);
 	color: var(--text-normal);
-	font-size: 12.5px;
+	font-size: var(--font-ui-small);
 	font-weight: 500;
 	cursor: pointer;
 	transition: all 0.15s ease;
@@ -2317,7 +2317,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-day-page-title {
-	font-size: 24px;
+	font-size: calc(var(--font-ui-large) * 1.2);
 	font-weight: 700;
 	margin: 2px 0 6px 0;
 	letter-spacing: -0.02em;
@@ -2330,7 +2330,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-cal-day-nav-btn {
 	padding: 5px 14px;
-	font-size: 12.5px;
+	font-size: var(--font-ui-small);
 	font-weight: 600;
 	border-radius: var(--radius-s, 6px);
 	cursor: pointer;
@@ -2377,7 +2377,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-day-rel-badge {
-	font-size: 11px;
+	font-size: var(--font-ui-smaller);
 	font-weight: 700;
 	padding: 2px 8px;
 	border-radius: 9999px;
@@ -2416,13 +2416,13 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-day-count-badge {
-	font-size: 11px;
+	font-size: var(--font-ui-smaller);
 	font-weight: 600;
 	color: var(--text-muted);
 }
 
 .ai-scheduler-cal-day-hero-title {
-	font-size: 20px;
+	font-size: var(--font-ui-large);
 	font-weight: 700;
 	margin: 0 0 4px 0;
 	color: var(--text-normal);
@@ -2430,7 +2430,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-day-hero-subtitle {
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 }
 
@@ -2464,7 +2464,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-day-stat-num {
-	font-size: 18px;
+	font-size: var(--font-ui-large);
 	font-weight: 700;
 	color: var(--text-normal);
 	line-height: 1.2;
@@ -2484,7 +2484,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-cal-day-stat-label {
 	margin-top: 2px;
-	font-size: 10px;
+	font-size: var(--font-ui-smaller);
 	font-weight: 600;
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
@@ -2542,10 +2542,10 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-day-time-badge {
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	font-weight: 700;
 	padding: 4px 8px;
-	border-radius: 6px;
+	border-radius: var(--radius-s);
 	background: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
 	color: var(--text-accent, var(--interactive-accent));
@@ -2553,7 +2553,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-day-kind-tag {
-	font-size: 9.5px;
+	font-size: var(--font-ui-smaller);
 	font-weight: 700;
 	text-transform: uppercase;
 	letter-spacing: 0.06em;
@@ -2574,7 +2574,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-cal-day-card-title {
 	margin: 0;
-	font-size: 15px;
+	font-size: var(--font-ui-medium);
 	font-weight: 600;
 	color: var(--text-normal);
 }
@@ -2596,7 +2596,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-day-prompt-label {
-	font-size: 10px;
+	font-size: var(--font-ui-smaller);
 	font-weight: 700;
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
@@ -2605,7 +2605,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-day-prompt-text {
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	color: var(--text-normal);
 	line-height: 1.45;
 	font-style: italic;
@@ -2615,7 +2615,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-cal-day-last-run {
 	margin-top: 8px;
-	font-size: 11.5px;
+	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 	display: flex;
 	gap: 6px;
@@ -2630,7 +2630,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-cal-day-last-run-result {
 	font-family: var(--font-monospace, monospace);
-	font-size: 11px;
+	font-size: var(--font-ui-smaller);
 }
 
 .ai-scheduler-cal-day-actions {
@@ -2656,20 +2656,20 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-cal-day-empty-icon {
-	font-size: 38px;
+	font-size: calc(var(--font-ui-large) * 1.9);
 	margin-bottom: 12px;
 	line-height: 1;
 }
 
 .ai-scheduler-cal-day-empty-title {
-	font-size: 17px;
+	font-size: var(--font-ui-large);
 	font-weight: 700;
 	margin: 0 0 6px 0;
 	color: var(--text-normal);
 }
 
 .ai-scheduler-cal-day-empty-desc {
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 	max-width: 480px;
 	line-height: 1.5;
@@ -2721,4 +2721,65 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	.ai-scheduler-cal-back-btn:hover {
 		transform: none;
 	}
+}
+
+/* ---- Highlighted [[links]] in prompt boxes (see src/ui/linkHighlight.ts) ----
+ * The backdrop carries the same classes as the textarea (padding, font,
+ * border), sits behind it, and draws the highlight boxes; the textarea on top
+ * is transparent. Both reserve the scrollbar gutter so lines wrap identically. */
+.ai-scheduler-highlight-wrap {
+	position: relative;
+}
+
+.ai-scheduler-highlight-wrap:has(> .ai-scheduler-textarea-tall) {
+	margin: 10px 0 8px;
+}
+
+.ai-scheduler-highlight-wrap:has(> .ai-scheduler-textarea-ai) {
+	margin-bottom: 12px;
+}
+
+.ai-scheduler-highlight-wrap:has(> .ai-scheduler-form-gap) {
+	margin-bottom: 12px;
+}
+
+.ai-scheduler-highlight-wrap > textarea.ai-scheduler-highlight-input {
+	position: relative;
+	z-index: 1;
+	margin: 0;
+	display: block;
+	background: transparent;
+	scrollbar-gutter: stable;
+}
+
+.ai-scheduler-highlight-backdrop {
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	margin: 0;
+	min-height: 0;
+	overflow: hidden;
+	scrollbar-gutter: stable;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+	color: transparent;
+	border-color: transparent;
+	pointer-events: none;
+	resize: none;
+}
+
+.ai-scheduler-link-mark {
+	border-radius: var(--radius-s);
+	background: hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.25);
+	box-shadow: 0 1px 0 hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.6);
+}
+
+/* ---- Folder dropdown (Obsidian's suggestion popover) ---- */
+.ai-scheduler-folder-suggestion-name {
+	color: var(--text-normal);
+}
+
+.ai-scheduler-folder-suggestion-path {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
 }

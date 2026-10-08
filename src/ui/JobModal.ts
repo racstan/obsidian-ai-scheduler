@@ -5,9 +5,13 @@ import { SCHEDULE_KINDS, ScheduleKind, TaskSchedule } from '../types';
 import { DAY_SHORT_NAMES, MONTH_NAMES, formatMultiRules, getScheduleNextRun, normalizeMaxIterations, parseMultiRulesText, previewSchedule, validClock } from '../schedule';
 import { validateCron } from '../cron';
 import { createContextPicker } from './contextPicker';
-import { closeExistingSchedulerModals, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
+import { closeExistingSchedulerModals, linkLabel, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
+import { FolderSuggest } from './folderSuggest';
+import { attachLinkHighlight } from './linkHighlight';
 import { AssistantModal } from './AssistantModal';
 import { attachMentionSuggest } from './mentionSuggest';
+
+let fieldLabelCounter = 0;
 
 const KIND_LABELS: Record<ScheduleKind, string> = {
 	once: 'Once at a specific time',
@@ -51,6 +55,7 @@ export class JobModal extends Modal {
 	/** Label of the back button; names where `onSaved` returns to. */
 	backLabel: string;
 	private detachMention: (() => void) | null = null;
+	private detachHighlight: (() => void) | null = null;
 	private editMode: 'manual' | 'ai' = 'manual';
 	private kind: ScheduleKind;
 	private scheduleInputs: ScheduleInputs = { dayChecks: [] };
@@ -83,6 +88,8 @@ export class JobModal extends Modal {
 		contentEl.empty();
 		this.detachMention?.();
 		this.detachMention = null;
+		this.detachHighlight?.();
+		this.detachHighlight = null;
 		const shell = contentEl.createDiv({ cls: 'ai-scheduler-shell ai-scheduler-shell-tight' });
 
 		const navBar = shell.createDiv({ cls: 'ai-scheduler-modal-nav' });
@@ -165,8 +172,8 @@ export class JobModal extends Modal {
 			type: 'text',
 			placeholder: 'Task title...',
 			cls: 'ai-scheduler-input ai-scheduler-form-gap',
-			attr: { 'aria-label': 'Task title' },
 		});
+		linkLabel(titleLabel, titleInput);
 		titleInput.value = this.job.title || '';
 
 		const promptLabel = detailsCard.createDiv({ cls: 'ai-scheduler-form-label' });
@@ -174,31 +181,26 @@ export class JobModal extends Modal {
 		promptLabel.createSpan({ cls: 'ai-scheduler-required-asterisk', text: ' *' });
 
 		const promptInput = detailsCard.createEl('textarea', {
-			placeholder: 'Instructions for the AI when executing this task (type @ to attach files)...',
+			placeholder: 'Instructions for the AI when executing this task (type @ to attach notes or folders)...',
 			cls: 'ai-scheduler-textarea ai-scheduler-form-gap',
-			attr: { 'aria-label': 'Prompt and instructions' },
 		});
+		linkLabel(promptLabel, promptInput);
 		promptInput.value = this.job.prompt || '';
+		this.detachHighlight?.();
+		this.detachHighlight = attachLinkHighlight(promptInput);
 		this.detachMention = attachMentionSuggest({
 			textarea: promptInput,
 			app: this.app,
-			onSelect: file => {
-				contextPicker.addPath(file.path);
-				new Notice(`Attached to context: ${file.path}`);
+			onSelect: item => {
+				contextPicker.addPath(item.path);
+				new Notice(`Attached to context: ${item.path}`);
 			},
 		});
 
 		this.renderScheduleEditor(shell);
 
 		const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), this.job.contextPaths || [], this.app);
-		shell.createDiv({ cls: 'ai-scheduler-form-label', text: 'Result folder for this task (optional)' });
-		const resultFolder = shell.createEl('input', {
-			type: 'text',
-			placeholder: 'Optional result folder, e.g. Projects/News',
-			cls: 'ai-scheduler-input ai-scheduler-form-gap',
-			attr: { 'aria-label': 'Result folder for this task (optional)' },
-		});
-		resultFolder.value = (this.job.output && this.job.output.folder) || '';
+		const resultFolder = this.createResultFolderInput(shell);
 
 		const footer = shell.createDiv({ cls: 'ai-scheduler-footer-wrap' });
 		makeButton(footer, 'Cancel', () => this.close());
@@ -235,7 +237,7 @@ export class JobModal extends Modal {
 
 	private renderAiMode(shell: HTMLElement): void {
 		const aiSection = makeCard(shell, 'ai-scheduler-card-ai');
-		aiSection.createDiv({ cls: 'ai-scheduler-lead ai-scheduler-gap-6', text: 'Describe what you want to change' });
+		const requestLabel = aiSection.createDiv({ cls: 'ai-scheduler-lead ai-scheduler-gap-6', text: 'Describe what you want to change' });
 		aiSection.createDiv({
 			cls: 'ai-scheduler-hint ai-scheduler-gap-8',
 			text: 'Example: "Change time to 1:50 PM every weekday", "Add daily summary notes folder", or "Rewrite instructions to check recent meetings".'
@@ -259,29 +261,24 @@ export class JobModal extends Modal {
 		}
 
 		const request = aiSection.createEl('textarea', {
-			placeholder: 'Describe your requested change (type @ to attach files)...',
+			placeholder: 'Describe your requested change (type @ to attach notes or folders)...',
 			cls: 'ai-scheduler-textarea ai-scheduler-textarea-ai',
-			attr: { 'aria-label': 'Describe what you want to change' },
 		});
+		linkLabel(requestLabel, request);
+		this.detachHighlight?.();
+		this.detachHighlight = attachLinkHighlight(request);
 
 		const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), this.job.contextPaths || [], this.app);
 		this.detachMention = attachMentionSuggest({
 			textarea: request,
 			app: this.app,
-			onSelect: file => {
-				contextPicker.addPath(file.path);
-				new Notice(`Attached to context: ${file.path}`);
+			onSelect: item => {
+				contextPicker.addPath(item.path);
+				new Notice(`Attached to context: ${item.path}`);
 			},
 		});
 
-		shell.createDiv({ cls: 'ai-scheduler-form-label', text: 'Result folder for this task (optional)' });
-		const resultFolder = shell.createEl('input', {
-			type: 'text',
-			placeholder: 'Optional result folder, e.g. Projects/News',
-			cls: 'ai-scheduler-input ai-scheduler-form-gap',
-			attr: { 'aria-label': 'Result folder for this task (optional)' },
-		});
-		resultFolder.value = (this.job.output && this.job.output.folder) || '';
+		const resultFolder = this.createResultFolderInput(shell);
 
 		const footer = shell.createDiv({ cls: 'ai-scheduler-footer-wrap' });
 		makeButton(footer, 'Cancel', () => this.close());
@@ -317,14 +314,29 @@ export class JobModal extends Modal {
 		}, true);
 	}
 
+	/** "Result folder" field with a type-or-pick folder dropdown (subfolders included). */
+	private createResultFolderInput(shell: HTMLElement): HTMLInputElement {
+		const label = shell.createDiv({ cls: 'ai-scheduler-form-label', text: 'Result folder (optional)' });
+		const input = shell.createEl('input', {
+			type: 'text',
+			placeholder: 'Type or pick a folder, e.g. Projects/News',
+			cls: 'ai-scheduler-input ai-scheduler-form-gap',
+		});
+		linkLabel(label, input);
+		input.value = (this.job.output && this.job.output.folder) || '';
+		new FolderSuggest(this.app, input);
+		return input;
+	}
+
 	/* Manual schedule editor: one dynamic field group per kind, with a live
 	 * next-runs preview. Cron expressions are validated on every keystroke. */
 	private renderScheduleEditor(shell: HTMLElement): void {
 		const card = makeCard(shell, 'ai-scheduler-card-tight', 'ai-scheduler-card-flush');
-		card.createDiv({ cls: 'ai-scheduler-lead ai-scheduler-gap-8', text: 'Schedule' });
+		const scheduleLead = card.createDiv({ cls: 'ai-scheduler-lead ai-scheduler-gap-8', text: 'Schedule' });
 
 		const kindRow = card.createDiv('ai-scheduler-kind-row');
-		this.kindSelect = kindRow.createEl('select', { attr: { 'aria-label': 'Schedule type' } });
+		this.kindSelect = kindRow.createEl('select');
+		linkLabel(scheduleLead, this.kindSelect);
 		SCHEDULE_KINDS.forEach(option => {
 			const element = this.kindSelect!.createEl('option', { value: option, text: KIND_LABELS[option] });
 			element.selected = option === this.kind;
@@ -371,11 +383,13 @@ export class JobModal extends Modal {
 
 	private renderKindFields(container: HTMLElement, onChange: () => void): void {
 		const schedule = this.job.schedule;
-		// The most recent field label; the next control is named after it.
-		let currentLabel = '';
+		// The most recent field label; the next control is named after it (via
+		// aria-labelledby, since Obsidian turns aria-label into a hover tooltip).
+		let currentLabelId = '';
 		const createLabel = (text: string, required = false): HTMLElement => {
-			currentLabel = text;
 			const label = container.createDiv('ai-scheduler-field-label');
+			currentLabelId = `ai-scheduler-field-${++fieldLabelCounter}`;
+			label.id = currentLabelId;
 			label.createSpan({ text });
 			if (required) {
 				label.createSpan({ cls: 'ai-scheduler-required-asterisk', text: ' *' });
@@ -384,7 +398,7 @@ export class JobModal extends Modal {
 		};
 
 		const createInput = (attributes: { type?: string; value?: string; min?: string; max?: string; placeholder?: string; monospace?: boolean }): HTMLInputElement => {
-			const element = container.createEl('input', { type: attributes.type || 'text', attr: { 'aria-label': currentLabel } });
+			const element = container.createEl('input', { type: attributes.type || 'text', attr: { 'aria-labelledby': currentLabelId } });
 			if (attributes.value !== undefined) element.value = attributes.value;
 			if (attributes.min !== undefined) element.min = attributes.min;
 			if (attributes.max !== undefined) element.max = attributes.max;
@@ -517,7 +531,7 @@ export class JobModal extends Modal {
 				this.scheduleInputs.time = createInput({ type: 'time', value: schedule.time || '09:00' });
 
 				createLabel('Month', true);
-				const monthSelect = container.createEl('select', { attr: { 'aria-label': currentLabel } });
+				const monthSelect = container.createEl('select', { attr: { 'aria-labelledby': currentLabelId } });
 				monthSelect.addClass('ai-scheduler-select');
 				for (let m = 1; m <= 12; m++) {
 					const opt = monthSelect.createEl('option', { value: String(m), text: MONTH_NAMES[m] });
@@ -595,7 +609,7 @@ export class JobModal extends Modal {
 			}
 			case 'multi': {
 				createLabel('Rules, one per line: days = HH:MM, HH:MM (e.g. Mon-Fri = 09:00)', true);
-				const area = container.createEl('textarea', { text: formatMultiRules(schedule.rules), attr: { 'aria-label': currentLabel } });
+				const area = container.createEl('textarea', { text: formatMultiRules(schedule.rules), attr: { 'aria-labelledby': currentLabelId } });
 				area.addClass('ai-scheduler-textarea');
 				area.addClass('ai-scheduler-textarea-short');
 				area.oninput = onChange;
@@ -612,7 +626,7 @@ export class JobModal extends Modal {
 			}
 			case 'event': {
 				createLabel('Vault event', true);
-				const select = container.createEl('select', { attr: { 'aria-label': currentLabel } });
+				const select = container.createEl('select', { attr: { 'aria-labelledby': currentLabelId } });
 				select.addClass('ai-scheduler-select');
 				select.createEl('option', { value: 'modify', text: 'Any file is modified or created' });
 				select.onchange = onChange;
@@ -821,6 +835,8 @@ export class JobModal extends Modal {
 	onClose(): void {
 		this.detachMention?.();
 		this.detachMention = null;
+		this.detachHighlight?.();
+		this.detachHighlight = null;
 		releaseSchedulerModal(this);
 		this.contentEl.empty();
 		this.scheduleInputs = { dayChecks: [] };

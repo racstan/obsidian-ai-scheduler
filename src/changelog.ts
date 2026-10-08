@@ -23,6 +23,23 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.18',
+		date: '2026-10-08',
+		title: 'Folder Picker, Linked Mentions & Theme-Aware Sizing',
+		highlights: [
+			'Result folder: type a path or pick any folder (subfolders included) from a dropdown in the planner, the task editor and settings.',
+			'@ mentions now find folders as well as notes and files, and [[links]] in prompts are highlighted.',
+			'Text sizes and corner rounding follow your Obsidian appearance settings and theme.',
+		],
+		changed: [
+			'"Default result folder" is now "Result folder"; the plugin-wide default stays in settings.',
+			'Form fields no longer show a hover tooltip that repeats their label.',
+		],
+		fixed: [
+			'Plugin description no longer mentions "Obsidian" (required by the plugin review).',
+		],
+	},
+	{
 		version: '2.1.17',
 		date: '2026-10-08',
 		title: 'Reliability, Safety & Accessibility Overhaul',

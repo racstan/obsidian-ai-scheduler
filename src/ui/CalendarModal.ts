@@ -378,7 +378,7 @@ export class CalendarModal extends Modal {
 		const controlsBar = container.createDiv({ cls: 'ai-scheduler-cal-controls ai-scheduler-cal-day-controls' });
 
 		const navGroup = controlsBar.createDiv({ cls: 'ai-scheduler-cal-nav' });
-		const prevDayBtn = navGroup.createEl('button', { text: 'Previous day', cls: 'ai-scheduler-cal-day-nav-btn', attr: { 'aria-label': 'Previous day' } });
+		const prevDayBtn = navGroup.createEl('button', { text: 'Previous day', cls: 'ai-scheduler-cal-day-nav-btn' });
 		prevDayBtn.onclick = () => {
 			const prev = new Date(this.selectedDate);
 			prev.setDate(prev.getDate() - 1);
@@ -397,7 +397,7 @@ export class CalendarModal extends Modal {
 			this.render();
 		};
 
-		const nextDayBtn = navGroup.createEl('button', { text: 'Next day', cls: 'ai-scheduler-cal-day-nav-btn', attr: { 'aria-label': 'Next day' } });
+		const nextDayBtn = navGroup.createEl('button', { text: 'Next day', cls: 'ai-scheduler-cal-day-nav-btn' });
 		nextDayBtn.onclick = () => {
 			const next = new Date(this.selectedDate);
 			next.setDate(next.getDate() + 1);

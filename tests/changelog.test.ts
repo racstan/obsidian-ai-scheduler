@@ -26,3 +26,12 @@ test('the manifest version is x.y.z and listed in versions.json (required by the
 	assert.equal(versions[manifest.version], manifest.minAppVersion);
 	for (const key of Object.keys(versions)) assert.match(key, /^\d+\.\d+\.\d+$/, `versions.json key ${key}`);
 });
+
+test('the manifest follows the Obsidian plugin review rules', () => {
+	// The review fails a description that mentions Obsidian (implied by the directory).
+	assert.doesNotMatch(manifest.description, /obsidian/i);
+	assert.ok(manifest.description.length <= 250, 'description is at most 250 characters');
+	assert.ok(manifest.description.endsWith('.'), 'description ends with a period');
+	assert.doesNotMatch(manifest.name, /obsidian|plugin/i);
+	assert.doesNotMatch(manifest.id, /obsidian/i);
+});
