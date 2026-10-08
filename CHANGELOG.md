@@ -5,6 +5,19 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.21] - 2026-10-08
+
+### Highlights
+- **Clear backend errors**: errors from your AI backend are shown with the backend's own message (e.g. *Claudian reported an error: Model … is not available*) instead of a misleading "no valid schedule".
+
+### Fixed
+- A model or provider error reported by Claudian no longer counts as the AI's answer: the planner reports it, and scheduled runs fail instead of being marked completed with the error saved as output.
+- When Claudian refuses a message ("Message was not sent", e.g. while a new conversation is still being set up), it is retried automatically; if it keeps refusing, the error explains the likely cause.
+- The planner tells an empty reply apart from a reply without a usable schedule.
+
+### Changed
+- Obsidian Copilot errors are labelled as coming from Copilot.
+
 ## [2.1.20] - 2026-10-08
 
 ### Added

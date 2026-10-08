@@ -23,6 +23,22 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.21',
+		date: '2026-10-08',
+		title: 'Clear Errors from Claudian and Copilot',
+		highlights: [
+			'Errors from your AI backend are shown with the backend\'s own message (e.g. "Claudian reported an error: Model … is not available") instead of a misleading "no valid schedule".',
+		],
+		fixed: [
+			'A model or provider error reported by Claudian no longer counts as the AI\'s answer: the planner reports it, and scheduled runs fail instead of being marked completed with the error saved as output.',
+			'When Claudian refuses a message ("Message was not sent", e.g. while a new conversation is still being set up), it is retried automatically; if it keeps refusing, the error explains the likely cause.',
+			'The planner tells an empty reply apart from a reply without a usable schedule.',
+		],
+		changed: [
+			'Obsidian Copilot errors are labelled as coming from Copilot.',
+		],
+	},
+	{
 		version: '2.1.20',
 		date: '2026-10-08',
 		title: 'Calendar Subscription Guide',
