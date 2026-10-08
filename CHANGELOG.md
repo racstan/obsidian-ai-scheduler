@@ -5,6 +5,39 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.17] - 2026-10-08
+
+Versioning returns to [Semantic Versioning](https://semver.org/) (`x.y.z`), which the Obsidian plugin review requires. 2.1.17 is newer than every earlier release, including 2.1.7.x.
+
+### Highlights
+- **Schedules keep their settings**: day of month, month, every-N days/weeks/months and start dates are no longer lost when Obsidian restarts.
+- **Safer AI follow-ups**: tasks the AI proposes in its replies are created disabled for you to review, and task output never overwrites notes the plugin did not create (or writes into hidden/`.obsidian` folders).
+- **Calendar fixes**: "New task" saves correctly, "Run now" runs recurring tasks, and past runs show as completed only when they actually ran.
+- **Real cancellation**: resetting a running task stops Claudian or Copilot instead of letting it continue in the background.
+
+### Added
+- Each run without a fixed file name writes its own note (`<timestamp> <task title>.md`).
+- Event-triggered tasks are told which file changed.
+- Keyboard and screen-reader support for badges, calendar days, chips and file rows.
+- Respects the system "reduce motion" setting.
+
+### Changed
+- Periodic reviews cover everything changed since the previous review and skip the plugin's own folders.
+- Startup catch-up and vault listeners start once Obsidian's layout is ready.
+- Missed tasks after the computer sleeps follow the same catch-up rules as a restart.
+- Requests to Claudian/Copilot run one at a time.
+- Dashboard and calendar refresh only when something changes and keep your scroll position.
+- Colours follow your Obsidian theme; the production bundle is minified.
+- `main.js` is no longer committed; it is built by CI and shipped as a release asset.
+
+### Fixed
+- Daylight-saving bugs in cron and every-N-days/weeks schedules (including a re-run loop on the night clocks go back).
+- Edits to schedule notes being reverted, and moved schedule notes being recreated.
+- The periodic review not using its own model setting.
+- Pausing/resuming from the calendar firing past-due runs immediately.
+- Periodic review rescheduling itself on every restart.
+- Removed the remaining `!important` CSS rules and an unused import flagged by the plugin review.
+
 ## [2.1.7.19] - 2026-10-07
 
 ### Changed

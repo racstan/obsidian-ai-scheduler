@@ -23,6 +23,40 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.17',
+		date: '2026-10-08',
+		title: 'Reliability, Safety & Accessibility Overhaul',
+		highlights: [
+			'Schedules keep their settings: day of month, month, every-N days/weeks/months and start dates are no longer lost when Obsidian restarts.',
+			'Safer AI follow-ups: tasks the AI proposes in its replies are created disabled for you to review, and task output never overwrites notes the plugin did not create.',
+			'Calendar fixes: "New task" saves correctly, "Run now" runs recurring tasks, and past runs show as completed only when they actually ran.',
+			'Real cancellation: resetting a running task stops Claudian or Copilot instead of letting it continue in the background.',
+			'Versioning returns to semantic versions (2.1.17) so updates are offered to everyone.',
+		],
+		added: [
+			'Each run without a fixed file name writes its own note ("<timestamp> <task title>.md").',
+			'Event-triggered tasks are told which file changed.',
+			'Keyboard and screen-reader support for badges, calendar days, chips and file rows.',
+			'Respects the system "reduce motion" setting.',
+		],
+		changed: [
+			'Periodic reviews cover everything changed since the previous review and skip the plugin\'s own folders.',
+			'Startup catch-up and vault listeners start once Obsidian\'s layout is ready, so startup is never held up by an AI run.',
+			'Missed tasks after the computer sleeps follow the same catch-up rules as a restart.',
+			'Requests to Claudian/Copilot run one at a time.',
+			'Dashboard and calendar refresh only when something changes and keep your scroll position.',
+			'Colours follow your Obsidian theme; the bundle is minified.',
+		],
+		fixed: [
+			'Daylight-saving bugs in cron and every-N-days/weeks schedules (including a re-run loop on the night clocks go back).',
+			'Edits to schedule notes being reverted, and moved schedule notes being recreated.',
+			'The periodic review not using its own model setting.',
+			'Pausing/resuming from the calendar firing past-due runs immediately.',
+			'Periodic review rescheduling itself on every restart.',
+			'Removed the remaining !important CSS rules and an unused import flagged by the plugin review.',
+		],
+	},
+	{
 		version: '2.1.7.19',
 		date: '2026-10-07',
 		title: 'Streamlined Calendar Day View',

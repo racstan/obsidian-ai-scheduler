@@ -19,3 +19,10 @@ test('getReleasesSince shows every newer release for an unknown previous version
 	assert.ok(since.length >= 1);
 	assert.equal(compareVersions('2.1.10', '2.1.9') > 0, true);
 });
+
+test('the manifest version is x.y.z and listed in versions.json (required by the Obsidian plugin review)', async () => {
+	assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
+	const versions = (await import('../versions.json')).default as Record<string, string>;
+	assert.equal(versions[manifest.version], manifest.minAppVersion);
+	for (const key of Object.keys(versions)) assert.match(key, /^\d+\.\d+\.\d+$/, `versions.json key ${key}`);
+});
