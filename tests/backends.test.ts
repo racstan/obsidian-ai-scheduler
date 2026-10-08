@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BackendHost, modelValue, parseProfileValue, resolveJobExecution, sendToAI } from '../src/backends';
+import { BackendHost, claudianErrorFromReply, modelValue, parseProfileValue, resolveJobExecution, sendToAI } from '../src/backends';
 import { DEFAULT_SETTINGS, normalizeJob } from '../src/settings';
 import { AISettings } from '../src/types';
 
@@ -74,4 +74,11 @@ test('the periodic review uses the review model; other jobs use the task model',
 
 test('model profile values round-trip', () => {
 	assert.deepEqual(parseProfileValue(modelValue('claude', 'sonnet')), { providerId: 'claude', model: 'sonnet' });
+});
+
+test('Claudian errors inside the reply are recognized, normal answers are not', () => {
+	assert.equal(claudianErrorFromReply('\n\n❌ **Error:** Model "claude-x" is not available for this account'), 'Model "claude-x" is not available for this account');
+	assert.equal(claudianErrorFromReply('**Error:** API key missing'), 'API key missing');
+	assert.equal(claudianErrorFromReply('Here is your summary.\n\n- **Error:** handling section is fine'), null);
+	assert.equal(claudianErrorFromReply('All done.'), null);
 });

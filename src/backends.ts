@@ -312,10 +312,14 @@ export async function sendToClaudian(
 		}
 		await sleep(300);
 		if (getTabMessages(host, view, active).length > beforeCount) {
-			return lastAssistantReply(host, view, active, beforeCount);
+			const reply = lastAssistantReply(host, view, active, beforeCount);
+			// Pass Claudian's own error on instead of treating it as the AI's answer.
+			const backendError = claudianErrorFromReply(reply);
+			if (backendError) throw new Error(`Claudian reported an error: ${backendError}`);
+			return reply;
 		}
 		if (attempt >= CLAUDIAN_SEND_ATTEMPTS) {
-			throw new Error('Claudian did not accept the message ("Message was not sent"), even after retrying. It may still be setting up the conversation; please try again in a moment.');
+			throw new Error('Claudian refused to send the message ("Message was not sent"), even after retrying. This usually means Claudian could not start the selected model or provider: try sending a message to that model in Claudian directly to see its error, or choose another model in AI Scheduler settings.');
 		}
 		await sleep(1500 * attempt);
 	}
@@ -323,6 +327,16 @@ export async function sendToClaudian(
 
 /** Sends Claudian refused (see sendToClaudian) are retried up to this many attempts in total. */
 const CLAUDIAN_SEND_ATTEMPTS = 3;
+
+/**
+ * Claudian reports provider/model failures inside the assistant message, as a
+ * line starting with "❌ **Error:**" (or a reply that is just "**Error:** …").
+ * Returns that error text, or null when the reply is a normal answer.
+ */
+export function claudianErrorFromReply(reply: string): string | null {
+	const match = /❌\s*\*\*Error:\*\*\s*([^\n]+)/.exec(reply) ?? /^\s*\*\*Error:\*\*\s*([^\n]+)/.exec(reply);
+	return match ? match[1].trim() : null;
+}
 
 export function getCopilotPlugin(host: BackendHost): CopilotPlugin | null {
 	const plugins = pluginRegistry(host);
@@ -372,7 +386,9 @@ export async function sendToCopilot(host: BackendHost, prompt: string, context: 
 		await withTimeout(run, AGENT_TIMEOUT_MS, `AI task timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes`);
 	} catch (error) {
 		abort.abort(); // stop the chain instead of letting it keep running unseen
-		throw error;
+		const message = errorText(error);
+		// Our own timeout/cancel messages stay as they are; anything else came from Copilot.
+		throw /timed out|Cancelled by user/.test(message) ? error : new Error(`Obsidian Copilot reported an error: ${message}`);
 	}
 	return (reply || '').trim();
 }

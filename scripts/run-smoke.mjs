@@ -115,6 +115,8 @@ function makeClaudian() {
 				sendMessage: async (payload) => {
 					// Simulates Claudian's "Message was not sent": nothing is added.
 					if (tab.rejectSends > 0) { tab.rejectSends--; return; }
+					// Simulates a provider/model failure, which Claudian writes into the reply.
+					if (tab.errorReply) { tab.state.messages.push({ role: 'assistant', content: tab.errorReply }); return; }
 					const content = payload && payload.content || '';
 					tab.state.messages.push({
 						role: 'assistant',
@@ -287,9 +289,20 @@ async function main() {
 	const retried = await first.planAndCreate('Every weekday morning, review my notes');
 	assert.equal(retried.jobs.length, 2, 'planning succeeds after a refused send');
 	claudianTab.rejectSends = 3;
-	await assert.rejects(first.planAndCreate('Every weekday morning, review my notes'), /did not accept the message/);
+	await assert.rejects(first.planAndCreate('Every weekday morning, review my notes'), /refused to send the message/);
 	claudianTab.rejectSends = 0;
 	for (const job of retried.jobs) await first.deleteJob(job);
+
+	// A model/provider error from Claudian reaches the user with Claudian's own message,
+	// for the planner and for scheduled runs (which must fail, not "complete").
+	claudianTab.errorReply = '\\n\\n❌ **Error:** Model smoke-model is not available';
+	await assert.rejects(first.planAndCreate('Every weekday morning, review my notes'), /Claudian reported an error: Model smoke-model is not available/);
+	const errorRuns = cronJob.runCount;
+	await first.runJobNow(cronJob);
+	assert.equal(cronJob.status, 'failed', 'a Claudian error fails the run');
+	assert.match(cronJob.lastError, /Claudian reported an error: Model smoke-model is not available/);
+	assert.equal(cronJob.runCount, errorRuns, 'a failed run is not counted as completed');
+	claudianTab.errorReply = null;
 
 	// Test command palette commands: disable, enable, toggle nightly review, and bulk tasks
 	assert.ok(app.commands.commands['disable-nightly-review'], 'disable-nightly-review command registered');
