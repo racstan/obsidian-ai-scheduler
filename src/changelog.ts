@@ -23,6 +23,18 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.24',
+		date: '2026-10-08',
+		title: 'Small Polish',
+		fixed: [
+			'Back buttons show a space after the arrow ("← Back to dashboard").',
+		],
+		changed: [
+			'Claudian and Obsidian Copilot are referred to by name in the AI backend setting and the getting started guide.',
+			'README: demo animation, walkthrough video and screenshots.',
+		],
+	},
+	{
 		version: '2.1.23',
 		date: '2026-10-08',
 		title: 'Claudian Model List Matches Claudian',

@@ -5,6 +5,15 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.24] - 2026-10-08
+
+### Fixed
+- Back buttons show a space after the arrow ("← Back to dashboard").
+
+### Changed
+- Claudian and Obsidian Copilot are referred to by name in the AI backend setting and the getting started guide.
+- README: demo animation, walkthrough video and screenshots.
+
 ## [2.1.23] - 2026-10-08
 
 ### Fixed
