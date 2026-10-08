@@ -841,8 +841,11 @@
 	transition: all 0.15s ease;
 }
 
+/* Obsidian buttons are flex containers, which drop a trailing space inside the
+ * generated content, so the gap after the arrow is a margin. */
 .ai-scheduler-back-btn::before {
-	content: "← ";
+	content: "←";
+	margin-right: 0.4em;
 }
 
 .ai-scheduler-back-btn:hover {
