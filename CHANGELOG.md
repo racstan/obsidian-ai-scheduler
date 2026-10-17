@@ -5,6 +5,32 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.26] - 2026-10-17
+
+### Highlights
+- **Starter templates**: daily summary, weekly review, morning plan, inbox triage, action items, flashcards, link suggestions and monthly reflection. Each opens the task editor pre-filled so you can adjust it before saving.
+- **Chained tasks**: the new schedule *When another task finishes* runs a task after another one succeeds; `{{previous_result}}` and `{{previous_output}}` pass on its result.
+- **Pause and quiet hours**: pause every task for 1 hour, 4 hours, until tomorrow or until you resume, and set daily quiet hours during which due tasks wait. "Run now" still works.
+
+### Added
+- Tags on tasks, plus a search box, tag filter and sorting on the dashboard.
+- Export tasks to a JSON file and import them back (imported tasks are added paused).
+- Prompt preview in the task details: exactly what a task would send now, with variables filled in.
+- The status bar shows the next run, or that AI Scheduler is paused or in quiet hours (can be turned off).
+- Commands: **Pause all tasks**, **Resume all tasks**, **New task from a template**, **Export tasks to a file**, **Import tasks from a file**.
+
+### Changed
+- When the AI backend is ready, the dashboard, planner and AI editor show a plain **Claudian settings** or **Obsidian Copilot settings** button instead of a large box; the box only appears when something needs fixing.
+- The dashboard's Settings button is now **AI Scheduler settings**, and the Calendar button has no emoji.
+- The calendar has a **Back to dashboard** button like the other windows.
+- Task IDs are no longer shown on the dashboard cards; they remain in the task details and editor. Activity rows link to the task with **View**.
+
+### Fixed
+- The changelog window shows the contributors of every release again.
+
+### Contributors
+- [@racstan](https://github.com/racstan)
+
 ## [2.1.25] - 2026-10-17
 
 ### Highlights
@@ -24,6 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A note a task only added to is never overwritten by a later "replace"; a numbered copy is made instead.
 - The link highlight in text boxes no longer uses the CSS `:has()` selector (flagged by the plugin review as slow).
 
+### Contributors
+- [@racstan](https://github.com/racstan)
+
 ## [2.1.24] - 2026-10-08
 
 ### Fixed
@@ -33,6 +62,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Claudian and Obsidian Copilot are referred to by name in the AI backend setting and the getting started guide.
 - README: demo animation, walkthrough video and screenshots.
 
+### Contributors
+- [@racstan](https://github.com/racstan)
+
 ## [2.1.23] - 2026-10-08
 
 ### Fixed
@@ -40,6 +72,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - A model setting whose saved model was removed in Claudian now says so and asks you to pick another.
+
+### Contributors
+- [@racstan](https://github.com/racstan)
 
 ## [2.1.22] - 2026-10-08
 
@@ -49,6 +84,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - When no backend is ready, the status bar offers to install or enable Claudian or Obsidian Copilot, or to choose one in AI Scheduler settings.
+
+### Contributors
+- [@racstan](https://github.com/racstan)
 
 ## [2.1.21] - 2026-10-08
 
@@ -63,6 +101,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Obsidian Copilot errors are labelled as coming from Copilot.
 
+### Contributors
+- [@racstan](https://github.com/racstan)
+
 ## [2.1.20] - 2026-10-08
 
 ### Added
@@ -70,6 +111,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - The Calendar export setting explains import vs. subscribe, and that anyone with a public link can read task titles and prompts.
+
+### Contributors
+- [@racstan](https://github.com/racstan)
 
 ## [2.1.19] - 2026-10-08
 
@@ -85,6 +129,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Plugin description no longer mentions "Obsidian" (required by the plugin review).
+
+### Contributors
+- [@racstan](https://github.com/racstan)
 
 ## [2.1.17] - 2026-10-08
 
@@ -119,6 +166,9 @@ Versioning returns to [Semantic Versioning](https://semver.org/) (`x.y.z`), whic
 - Periodic review rescheduling itself on every restart.
 - Removed the remaining `!important` CSS rules and an unused import flagged by the plugin review.
 
+### Contributors
+- [@racstan](https://github.com/racstan)
+
 ## [2.1.7.19] - 2026-10-07
 
 ### Changed
@@ -127,10 +177,16 @@ Versioning returns to [Semantic Versioning](https://semver.org/) (`x.y.z`), whic
 ### Fixed
 - Fixed the layout of the calendar navigation buttons.
 
+### Contributors
+- [@racstan](https://github.com/racstan)
+
 ## [2.1.7.18] - 2026-10-07
 
 ### Added
 - Added a full-page Day View to the schedule calendar with a timeline breakdown, metric counters and back navigation.
+
+### Contributors
+- [@racstan](https://github.com/racstan)
 
 ## [2.1.7.17] - 2026-10-07
 

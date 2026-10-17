@@ -4,7 +4,7 @@
  * Calendar, etc. One-way and offline: the plugin only writes a file.
  */
 import { Job } from './types';
-import { getScheduleOccurrencesInRange } from './schedule';
+import { getScheduleOccurrencesInRange, waitsForTrigger } from './schedule';
 
 /** Most runs exported per task, so an every-minute cron can't produce a huge file. */
 const MAX_RUNS_PER_JOB = 500;
@@ -64,7 +64,7 @@ export function buildIcs(jobs: Job[], from: Date, to: Date): string {
 		'X-WR-CALNAME:AI Scheduler',
 	];
 	for (const job of jobs) {
-		if (!job.enabled || job.schedule.kind === 'event') continue;
+		if (!job.enabled || waitsForTrigger(job.schedule)) continue;
 		const stamp = icsDate(new Date(job.createdAt || 0));
 		const description = job.prompt.length > 1000 ? `${job.prompt.slice(0, 1000)}…` : job.prompt;
 		for (const start of getScheduleOccurrencesInRange(job.schedule, from, to, MAX_RUNS_PER_JOB)) {

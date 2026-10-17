@@ -35,3 +35,9 @@ test('the manifest follows the Obsidian plugin review rules', () => {
 	assert.doesNotMatch(manifest.name, /obsidian|plugin/i);
 	assert.doesNotMatch(manifest.id, /obsidian/i);
 });
+
+test('every release lists its contributors (shown in the changelog window)', () => {
+	for (const release of CHANGELOG_DATA.filter(r => compareVersions(r.version, '2.1.0') >= 0)) {
+		assert.ok(release.contributors?.length, `${release.version} has no contributors`);
+	}
+});

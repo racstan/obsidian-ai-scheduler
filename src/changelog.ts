@@ -21,7 +21,42 @@ export interface ReleaseChangelog {
 	contributors?: Contributor[];
 }
 
+/** Listed on every release; add anyone else who contributed to that release. */
+export const MAINTAINER: Contributor = {
+	name: 'racstan',
+	username: 'racstan',
+	url: 'https://github.com/racstan',
+	role: 'Author & Lead Maintainer',
+};
+
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
+	{
+		version: '2.1.26',
+		date: '2026-10-17',
+		title: 'Templates, Chained Tasks, Pause & Quiet Hours',
+		highlights: [
+			'Starter templates: daily summary, weekly review, morning plan, inbox triage, action items, flashcards, link suggestions and monthly reflection. Each opens the task editor pre-filled so you can adjust it before saving.',
+			'Chained tasks: the new schedule "When another task finishes" runs a task after another one succeeds; {{previous_result}} and {{previous_output}} pass on its result.',
+			'Pause and quiet hours: pause every task for 1 hour, 4 hours, until tomorrow or until you resume, and set daily quiet hours during which due tasks wait. "Run now" still works.',
+		],
+		added: [
+			'Tags on tasks, plus a search box, tag filter and sorting on the dashboard.',
+			'Export tasks to a JSON file and import them back (imported tasks are added paused).',
+			'Prompt preview in the task details: exactly what a task would send now, with variables filled in.',
+			'The status bar shows the next run, or that AI Scheduler is paused or in quiet hours (can be turned off).',
+			'Commands: Pause all tasks, Resume all tasks, New task from a template, Export tasks to a file, Import tasks from a file.',
+		],
+		changed: [
+			'When the AI backend is ready, the dashboard, planner and AI editor show a plain "Claudian settings" or "Obsidian Copilot settings" button instead of a large box; the box only appears when something needs fixing.',
+			'The dashboard\'s Settings button is now "AI Scheduler settings", and the Calendar button has no emoji.',
+			'The calendar has a "Back to dashboard" button like the other windows.',
+			'Task IDs are no longer shown on the dashboard cards; they remain in the task details and editor. Activity rows link to the task with "View".',
+		],
+		fixed: [
+			'The changelog window shows the contributors of every release again.',
+		],
+		contributors: [MAINTAINER],
+	},
 	{
 		version: '2.1.25',
 		date: '2026-10-17',
@@ -43,6 +78,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 			'A note a task only added to is never overwritten by a later "replace"; a numbered copy is made instead.',
 			'The link highlight in text boxes no longer uses the CSS :has() selector (flagged by the plugin review as slow).',
 		],
+		contributors: [MAINTAINER],
 	},
 	{
 		version: '2.1.24',
@@ -55,6 +91,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 			'Claudian and Obsidian Copilot are referred to by name in the AI backend setting and the getting started guide.',
 			'README: demo animation, walkthrough video and screenshots.',
 		],
+		contributors: [MAINTAINER],
 	},
 	{
 		version: '2.1.23',
@@ -66,6 +103,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		changed: [
 			'A model setting whose saved model was removed in Claudian now says so and asks you to pick another.',
 		],
+		contributors: [MAINTAINER],
 	},
 	{
 		version: '2.1.22',
@@ -79,6 +117,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 			'When no backend is ready, the bar offers to install or enable Claudian or Obsidian Copilot, or to choose one in AI Scheduler settings.',
 			'"Open getting started guide" command and settings button.',
 		],
+		contributors: [MAINTAINER],
 	},
 	{
 		version: '2.1.21',
@@ -95,6 +134,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		changed: [
 			'Obsidian Copilot errors are labelled as coming from Copilot.',
 		],
+		contributors: [MAINTAINER],
 	},
 	{
 		version: '2.1.20',
@@ -106,6 +146,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		changed: [
 			'The Calendar export setting explains import vs. subscribe and that anyone with a public link can read task titles and prompts.',
 		],
+		contributors: [MAINTAINER],
 	},
 	{
 		version: '2.1.19',
@@ -124,6 +165,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		fixed: [
 			'Plugin description no longer mentions "Obsidian" (required by the plugin review).',
 		],
+		contributors: [MAINTAINER],
 	},
 	{
 		version: '2.1.17',
@@ -158,6 +200,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 			'Periodic review rescheduling itself on every restart.',
 			'Removed the remaining !important CSS rules and an unused import flagged by the plugin review.',
 		],
+		contributors: [MAINTAINER],
 	},
 	{
 		version: '2.1.7.19',
@@ -169,6 +212,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		fixed: [
 			'Fixed the layout of the calendar navigation buttons.',
 		],
+		contributors: [MAINTAINER],
 	},
 	{
 		version: '2.1.7.18',
@@ -177,6 +221,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		added: [
 			'Added a full-page Day View to the schedule calendar with a timeline breakdown, metric counters and back navigation.',
 		],
+		contributors: [MAINTAINER],
 	},
 	{
 		version: '2.1.7.17',

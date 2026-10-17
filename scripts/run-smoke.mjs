@@ -541,6 +541,57 @@ async function main() {
 	assert.equal(savedFlaky.retryDelayMinutes, 2);
 	assert.equal(app._pluginData.jobs.find(j => j.id === watcher.id).onlyIfChanged, true);
 
+	// A task set to run after another starts when that one finishes, with its result.
+	const collect = await second.addJob({ title: 'Collect', prompt: 'collect', schedule: { kind: 'daily', time: '09:00' } });
+	const summarize = await second.addJob({ title: 'Summarize', prompt: 'Summarize: {{previous_result}}', schedule: { kind: 'after', afterTask: collect.id } });
+	assert.equal(summarize.nextRunAt, null, 'a chained task waits');
+	await second.runJobNow(collect);
+	assert.ok(summarize.nextRunAt, 'finishing the first task queues the next');
+	summarize.nextRunAt = iso(1000);
+	await second.tick();
+	assert.equal(summarize.runCount, 1, 'the chained task ran');
+	assert.ok(claudianTab.lastPrompt.includes('Summarize: ' + GENERIC_REPLY), 'the previous result is passed on');
+	await assert.rejects(second.updateJob(collect, { schedule: { kind: 'after', afterTask: summarize.id } }), /loop/);
+	assert.equal(collect.schedule.kind, 'daily', 'a refused edit leaves the task unchanged');
+	await assert.rejects(second.addJob({ title: 'Orphan', prompt: 'p', schedule: { kind: 'after', afterTask: 'missing' } }), /Choose the task/);
+
+	// While paused nothing starts on its own, but "Run now" does.
+	await second.pauseAll(null);
+	const waiting = await second.addJob({ title: 'Waiting', prompt: 'p', schedule: { kind: 'daily', time: '09:00' }, nextRunAt: iso(5000) });
+	await second.tick();
+	assert.equal(waiting.runCount, 0, 'paused: the due task does not start');
+	await second.runJobNow(waiting);
+	assert.equal(waiting.runCount, 1, 'Run now works while paused');
+	waiting.nextRunAt = iso(5000);
+	await second.pauseAll(new Date(Date.now() - 1000));
+	await second.tick();
+	assert.equal(second.settings.paused, false, 'an expired pause ends by itself');
+	assert.equal(waiting.runCount, 1, 'a run missed while paused follows the catch-up setting (off: skipped)');
+	assert.ok(new Date(waiting.nextRunAt).getTime() > Date.now(), 'the skipped task moves to its next slot');
+
+	// During quiet hours a due task waits, and runs once they end.
+	const clockNow = new Date();
+	const pad2 = (n) => String(n).padStart(2, '0');
+	second.settings.quietHoursEnabled = true;
+	second.settings.quietStart = pad2(clockNow.getHours()) + ':00';
+	second.settings.quietEnd = pad2((clockNow.getHours() + 2) % 24) + ':00';
+	waiting.nextRunAt = iso(5000);
+	await second.tick();
+	assert.equal(waiting.runCount, 1, 'quiet hours: the due task waits');
+	second.settings.quietHoursEnabled = false;
+	await second.tick();
+	assert.equal(waiting.runCount, 2, 'after the quiet hours the task runs');
+
+	// Tasks export to a JSON file and import back, paused.
+	const exportPath = await second.exportTasksFile();
+	const exportFile = app.vault.getAbstractFileByPath(exportPath);
+	assert.ok(exportPath.endsWith('.json') && exportFile._content.includes('ai-scheduler-tasks'), 'export file written');
+	const countBefore = second.jobs.length;
+	const importedCount = await second.importTasksText(exportFile._content);
+	assert.ok(importedCount > 0);
+	assert.equal(second.jobs.length, countBefore + importedCount);
+	assert.ok(second.jobs.slice(-importedCount).every(j => !j.enabled), 'imported tasks are paused');
+
 	await second.deleteAllJobs();
 	assert.equal(second.jobs.length, 1, 'nightly review job survives delete-all');
 	console.log('SMOKE OK');

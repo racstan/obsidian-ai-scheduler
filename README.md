@@ -50,6 +50,16 @@ AI Scheduler does not call AI providers directly. It drives Claudian or Copilot 
 
 **Calendar export** — Keep an `.ics` file of upcoming runs up to date and import it into Google Calendar, Outlook or Apple Calendar (or subscribe to it, if you sync the file somewhere with a public link). One-way: the plugin only writes the file.
 
+**Starter templates** — Daily summary, weekly review, morning plan, inbox triage, action items, flashcards, link suggestions and a monthly reflection. Each opens the task editor pre-filled so you can adjust it before saving.
+
+**Chained tasks** — Make a task run after another one finishes, and pass on its result: collect, then summarize, then file away.
+
+**Pause and quiet hours** — Pause everything for an hour, until tomorrow or until you resume, and set daily quiet hours during which due tasks wait. "Run now" works either way.
+
+**Find and organise tasks** — Tag tasks, then search, filter by tag and sort on the dashboard. Export tasks to a JSON file for backups or another vault, and import them back.
+
+**Prompt preview** — See exactly what a task would send, with variables filled in, before it runs.
+
 **Trash & restore** — Deleted tasks go to a trash section. You can restore them individually, restore all at once, or permanently delete them.
 
 ---
@@ -89,6 +99,7 @@ AI Scheduler does not call AI providers directly. It drives Claudian or Copilot 
 | **Multi-rule** | Multiple weekday + time combinations in one job |
 | **Once** | Runs once at a specific future date and time |
 | **Vault event** | Runs when any note in the vault is modified or created (with a cooldown) |
+| **After another task** | Runs each time a chosen task finishes successfully; use `{{previous_result}}` or `{{previous_output}}` to work with that task's result |
 
 All schedule types support an optional **max iterations** limit — the job stops automatically after N runs.
 
@@ -144,7 +155,13 @@ The dashboard shows:
 - Disabled and deleted (trash) tasks
 - Recent activity log
 
-From here you can create tasks, edit them, run them on demand, pause, restore from trash, or open the AI Planner.
+From here you can create tasks (yourself, from a template, or with the AI Planner), edit them, run them on demand, pause, and restore from trash.
+
+- **Search, tags and sorting**: the bar above the task lists searches titles, instructions, tags and task numbers (`#7`), filters by tag and sorts by next run, title, task number or last run.
+- **Pause…**: pause for 1 hour, 4 hours, until tomorrow 08:00, or until you resume. While paused, no task starts on its own; "Run now" still works. On resume, runs missed while paused follow the **Run missed jobs after startup** setting, as if Obsidian had been closed.
+- **More…**: export tasks to a JSON file, or import tasks from one. Imported tasks are added paused so you can review them first; run history and replies are not included.
+
+**Quiet hours** (Settings → Background execution): tasks that fall due in that window wait and run once it ends. The status bar shows the next run, or that AI Scheduler is paused or in quiet hours (this can be turned off).
 
 ### Task options
 
@@ -173,6 +190,8 @@ In the task editor:
   - *Retries*: up to 5, with the minutes to wait between them.
   - *Time limit*: stops a run that takes longer than this.
   - *Only run when something changed*: skips the run when none of the attached notes or folders changed since the last successful run. With nothing attached, any note in the vault counts. Results the plugin wrote itself never count.
+
+- **Tags**: comma-separated labels. Click a tag on the dashboard to show only those tasks.
 
 A task's details show its **run history**: completed, failed, skipped and cancelled runs, with links to the notes they wrote. For a failed task the button reads **Retry now**.
 
@@ -221,6 +240,11 @@ All commands are available from the command palette (`Ctrl/Cmd + P`):
 | `Sync schedule notes now` | Reconciles vault notes with active schedules |
 | `Export schedule to calendar file (.ics)` | Writes upcoming runs to the calendar file |
 | `Open getting started guide` | Opens (or recreates) the setup guide note |
+| `New task from a template` | Opens the starter templates |
+| `Pause all tasks` | Stops tasks from starting on their own until you resume |
+| `Resume all tasks` | Ends a pause |
+| `Export tasks to a file` | Writes all tasks to a JSON file in the result folder |
+| `Import tasks from a file` | Adds the tasks from an export file, paused for review |
 | `View changelog / what's new` | Opens the release history |
 
 ---

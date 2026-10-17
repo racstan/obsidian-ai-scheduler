@@ -3,7 +3,7 @@ import { AISchedulerPlugin } from '../main';
 import { Job } from '../types';
 import { normalizeJob } from '../settings';
 import { describeBinding, formatDate, isNightlyReviewJob } from '../util';
-import { describeSchedule, getScheduleOccurrencesInRange, DAY_SHORT_NAMES, DAY_NAMES, MONTH_NAMES, MONTH_SHORT_NAMES } from '../schedule';
+import { describeSchedule, getScheduleOccurrencesInRange, waitsForTrigger, DAY_SHORT_NAMES, DAY_NAMES, MONTH_NAMES, MONTH_SHORT_NAMES } from '../schedule';
 import { closeExistingSchedulerModals, liveRefresh, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
 import { JobModal } from './JobModal';
 import { PlannerModal } from './PlannerModal';
@@ -172,6 +172,12 @@ export class CalendarModal extends Modal {
 		}
 
 		// Month or Agenda view header
+		const navBar = shell.createDiv({ cls: 'ai-scheduler-modal-nav' });
+		const backBtn = navBar.createEl('button', { cls: 'ai-scheduler-back-btn', text: 'Back to dashboard' });
+		backBtn.onclick = () => {
+			this.close();
+			window.setTimeout(() => new AssistantModal(this.app, this.plugin).open(), 50);
+		};
 		const header = shell.createDiv({ cls: 'ai-scheduler-calendar-header' });
 		const titleCol = header.createDiv();
 		titleCol.createEl('h1', { text: 'Schedule calendar', cls: 'ai-scheduler-title' });
@@ -181,10 +187,6 @@ export class CalendarModal extends Modal {
 		});
 
 		const topActions = header.createDiv({ cls: 'ai-scheduler-calendar-top-actions' });
-		makeButton(topActions, '📋 Task dashboard', () => {
-			this.close();
-			window.setTimeout(() => new AssistantModal(this.app, this.plugin).open(), 50);
-		});
 		makeButton(topActions, '⚡ Ask AI to plan', () => {
 			this.close();
 			window.setTimeout(() => new PlannerModal(this.app, this.plugin).open(), 50);
@@ -921,15 +923,15 @@ export class CalendarModal extends Modal {
 	}
 
 	private renderEventTasksSection(container: HTMLElement): void {
-		const eventJobs = this.plugin.jobs.filter(j => j.schedule?.kind === 'event');
+		const eventJobs = this.plugin.jobs.filter(j => waitsForTrigger(j.schedule));
 		if (eventJobs.length === 0) return;
 
 		const card = makeCard(container, 'ai-scheduler-cal-event-card');
 		const head = card.createDiv({ cls: 'ai-scheduler-cal-event-head' });
-		head.createEl('h4', { text: `⚡ Event-triggered tasks (${eventJobs.length})` });
+		head.createEl('h4', { text: `⚡ Tasks without a fixed time (${eventJobs.length})` });
 		head.createDiv({
 			cls: 'ai-scheduler-cal-event-desc',
-			text: 'These tasks execute automatically whenever vault files change, rather than at a fixed calendar time.',
+			text: 'These tasks run when vault files change or when another task finishes, rather than at a calendar time.',
 		});
 
 		const list = card.createDiv({ cls: 'ai-scheduler-cal-event-list' });
@@ -937,14 +939,17 @@ export class CalendarModal extends Modal {
 			const item = list.createDiv({ cls: 'ai-scheduler-cal-event-item' });
 			const top = item.createDiv({ cls: 'ai-scheduler-cal-event-item-top' });
 			top.createSpan({ cls: 'ai-scheduler-cal-event-title', text: `#${job.taskNumber ?? '?'} ${job.title}` });
+			const isChained = job.schedule.kind === 'after';
 			top.createSpan({
 				cls: `ai-scheduler-badge ${job.enabled ? 'is-enabled' : 'is-disabled'}`,
-				text: job.enabled ? 'Active on file change' : 'Paused',
+				text: job.enabled ? (isChained ? 'Active after another task' : 'Active on file change') : 'Paused',
 			});
 
 			const sub = item.createDiv({ cls: 'ai-scheduler-cal-event-sub' });
 			const cooldown = job.cooldownMinutes ? `${job.cooldownMinutes} min cooldown` : '10 min cooldown';
-			sub.createSpan({ text: `${describeBinding(job)} · Trigger: vault modify · ${cooldown}` });
+			sub.createSpan({ text: isChained
+				? `${describeBinding(job)} · Runs ${describeSchedule(job)}`
+				: `${describeBinding(job)} · Trigger: vault modify · ${cooldown}` });
 
 			const actions = item.createDiv({ cls: 'ai-scheduler-cal-event-actions' });
 			makeButton(actions, '▶ Run now', () => {

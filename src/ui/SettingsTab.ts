@@ -2,6 +2,7 @@ import { PluginSettingTab, App, Setting, Notice, TextComponent } from 'obsidian'
 import { AISchedulerPlugin } from '../main';
 import { AISettings, BACKEND_INFO, BackendMode } from '../types';
 import { errorText } from '../util';
+import { validClock } from '../schedule';
 import { ChangelogModal } from './ChangelogModal';
 import { FolderSuggest } from './folderSuggest';
 
@@ -483,6 +484,58 @@ export class AssistantSettingTab extends PluginSettingTab {
 					this.renderSettings();
 				})();
 			}));
+
+		new Setting(containerEl)
+			.setName('Show the next run in the status bar')
+			.setDesc('When nothing is running, the status bar shows when the next task runs (or that AI Scheduler is paused or in quiet hours). Click it to open the dashboard.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.statusBarNextRun).onChange(value => {
+				void (async () => {
+					this.plugin.settings.statusBarNextRun = value;
+					await this.plugin.saveState();
+				})();
+			}));
+
+		new Setting(containerEl)
+			.setName('Quiet hours')
+			.setDesc('Tasks that fall due during these hours wait and run when they end. Starting a task by hand still works.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.quietHoursEnabled).onChange(value => {
+				void (async () => {
+					this.plugin.settings.quietHoursEnabled = value;
+					await this.plugin.saveState();
+					this.renderSettings();
+				})();
+			}));
+
+		if (this.plugin.settings.quietHoursEnabled) {
+			const clock = (key: 'quietStart' | 'quietEnd', name: string, desc: string) => new Setting(containerEl)
+				.setName(name)
+				.setDesc(desc)
+				.addText(text => {
+					text.inputEl.type = 'time';
+					text.setValue(this.plugin.settings[key]).onChange(value => {
+						if (!validClock(value)) return;
+						void (async () => {
+							this.plugin.settings[key] = value;
+							await this.plugin.saveState();
+						})();
+					});
+				});
+			clock('quietStart', 'Quiet hours start', 'For example 23:00.');
+			clock('quietEnd', 'Quiet hours end', 'For example 07:00. An end earlier than the start means the next morning.');
+		}
+
+		new Setting(containerEl)
+			.setName('Pause all tasks')
+			.setDesc(this.plugin.settings.paused
+				? 'Paused: no task starts on its own. On resume, runs missed while paused follow the catch-up setting below.'
+				: 'Stops every task from starting on its own until you resume. The dashboard also offers timed pauses.')
+			.addButton(button => button
+				.setButtonText(this.plugin.settings.paused ? 'Resume' : 'Pause')
+				.onClick(async () => {
+					if (this.plugin.settings.paused) await this.plugin.resumeAll();
+					else await this.plugin.pauseAll(null);
+					this.renderSettings();
+				}));
 
 		if (this.plugin.settings.catchUpOnStart) {
 			new Setting(containerEl)

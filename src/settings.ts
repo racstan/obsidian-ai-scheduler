@@ -34,6 +34,12 @@ export const DEFAULT_SETTINGS: AISettings = {
 	icsExportPath: 'AI Scheduler/AI Scheduler.ics',
 	icsExportDays: 30,
 	gettingStartedShown: false,
+	paused: false,
+	pausedUntil: null,
+	quietHoursEnabled: false,
+	quietStart: '23:00',
+	quietEnd: '07:00',
+	statusBarNextRun: true,
 };
 
 const VALID_STATUSES = new Set(['scheduled', 'running', 'completed', 'failed', 'missed', 'disabled']);
@@ -89,6 +95,7 @@ export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date(
 			: null,
 		maxIterations: normalizeMaxIterations(scheduleRaw.maxIterations || scheduleRaw.maxRuns || scheduleRaw.iterations),
 		expression: typeof scheduleRaw.expression === 'string' ? scheduleRaw.expression : undefined,
+		afterTask: typeof scheduleRaw.afterTask === 'string' && scheduleRaw.afterTask ? scheduleRaw.afterTask : undefined,
 		startAt: typeof scheduleRaw.startAt === 'string' && !Number.isNaN(new Date(scheduleRaw.startAt).getTime()) ? scheduleRaw.startAt : undefined,
 		everyDays: intInRange(scheduleRaw.everyDays, 1, Number.MAX_SAFE_INTEGER),
 		everyWeeks: intInRange(scheduleRaw.everyWeeks, 1, Number.MAX_SAFE_INTEGER),
@@ -178,9 +185,24 @@ export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date(
 		retryCount: intInRange(raw.retryCount, 0, 5),
 		lastSuccessAt: typeof raw.lastSuccessAt === 'string' ? raw.lastSuccessAt : undefined,
 		history: normalizeHistory(raw.history),
+		tags: normalizeTags(raw.tags),
 		schedule: normalizedSchedule,
 		nextRunAt,
 	};
+}
+
+/** Tags without '#', trimmed, unique (case-insensitively), at most 20. */
+export function normalizeTags(raw: unknown): string[] | undefined {
+	const list = Array.isArray(raw) ? raw : typeof raw === 'string' ? raw.split(',') : [];
+	const seen = new Set<string>();
+	const tags: string[] = [];
+	for (const entry of list) {
+		const tag = String(entry ?? '').trim().replace(/^#+/, '').replace(/\s+/g, '-').slice(0, 40);
+		if (!tag || seen.has(tag.toLowerCase())) continue;
+		seen.add(tag.toLowerCase());
+		tags.push(tag);
+	}
+	return tags.length ? tags.slice(0, 20) : undefined;
 }
 
 function intInRange(value: unknown, min: number, max: number): number | undefined {
@@ -231,6 +253,14 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 	if (typeof settings.taskLogFolder !== 'string') settings.taskLogFolder = '';
 	settings.icsExportEnabled = settings.icsExportEnabled === true;
 	settings.gettingStartedShown = settings.gettingStartedShown === true;
+	settings.paused = settings.paused === true;
+	settings.pausedUntil = settings.paused && typeof settings.pausedUntil === 'string' && !Number.isNaN(new Date(settings.pausedUntil).getTime())
+		? settings.pausedUntil
+		: null;
+	settings.quietHoursEnabled = settings.quietHoursEnabled === true;
+	if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(settings.quietStart))) settings.quietStart = DEFAULT_SETTINGS.quietStart;
+	if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(settings.quietEnd))) settings.quietEnd = DEFAULT_SETTINGS.quietEnd;
+	settings.statusBarNextRun = settings.statusBarNextRun !== false;
 	if (typeof settings.icsExportPath !== 'string' || !settings.icsExportPath.trim()) settings.icsExportPath = DEFAULT_SETTINGS.icsExportPath;
 	const rawIcsDays = Number(settings.icsExportDays);
 	settings.icsExportDays = Number.isInteger(rawIcsDays) && rawIcsDays >= 1 && rawIcsDays <= 366 ? rawIcsDays : DEFAULT_SETTINGS.icsExportDays;

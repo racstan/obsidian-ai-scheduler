@@ -4,7 +4,7 @@
  * reconciled at startup, and recovery of runs interrupted by a crash.
  */
 import { AISettings, Job, RunRecord } from './types';
-import { getScheduleNextRun } from './schedule';
+import { getScheduleNextRun, waitsForTrigger } from './schedule';
 
 /** Jobs whose next run is due, oldest first. */
 export function dueJobs(jobs: Job[], now: number): Job[] {
@@ -20,7 +20,7 @@ export function reconcileAfterRun(job: Job, options: { failed?: boolean } = {}):
 	if (job.schedule.kind === 'once') {
 		job.enabled = false;
 		job.nextRunAt = null;
-	} else if (job.schedule.kind === 'event') {
+	} else if (waitsForTrigger(job.schedule)) {
 		job.nextRunAt = null;
 	} else if (job.schedule.maxIterations && job.runCount >= Number(job.schedule.maxIterations)) {
 		job.enabled = false;
@@ -37,7 +37,7 @@ export function skipMissedJob(job: Job): void {
 		job.nextRunAt = null;
 		job.status = 'missed';
 		job.lastStatus = 'missed';
-	} else if (job.schedule.kind === 'event') {
+	} else if (waitsForTrigger(job.schedule)) {
 		job.nextRunAt = null;
 	} else {
 		if (job.schedule.maxIterations && job.runCount >= Number(job.schedule.maxIterations)) {
@@ -81,7 +81,7 @@ export function recoverInterruptedRuns(jobs: Job[]): number {
 	for (const job of jobs) {
 		if (job.status !== 'running') continue;
 		job.status = 'scheduled';
-		if (job.schedule.kind !== 'event' && job.schedule.kind !== 'once') {
+		if (!waitsForTrigger(job.schedule) && job.schedule.kind !== 'once') {
 			const next = getScheduleNextRun(job.schedule, new Date());
 			if (next) job.nextRunAt = next;
 		}
@@ -93,7 +93,7 @@ export function recoverInterruptedRuns(jobs: Job[]): number {
 /** Recomputes the next run for a (re-)enabled job. Event jobs wait for their
  * next vault event instead of firing the moment they are enabled. */
 export function rescheduleEnabledJob(job: Job): void {
-	job.nextRunAt = job.schedule.kind === 'event'
+	job.nextRunAt = waitsForTrigger(job.schedule)
 		? null
 		: getScheduleNextRun(job.schedule, new Date(Date.now() - 1000));
 }
@@ -151,4 +151,65 @@ export function filesChangedSince(
 		.filter(file => !exclude.some(entry => entry && within(file.path, entry)))
 		.sort((a, b) => b.mtime - a.mtime)
 		.map(file => file.path);
+}
+
+function clockMinutes(clock: string): number {
+	const [hours, minutes] = clock.split(':').map(Number);
+	return hours * 60 + minutes;
+}
+
+/**
+ * True when `now` falls in the daily quiet hours from `start` to `end`
+ * (HH:MM, local time). The window may pass midnight (23:00-07:00); equal
+ * start and end mean no quiet hours.
+ */
+export function inQuietHours(now: Date, start: string, end: string): boolean {
+	const from = clockMinutes(start);
+	const to = clockMinutes(end);
+	if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return false;
+	const current = now.getHours() * 60 + now.getMinutes();
+	return from < to ? current >= from && current < to : current >= from || current < to;
+}
+
+/** When the quiet hours that contain `now` end. */
+export function quietHoursEnd(now: Date, end: string): Date {
+	const result = new Date(now.getTime());
+	const to = clockMinutes(end);
+	result.setHours(Math.floor(to / 60), to % 60, 0, 0);
+	if (result.getTime() <= now.getTime()) result.setDate(result.getDate() + 1);
+	return result;
+}
+
+/** Why tasks may not start on their own right now, or null when they may. */
+export function startBlockReason(
+	settings: Pick<AISettings, 'paused' | 'pausedUntil' | 'quietHoursEnabled' | 'quietStart' | 'quietEnd'>,
+	now: Date,
+): 'paused' | 'quiet' | null {
+	if (settings.paused && !(settings.pausedUntil && new Date(settings.pausedUntil).getTime() <= now.getTime())) return 'paused';
+	if (settings.quietHoursEnabled && inQuietHours(now, settings.quietStart, settings.quietEnd)) return 'quiet';
+	return null;
+}
+
+/** Enabled tasks that run after `finished` completes successfully. */
+export function chainedJobs(jobs: Job[], finished: Job): Job[] {
+	return jobs.filter(job => job.enabled && job.id !== finished.id
+		&& job.schedule.kind === 'after' && job.schedule.afterTask === finished.id);
+}
+
+/**
+ * True if making `job` run after `afterTask` would form a loop (the task
+ * would, directly or through others, end up waiting for itself).
+ */
+export function createsChainLoop(jobs: Job[], jobId: string, afterTask: string): boolean {
+	const byId = new Map(jobs.map(job => [job.id, job]));
+	const seen = new Set<string>();
+	let current: string | undefined = afterTask;
+	while (current) {
+		if (current === jobId) return true;
+		if (seen.has(current)) return false; // an existing loop elsewhere, not through this task
+		seen.add(current);
+		const next = byId.get(current);
+		current = next && next.schedule.kind === 'after' ? next.schedule.afterTask : undefined;
+	}
+	return false;
 }

@@ -7,7 +7,7 @@
  */
 export type BackendMode = 'claudian' | 'copilot' | 'none';
 
-export type ScheduleKind = 'once' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'multi' | 'hourly' | 'interval' | 'event' | 'cron';
+export type ScheduleKind = 'once' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'multi' | 'hourly' | 'interval' | 'event' | 'after' | 'cron';
 
 export type JobStatus = 'scheduled' | 'running' | 'completed' | 'failed' | 'disabled' | 'missed';
 
@@ -46,6 +46,8 @@ export interface TaskSchedule {
 	maxIterations?: number | null;
 	/** 5-field cron expression for kind 'cron'. */
 	expression?: string;
+	/** Id of the task whose successful run starts this one, for kind 'after'. */
+	afterTask?: string;
 }
 
 /**
@@ -136,6 +138,8 @@ export interface Job {
 	lastSuccessAt?: string | null;
 	/** Most recent runs, oldest first. */
 	history?: RunRecord[];
+	/** Labels for finding and grouping tasks on the dashboard. */
+	tags?: string[];
 }
 
 export interface AISettings {
@@ -182,6 +186,18 @@ export interface AISettings {
 	icsExportDays: number;
 	/** The getting-started note was shown on first install. */
 	gettingStartedShown: boolean;
+	/** No task starts on its own while paused ("Run now" still works). */
+	paused: boolean;
+	/** ISO time the pause ends by itself; null = until resumed. */
+	pausedUntil: string | null;
+	/** Tasks due during quiet hours wait until the quiet hours end. */
+	quietHoursEnabled: boolean;
+	/** HH:MM start of the quiet hours. */
+	quietStart: string;
+	/** HH:MM end of the quiet hours (may be on the next day). */
+	quietEnd: string;
+	/** Show the next run in the status bar when nothing is running. */
+	statusBarNextRun: boolean;
 }
 
 export interface ActivityEntry {
@@ -213,4 +229,4 @@ export const BACKEND_INFO = {
 	},
 } as const;
 
-export const SCHEDULE_KINDS: ScheduleKind[] = ['once', 'daily', 'weekly', 'monthly', 'yearly', 'hourly', 'interval', 'multi', 'event', 'cron'];
+export const SCHEDULE_KINDS: ScheduleKind[] = ['once', 'daily', 'weekly', 'monthly', 'yearly', 'hourly', 'interval', 'multi', 'event', 'after', 'cron'];

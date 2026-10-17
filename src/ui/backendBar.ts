@@ -37,15 +37,31 @@ function installedId(app: App, key: BackendKey): string {
 }
 
 /**
- * Renders the backend bar. `leave` closes the current window before jumping to
- * settings or the plugin store, so the settings dialog isn't hidden behind it.
+ * Renders the backend bar. When the selected backend is ready, that is just a
+ * plain "<Backend> settings" button, added to `buttonRow` if given (otherwise
+ * in a small row of its own). Otherwise a box explains what is missing and
+ * how to fix it. `leave` closes the current window before jumping to settings
+ * or the plugin store, so the settings dialog isn't hidden behind it.
  */
-export function renderBackendBar(container: HTMLElement, plugin: AISchedulerPlugin, leave: (then: () => void) => void): void {
+export function renderBackendBar(
+	container: HTMLElement,
+	plugin: AISchedulerPlugin,
+	leave: (then: () => void) => void,
+	buttonRow?: HTMLElement,
+): void {
 	const app = plugin.app;
 	const readiness = plugin.getBackendReadiness();
 	const mode = plugin.settings.backendMode;
 	const selected: BackendKey | null = mode === 'claudian' || mode === 'copilot' ? mode : null;
-	const bar = container.createDiv({ cls: `ai-scheduler-backend-bar ${readiness.ok ? 'is-ready' : 'is-warning'}` });
+	if (selected && readiness.ok && backendInstallState(app, selected) === 'enabled') {
+		const row = buttonRow ?? container.createDiv({ cls: 'ai-scheduler-backend-link-row' });
+		const name = BACKEND_INFO[selected].name;
+		const link = row.createEl('button', { text: `${name} settings` });
+		link.setAttribute('title', `Providers, API keys and models are managed in ${name}'s settings.`);
+		link.addEventListener('click', () => leave(() => plugin.openSettingsTab(installedId(app, selected))));
+		return;
+	}
+	const bar = container.createDiv({ cls: 'ai-scheduler-backend-bar is-warning' });
 
 	const text = bar.createDiv({ cls: 'ai-scheduler-backend-bar-text' });
 	const actions = bar.createDiv({ cls: 'ai-scheduler-backend-bar-actions' });
@@ -57,16 +73,13 @@ export function renderBackendBar(container: HTMLElement, plugin: AISchedulerPlug
 
 	if (selected && backendInstallState(app, selected) === 'enabled') {
 		const name = BACKEND_INFO[selected].name;
-		text.createDiv({ cls: 'ai-scheduler-backend-bar-title', text: readiness.ok ? `AI backend: ${name}` : `${name} needs setup` });
+		text.createDiv({ cls: 'ai-scheduler-backend-bar-title', text: `${name} needs setup` });
 		text.createDiv({
 			cls: 'ai-scheduler-backend-bar-desc',
-			text: readiness.ok
-				? `Providers, API keys and models are managed in ${name}'s settings; AI Scheduler uses what is set there.`
-				: `${readiness.message} Set up providers and models in ${name}'s settings; AI Scheduler uses what is set there.`,
+			text: `${readiness.message} Set up providers and models in ${name}'s settings; AI Scheduler uses what is set there.`,
 		});
-		// Always offered, ready or not: this is where models and keys live.
-		button(`Open ${name} settings`, () => plugin.openSettingsTab(installedId(app, selected)), !readiness.ok);
-		if (!readiness.ok) button('AI Scheduler settings', () => plugin.openSettingsTab());
+		button(`Open ${name} settings`, () => plugin.openSettingsTab(installedId(app, selected)), true);
+		button('AI Scheduler settings', () => plugin.openSettingsTab());
 		return;
 	}
 

@@ -244,8 +244,23 @@ export function scheduleMinutes(schedule: TaskSchedule): number {
 	return Number.isFinite(minutes) ? minutes : NaN;
 }
 
+/**
+ * Event and "after another task" schedules have no clock time: they wait for
+ * a vault change or for the other task to finish.
+ */
+export function waitsForTrigger(schedule: TaskSchedule | null | undefined): boolean {
+	return schedule?.kind === 'event' || schedule?.kind === 'after';
+}
+
+let taskTitleLookup: (id: string) => string | undefined = () => undefined;
+
+/** Lets descriptions name the task an "after" schedule waits for. */
+export function setTaskTitleLookup(lookup: (id: string) => string | undefined): void {
+	taskTitleLookup = lookup;
+}
+
 export function getScheduleNextRun(schedule: TaskSchedule | null | undefined, from: Date = new Date()): string | null {
-	if (!schedule || schedule.kind === 'event') return null;
+	if (!schedule || waitsForTrigger(schedule)) return null;
 	if (schedule.kind === 'once') {
 		const date = new Date(schedule.at as string);
 		return Number.isNaN(date.getTime()) ? null : date.toISOString();
@@ -334,6 +349,7 @@ export function cronFormFor(schedule: TaskSchedule): string | null {
 export function previewSchedule(schedule: TaskSchedule | null | undefined, count = 3, from: Date = new Date()): string[] {
 	if (!schedule) return [];
 	if (schedule.kind === 'event') return ['fires on vault activity'];
+	if (schedule.kind === 'after') return ['runs when the other task finishes'];
 	if (schedule.kind === 'once') {
 		const date = new Date(schedule.at as string);
 		return Number.isNaN(date.getTime()) ? [] : [formatLocalRun(date)];
@@ -387,6 +403,9 @@ export function describeSchedule(job: { schedule?: TaskSchedule; nextRunAt?: str
 		desc = `${cadence}${schedule.time ? ` from ${schedule.time} each day` : schedule.startAt ? ` starting ${formatDate(schedule.startAt)}` : ''}`;
 	} else if (schedule.kind === 'event') {
 		desc = `when ${schedule.event || 'the vault changes'}`;
+	} else if (schedule.kind === 'after') {
+		const title = schedule.afterTask ? taskTitleLookup(schedule.afterTask) : undefined;
+		desc = title ? `after "${title}" finishes` : 'after a task that no longer exists';
 	} else if (schedule.kind === 'cron') {
 		const expression = schedule.expression || '';
 		const description = describeCron(expression);
@@ -414,7 +433,7 @@ export function getScheduleOccurrencesInRange(
 	end: Date,
 	max = 100,
 ): Date[] {
-	if (!schedule || schedule.kind === 'event') return [];
+	if (!schedule || waitsForTrigger(schedule)) return [];
 	if (schedule.kind === 'once') {
 		if (!schedule.at) return [];
 		const date = new Date(schedule.at);

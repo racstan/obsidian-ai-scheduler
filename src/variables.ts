@@ -18,6 +18,8 @@ export interface VariableContext {
 	dailyNotePath?: () => string;
 	/** Notes changed since the last run; only computed when the text asks for it. */
 	changedNotes?: () => string[];
+	/** For a task that runs after another: that task's latest reply and result note. */
+	previous?: () => { reply: string; output: string | null } | null;
 }
 
 export interface VariableHelp {
@@ -39,6 +41,8 @@ export const VARIABLE_HELP: VariableHelp[] = [
 	{ name: '{{changed_notes}}', description: 'links to the notes changed since the last run' },
 	{ name: '{{daily_note}}', description: "a link to today's daily note" },
 	{ name: '{{task}}', description: 'the task title' },
+	{ name: '{{previous_result}}', description: "for a task that runs after another: that task's reply" },
+	{ name: '{{previous_output}}', description: 'for a task that runs after another: a link to its result note' },
 ];
 
 const MAX_CHANGED_NOTES = 50;
@@ -65,7 +69,7 @@ function changedNotesList(paths: string[]): string {
 
 /** True if the text uses any variable this module knows. */
 export function hasVariables(text: string): boolean {
-	return /\{\{\s*(date|time|datetime|yesterday|tomorrow|weekday|week|month|last_run|changed_notes|daily_note|task)\b[^}]*\}\}/i.test(String(text || ''));
+	return /\{\{\s*(date|time|datetime|yesterday|tomorrow|weekday|week|month|last_run|changed_notes|daily_note|task|previous_result|previous_output)\b[^}]*\}\}/i.test(String(text || ''));
 }
 
 /**
@@ -103,6 +107,16 @@ export function expandVariables(text: string, context: VariableContext, forFilen
 				if (!context.dailyNotePath) return match;
 				const path = context.dailyNotePath();
 				return forFilename ? path.replace(/\.md$/i, '').split('/').pop() || '' : wikiLink(path);
+			}
+			case 'previous_result': {
+				if (!context.previous || forFilename) return match;
+				return context.previous()?.reply.trim() || '(the previous task has no result yet)';
+			}
+			case 'previous_output': {
+				if (!context.previous) return match;
+				const output = context.previous()?.output;
+				if (!output) return forFilename ? '' : '(no result note)';
+				return forFilename ? output.replace(/\.md$/i, '').split('/').pop() || '' : wikiLink(output);
 			}
 			case 'changed_notes': {
 				if (!context.changedNotes || forFilename) return match;

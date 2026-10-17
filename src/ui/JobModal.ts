@@ -1,8 +1,8 @@
 import { Modal, Notice } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
-import { errorText } from '../util';
+import { errorText, isNightlyReviewJob } from '../util';
 import { SCHEDULE_KINDS, ScheduleKind, TaskSchedule } from '../types';
-import { DAY_SHORT_NAMES, MONTH_NAMES, formatMultiRules, getScheduleNextRun, normalizeMaxIterations, parseMultiRulesText, previewSchedule, validClock } from '../schedule';
+import { DAY_SHORT_NAMES, MONTH_NAMES, formatMultiRules, getScheduleNextRun, normalizeMaxIterations, parseMultiRulesText, previewSchedule, validClock, waitsForTrigger } from '../schedule';
 import { validateCron } from '../cron';
 import { createContextPicker } from './contextPicker';
 import { closeExistingSchedulerModals, linkLabel, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
@@ -11,7 +11,7 @@ import { FolderSuggest } from './folderSuggest';
 import { attachLinkHighlight } from './linkHighlight';
 import { AssistantModal } from './AssistantModal';
 import { attachMentionSuggest } from './mentionSuggest';
-import { renderResultSection, renderRunOptions, renderVariableHelp, validateOutput } from './taskOptions';
+import { renderResultSection, renderRunOptions, renderTagsInput, renderVariableHelp, validateOutput } from './taskOptions';
 
 let fieldLabelCounter = 0;
 
@@ -25,6 +25,7 @@ const KIND_LABELS: Record<ScheduleKind, string> = {
 	hourly: 'Every hour',
 	interval: 'Every N minutes / hours',
 	event: 'When the vault changes',
+	after: 'When another task finishes',
 	cron: 'Cron expression (advanced)',
 };
 
@@ -47,6 +48,7 @@ interface ScheduleInputs {
 	cooldownMinutes?: HTMLInputElement;
 	multiArea?: HTMLTextAreaElement;
 	cronInput?: HTMLInputElement;
+	afterSelect?: HTMLSelectElement;
 	dayChecks: HTMLInputElement[];
 }
 
@@ -199,6 +201,7 @@ export class JobModal extends Modal {
 			},
 		});
 		renderVariableHelp(detailsCard, promptInput);
+		const readTags = renderTagsInput(detailsCard, this.job.tags);
 
 		this.renderScheduleEditor(shell);
 
@@ -231,6 +234,7 @@ export class JobModal extends Modal {
 					output,
 					cooldownMinutes: state.cooldownMinutes,
 					...readRunOptions(),
+					tags: readTags(),
 				});
 				new Notice(wasNew ? `Task #${this.job.taskNumber} created.` : 'Schedule updated and saved.', 6000);
 				this.onSaved();
@@ -285,7 +289,7 @@ export class JobModal extends Modal {
 				const contextPaths = contextPicker.getPaths();
 				const plan = await this.plugin.refineJob(this.job, change, contextPaths);
 				const schedule = plan.schedule || this.job.schedule;
-				if (schedule.kind !== 'event' && !getScheduleNextRun(schedule, new Date(Date.now() - 1000))) {
+				if (!waitsForTrigger(schedule) && !getScheduleNextRun(schedule, new Date(Date.now() - 1000))) {
 					throw new Error('AI returned an invalid schedule. Ask for a concrete time or cadence.');
 				}
 				const folder = resultFolder.value.trim();
@@ -365,6 +369,10 @@ export class JobModal extends Modal {
 		}
 		if (schedule.kind === 'event') {
 			preview.setText('Runs when the vault changes, after a cooldown.');
+			return;
+		}
+		if (schedule.kind === 'after') {
+			preview.setText('Runs each time the chosen task finishes successfully. Use {{previous_result}} or {{previous_output}} in the instructions to work with its result.');
 			return;
 		}
 		const runs = previewSchedule(schedule, 3);
@@ -641,6 +649,29 @@ export class JobModal extends Modal {
 				});
 				break;
 			}
+			case 'after': {
+				createLabel('Run after this task finishes', true);
+				const select = container.createEl('select', { attr: { 'aria-labelledby': currentLabelId } });
+				select.addClass('ai-scheduler-select');
+				const candidates = this.plugin.jobs.filter(other => other.id !== this.job.id && !isNightlyReviewJob(other));
+				select.createEl('option', { value: '', text: candidates.length ? 'Choose a task…' : 'No other tasks yet' });
+				for (const other of candidates) {
+					select.createEl('option', { value: other.id, text: `#${other.taskNumber} · ${other.title}` });
+				}
+				select.value = schedule.afterTask && candidates.some(other => other.id === schedule.afterTask) ? schedule.afterTask : '';
+				select.onchange = onChange;
+				this.scheduleInputs.afterSelect = select;
+				container.createDiv('ai-scheduler-example').setText('Only successful runs start this task. Paused tasks are skipped.');
+
+				createLabel('Stop after N runs (optional)');
+				this.scheduleInputs.maxIterations = createInput({
+					type: 'number',
+					value: schedule.maxIterations ? String(schedule.maxIterations) : '',
+					min: '1',
+					placeholder: 'Run indefinitely'
+				});
+				break;
+			}
 			case 'cron': {
 				createLabel('5-field cron: minute, hour, day-of-month, month, day-of-week (0 = Sunday)', true);
 				this.scheduleInputs.cronInput = createInput({
@@ -786,6 +817,15 @@ export class JobModal extends Modal {
 					cooldownMinutes: cooldown,
 				};
 			}
+			case 'after': {
+				return {
+					schedule: {
+						kind: 'after',
+						afterTask: s.afterSelect ? s.afterSelect.value || undefined : previous.afterTask,
+						maxIterations,
+					},
+				};
+			}
 			case 'cron': {
 				return {
 					schedule: {
@@ -801,6 +841,7 @@ export class JobModal extends Modal {
 	private validateState(state: EditorState): string | null {
 		const schedule = state.schedule;
 		if (schedule.kind === 'event') return null;
+		if (schedule.kind === 'after') return schedule.afterTask ? null : 'Choose the task this one runs after.';
 		if (schedule.kind === 'cron') {
 			if (!schedule.expression) return 'Enter a cron expression, for example */15 * * * *';
 			return validateCron(schedule.expression);

@@ -11,6 +11,7 @@ import { describeBinding, formatDate } from '../util';
 import { describeSchedule } from '../schedule';
 import { closeExistingSchedulerModals, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
 import { AssistantModal, ConfirmModal } from './AssistantModal';
+import { PromptPreviewModal } from './PromptPreviewModal';
 
 export interface TaskFileReference {
 	path: string;
@@ -208,6 +209,12 @@ export class TaskViewModal extends Modal {
 		scheduleCol.createDiv({ cls: 'ai-scheduler-stat-label', text: 'Schedule' });
 		scheduleCol.createDiv({ cls: 'ai-scheduler-view-val', text: describeSchedule(this.job) });
 
+		if (this.job.tags?.length) {
+			const tagsCol = metaGrid.createDiv();
+			tagsCol.createDiv({ cls: 'ai-scheduler-stat-label', text: 'Tags' });
+			tagsCol.createDiv({ cls: 'ai-scheduler-view-val', text: this.job.tags.map(tag => `#${tag}`).join(' ') });
+		}
+
 		const backendCol = metaGrid.createDiv();
 		backendCol.createDiv({ cls: 'ai-scheduler-stat-label', text: 'AI backend / model' });
 		backendCol.createDiv({ cls: 'ai-scheduler-view-val', text: describeBinding(this.job) });
@@ -285,6 +292,7 @@ export class TaskViewModal extends Modal {
 		if (this.job.prompt) {
 			const promptHeading = shell.createDiv('ai-scheduler-section-heading');
 			promptHeading.createEl('h2', { text: 'Prompt & instructions', cls: 'ai-scheduler-section-title' });
+			makeButton(promptHeading, 'Preview prompt', () => new PromptPreviewModal(this.app, this.plugin, this.job).open());
 			const promptCard = makeCard(shell, 'ai-scheduler-card-tight', 'ai-scheduler-card-flush');
 			promptCard.createDiv({ cls: 'ai-scheduler-prompt-preview', text: this.job.prompt });
 		}

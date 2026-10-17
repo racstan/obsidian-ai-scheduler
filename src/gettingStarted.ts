@@ -39,8 +39,9 @@ The AI Scheduler dashboard shows whether the backend is ready, with a button to 
 
 ## 4. Create your first task
 
-Open the dashboard with the ribbon icon or the command **AI Scheduler: Open assistant dashboard**, then either:
+Open the dashboard with the ribbon icon or the command **AI Scheduler: Open assistant dashboard**, then:
 
+- **From a template**: pick a ready-made task such as a daily summary or weekly review, and adjust it.
 - **Ask AI to plan a schedule**: describe what you want in plain English, for example *"Every weekday at 9 am, summarize the notes I changed yesterday"*. Type \`@\` to attach notes or folders, and optionally pick a **Result folder**.
 - **Create a task yourself**: write the instructions and choose a schedule (once, daily, weekly, every N minutes, cron, or when notes change).
 
@@ -56,6 +57,9 @@ Instructions can use variables such as \`{{date}}\`, \`{{last_run}}\` and \`{{ch
 - **Schedule notes**: keep each task as a note you can edit.
 - **Run options** (in the task editor): retry failed runs, set a time limit, or only run when something changed.
 - **Run history**: open a task to see its recent runs, results and errors.
+- **Chained tasks**: choose the schedule *When another task finishes* to run a task after another one.
+- **Pause and quiet hours**: pause everything from the dashboard, or set quiet hours in settings.
+- **Tags and search**: tag tasks and find them from the dashboard's search bar.
 
 ## Good to know
 

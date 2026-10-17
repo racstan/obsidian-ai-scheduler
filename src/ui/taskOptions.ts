@@ -7,6 +7,7 @@ import { Job, JobOutput, OUTPUT_MODES, OutputMode } from '../types';
 import { OUTPUT_MODE_LABELS, outputMode } from '../output';
 import { DEFAULT_RETRY_DELAY_MINUTES, MAX_RETRIES } from '../engine';
 import { VARIABLE_HELP } from '../variables';
+import { normalizeTags } from '../settings';
 import { linkLabel, makeCard } from './dom';
 import { FolderSuggest } from './folderSuggest';
 
@@ -158,4 +159,11 @@ export function renderVariableHelp(container: HTMLElement, target: HTMLTextAreaE
 		};
 		item.createSpan({ cls: 'ai-scheduler-variable-desc', text: variable.description });
 	}
+}
+
+/** "Tags" field (comma-separated). Returns a reader for the cleaned-up tags. */
+export function renderTagsInput(container: HTMLElement, tags: string[] | undefined): () => string[] | undefined {
+	const input = textInput('e.g. review, work (separate with commas)', (tags ?? []).join(', '));
+	field(container, 'Tags (optional)', input);
+	return () => normalizeTags(input.value);
 }

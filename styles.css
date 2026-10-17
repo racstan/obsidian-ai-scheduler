@@ -2930,3 +2930,88 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	white-space: pre-wrap;
 	word-break: break-word;
 }
+
+/* Dashboard: search, tag filter and sort */
+.ai-scheduler-filter-bar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin: 12px 0 4px;
+}
+
+.ai-scheduler-filter-search {
+	flex: 1 1 240px;
+	min-width: 0;
+}
+
+.ai-scheduler-filter-select {
+	flex: 0 1 auto;
+}
+
+.ai-scheduler-tag-chip {
+	font-size: var(--font-ui-smaller);
+	padding: 1px 8px;
+	border-radius: var(--radius-l);
+	background: var(--background-modifier-hover);
+	color: var(--text-accent);
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.ai-scheduler-tag-chip:hover {
+	background: var(--background-modifier-active-hover);
+}
+
+/* Starter templates */
+.ai-scheduler-template-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.ai-scheduler-template-card {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.ai-scheduler-template-text {
+	min-width: 0;
+}
+
+.ai-scheduler-template-desc {
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	margin: 2px 0 4px;
+}
+
+/* Prompt preview */
+.ai-scheduler-prompt-preview-full {
+	white-space: pre-wrap;
+	word-break: break-word;
+	max-height: 60vh;
+	overflow: auto;
+	padding: 12px;
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+	font-size: var(--font-ui-small);
+}
+
+/* A ready AI backend is just a settings button */
+.ai-scheduler-backend-link-row {
+	display: flex;
+	justify-content: flex-end;
+	margin-bottom: 8px;
+}
+
+.ai-scheduler-activity-view {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-accent);
+	cursor: pointer;
+	flex-shrink: 0;
+}
+
+.ai-scheduler-activity-view:hover {
+	text-decoration: underline;
+}

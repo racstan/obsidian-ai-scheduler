@@ -9,7 +9,7 @@
  */
 import { TAbstractFile, TFile, getFrontMatterInfo, normalizePath, parseYaml, stringifyYaml } from 'obsidian';
 import { Job, JobOutput, SCHEDULE_KINDS, TaskSchedule } from './types';
-import { cronFormFor, describeSchedule, getScheduleNextRun, previewSchedule } from './schedule';
+import { cronFormFor, describeSchedule, getScheduleNextRun, previewSchedule, waitsForTrigger } from './schedule';
 import { normalizeJob } from './settings';
 
 /** Reads the plugin's definition from a schedule note's frontmatter. Exported for tests. */
@@ -44,10 +44,11 @@ export interface NoteDefinition {
 	retryDelayMinutes?: number;
 	timeoutMinutes?: number;
 	onlyIfChanged?: boolean;
+	tags?: string[];
 }
 
 /** Per-task run options shared by data.json and schedule notes. */
-const RUN_OPTION_KEYS = ['retries', 'retryDelayMinutes', 'timeoutMinutes', 'onlyIfChanged'] as const;
+const RUN_OPTION_KEYS = ['retries', 'retryDelayMinutes', 'timeoutMinutes', 'onlyIfChanged', 'tags'] as const;
 
 function slugify(title: string): string {
 	const slug = String(title || 'task')
@@ -130,6 +131,7 @@ export class ScheduleNotesSync {
 		if (job.schedule.everyMonths) schedule.everyMonths = job.schedule.everyMonths;
 		if (job.schedule.dayOfMonth) schedule.dayOfMonth = job.schedule.dayOfMonth;
 		if (job.schedule.month) schedule.month = job.schedule.month;
+		if (job.schedule.afterTask) schedule.afterTask = job.schedule.afterTask;
 		const definition: NoteDefinition = {
 			id: job.id,
 			taskNumber: job.taskNumber,
@@ -237,9 +239,10 @@ export class ScheduleNotesSync {
 			retryDelayMinutes: definition.retryDelayMinutes,
 			timeoutMinutes: definition.timeoutMinutes,
 			onlyIfChanged: definition.onlyIfChanged,
+			tags: definition.tags,
 			notePath: file.path,
 		});
-		if (job.schedule.kind !== 'event' && !job.nextRunAt) return false;
+		if (!waitsForTrigger(job.schedule) && !job.nextRunAt) return false;
 		this.plugin.jobs.push(job);
 		this.plugin.assignTaskNumbers();
 		return true;
@@ -265,7 +268,7 @@ export class ScheduleNotesSync {
 			// Body-only edits must not push the next run out (or drop an overdue one).
 			if (JSON.stringify(normalized) !== JSON.stringify(normalizeJob({ id: job.id, createdAt: job.createdAt, schedule: job.schedule }).schedule)) {
 				job.schedule = normalized;
-				job.nextRunAt = job.schedule.kind === 'event' ? null : getScheduleNextRun(job.schedule, new Date());
+				job.nextRunAt = waitsForTrigger(job.schedule) ? null : getScheduleNextRun(job.schedule, new Date());
 			}
 		}
 		if (typeof definition.cooldownMinutes === 'number') job.cooldownMinutes = definition.cooldownMinutes;

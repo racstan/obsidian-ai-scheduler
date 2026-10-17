@@ -18,7 +18,9 @@ import { DEFAULT_SETTINGS, normalizeJob, parseStoredData } from './settings';
 import {
 	getScheduleNextRun,
 	normalizeMaxIterations,
+	setTaskTitleLookup,
 	validClock,
+	waitsForTrigger,
 } from './schedule';
 import {
 	planStartupCatchUp,
@@ -30,7 +32,14 @@ import {
 	filesChangedSince,
 	planRetry,
 	recordRun,
+	chainedJobs,
+	createsChainLoop,
+	startBlockReason,
+	quietHoursEnd,
 } from './engine';
+import { exportTasks, importTasks } from './transfer';
+import { TemplateModal } from './ui/TemplateModal';
+import { ImportTasksModal } from './ui/ImportTasksModal';
 import { DateFormatter, VariableContext, changedSince, expandVariables } from './variables';
 import { DailyNoteSettings, appendBlock, dailyNotePath, insertBlock, outputMode } from './output';
 import { executionPrompt, plannerPrompt, refinePrompt, reviewPrompt } from './prompts';
@@ -70,6 +79,8 @@ export class AISchedulerPlugin extends Plugin {
 	isPlanning = false;
 	activePlanningGoal: string | null = null;
 	private selfWrites = new Set<string>();
+	/** Tasks started with "Run now": they run even while paused or in quiet hours. */
+	private manualRuns = new Set<string>();
 	private statusBarEl: HTMLElement | null = null;
 	private statusBarTimer: number | null = null;
 
@@ -90,6 +101,7 @@ export class AISchedulerPlugin extends Plugin {
 		this.deletedJobs = parsed.deletedJobs;
 		this.activity = parsed.activity;
 		recoverInterruptedRuns(this.jobs);
+		setTaskTitleLookup(id => this.jobs.find(job => job.id === id)?.title);
 
 		this.assignTaskNumbers();
 		this.running = false;
@@ -234,6 +246,45 @@ export class AISchedulerPlugin extends Plugin {
 					.catch(error => new Notice(`Could not export calendar: ${errorText(error)}`, 8000));
 			},
 		});
+		this.addCommand({
+			id: 'pause-all',
+			name: 'Pause all tasks',
+			callback: async () => {
+				await this.pauseAll(null);
+				new Notice('AI Scheduler paused. No task starts on its own until you resume.');
+			},
+		});
+		this.addCommand({
+			id: 'resume-all',
+			name: 'Resume all tasks',
+			callback: async () => {
+				if (!this.settings.paused) {
+					new Notice('AI Scheduler is not paused.');
+					return;
+				}
+				await this.resumeAll();
+				new Notice('AI Scheduler resumed.');
+			},
+		});
+		this.addCommand({
+			id: 'new-task-from-template',
+			name: 'New task from a template',
+			callback: () => new TemplateModal(this.app, this).open(),
+		});
+		this.addCommand({
+			id: 'export-tasks',
+			name: 'Export tasks to a file',
+			callback: () => {
+				void this.exportTasksFile()
+					.then(path => new Notice(`Tasks exported to ${path}.`, 8000))
+					.catch(error => new Notice(`Could not export tasks: ${errorText(error)}`, 8000));
+			},
+		});
+		this.addCommand({
+			id: 'import-tasks',
+			name: 'Import tasks from a file',
+			callback: () => new ImportTasksModal(this.app, this).open(),
+		});
 		this.addSettingTab(new AssistantSettingTab(this.app, this));
 
 		this.registerInterval(window.setInterval(() => { void this.tick(); }, TICK_MS));
@@ -333,6 +384,7 @@ export class AISchedulerPlugin extends Plugin {
 		}
 		this.notesSync.requestSync();
 		this.requestIcsExport();
+		this.updateStatusBar();
 	}
 
 	/** Refreshes the .ics calendar file shortly after changes (debounced), when enabled. */
@@ -448,8 +500,14 @@ export class AISchedulerPlugin extends Plugin {
 				await this.saveState();
 			}
 		}
+		if (this.settings.paused && this.settings.pausedUntil && new Date(this.settings.pausedUntil).getTime() <= nowMs) {
+			await this.resumeAll(true);
+		}
+		this.updateStatusBar();
 		if (this.running) return;
-		const due = dueJobs(this.jobs, Date.now());
+		// While paused or in quiet hours only "Run now" tasks start; the rest stay due.
+		const blocked = startBlockReason(this.settings, new Date());
+		const due = dueJobs(this.jobs, Date.now()).filter(job => !blocked || this.manualRuns.has(job.id));
 		if (!due.length) {
 			if (this.pendingVaultEvents.length) {
 				const events = this.pendingVaultEvents.splice(0);
@@ -467,6 +525,7 @@ export class AISchedulerPlugin extends Plugin {
 				// A manual review is in progress: leave the scheduled one due for the next tick
 				// instead of failing it with "already in progress".
 				if (isNightlyReviewJob(job) && this.reviewRunning) continue;
+				this.manualRuns.delete(job.id);
 				await this.executeJob(job);
 			}
 		} finally {
@@ -493,9 +552,7 @@ export class AISchedulerPlugin extends Plugin {
 	private async runJobBody(job: Job): Promise<void> {
 		const isReview = job.routine === 'daily-review' || job.routine === 'periodic-review';
 		const previousRunAt = job.lastRunAt;
-		// Tasks saved before lastSuccessAt existed: their last run counts if it succeeded.
-		const lastSuccess = job.lastSuccessAt || (job.lastStatus === 'completed' ? previousRunAt : null);
-		const lastRun = lastSuccess ? new Date(lastSuccess) : null;
+		const lastRun = this.lastSuccessDate(job);
 		const retryNumber = Number(job.retryCount || 0);
 		const startedAt = new Date();
 
@@ -581,6 +638,7 @@ export class AISchedulerPlugin extends Plugin {
 			// After the output is safely written; follow-up problems are logged, not fatal.
 			if (job.source !== 'self-talk') await this.processFollowUps(reply, job);
 			reconcileAfterRun(job);
+			this.queueChainedJobs(job);
 			this.logActivity('completed', `Task #${job.taskNumber} finished: ${job.title}`, job.id);
 			// Log only what this run wrote, not the job's whole output history.
 			// (lastOutputPath was cleared at the start of the run.)
@@ -644,7 +702,100 @@ export class AISchedulerPlugin extends Plugin {
 			lastRun,
 			dailyNotePath: () => this.dailyNotePathFor(now),
 			changedNotes: () => this.notesChangedSince(changedSince(lastRun, now).getTime(), []),
+			previous: () => {
+				const previous = job.schedule.kind === 'after' && job.schedule.afterTask
+					? this.jobs.find(other => other.id === job.schedule.afterTask)
+					: undefined;
+				return previous ? { reply: previous.lastReply || '', output: previous.lastOutputPath ?? null } : null;
+			},
 		};
+	}
+
+	/** Start of the task's last successful run, or null. */
+	lastSuccessDate(job: Job): Date | null {
+		// Tasks saved before lastSuccessAt existed: their last run counts if it succeeded.
+		const lastSuccess = job.lastSuccessAt || (job.lastStatus === 'completed' ? job.lastRunAt : null);
+		return lastSuccess ? new Date(lastSuccess) : null;
+	}
+
+	/** The full prompt a run would send now, with variables filled in. Nothing is sent. */
+	previewPrompt(job: Job): string {
+		const variables = this.variablesFor(job, new Date(), this.lastSuccessDate(job));
+		const context = getPathsContext(this.app, job.contextPaths || []);
+		return executionPrompt(expandVariables(job.prompt, variables), context.paths, job.source !== 'self-talk');
+	}
+
+	/** Queues the tasks that run after `finished`, which just completed. */
+	queueChainedJobs(finished: Job): void {
+		for (const next of chainedJobs(this.jobs, finished)) {
+			if (this.runningJobs.has(next.id)) continue;
+			next.nextRunAt = new Date(Date.now() + 2000).toISOString();
+			next.status = 'scheduled';
+			this.logActivity('planned', `Task #${next.taskNumber} queued: runs after #${finished.taskNumber} finished`, next.id);
+		}
+	}
+
+	/** Refuses an "after" schedule without a task, or one that would form a loop. */
+	checkChain(jobId: string, schedule: TaskSchedule): void {
+		if (schedule.kind !== 'after') return;
+		const target = schedule.afterTask;
+		if (!target || !this.jobs.some(other => other.id === target)) {
+			throw new Error('Choose the task this one runs after.');
+		}
+		if (createsChainLoop(this.jobs, jobId, target)) {
+			throw new Error('That would make the task wait for itself (a loop of "after" tasks).');
+		}
+	}
+
+	/** Stops tasks from starting on their own, until `until` or until resumed. */
+	async pauseAll(until: Date | null): Promise<void> {
+		this.settings.paused = true;
+		this.settings.pausedUntil = until ? until.toISOString() : null;
+		this.logActivity('status', until ? `Paused all tasks until ${formatDate(this.settings.pausedUntil)}` : 'Paused all tasks');
+		await this.saveState();
+	}
+
+	/**
+	 * Ends a pause. Runs that fell due while paused follow the catch-up
+	 * setting, like runs missed while Obsidian was closed.
+	 */
+	async resumeAll(automatic = false): Promise<void> {
+		if (!this.settings.paused) return;
+		this.settings.paused = false;
+		this.settings.pausedUntil = null;
+		const plan = planStartupCatchUp(this.jobs, this.settings, Date.now());
+		for (const job of plan.stale) skipMissedJob(job);
+		const skipped = plan.stale.length ? ` (skipped ${plan.stale.length} run(s) missed while paused)` : '';
+		this.logActivity('status', `${automatic ? 'Pause ended' : 'Resumed all tasks'}${skipped}`);
+		await this.saveState();
+	}
+
+	/** Writes all tasks to a JSON file in the result folder and returns its path. */
+	async exportTasksFile(): Promise<string> {
+		const jobs = this.jobs.filter(job => !isNightlyReviewJob(job));
+		if (!jobs.length) throw new Error('There are no tasks to export.');
+		const folder = this.checkSafeFolder(this.getDefaultOutputFolder());
+		await this.ensureFolder(folder);
+		const base = `${folder ? `${folder}/` : ''}AI Scheduler tasks ${localDateKey()}`;
+		let path = normalizePath(`${base}.json`);
+		for (let suffix = 2; this.app.vault.getAbstractFileByPath(path); suffix++) path = normalizePath(`${base}-${suffix}.json`);
+		this.markSelfWrite(path);
+		await this.app.vault.create(path, exportTasks(jobs));
+		return path;
+	}
+
+	/** Adds the tasks from an export file, paused. Returns how many were added. */
+	async importTasksText(text: string): Promise<number> {
+		const imported = importTasks(text, this.jobs);
+		this.assignTaskNumbers();
+		let number = Math.max(0, ...this.jobs.map(job => Number(job.taskNumber) || 0));
+		for (const job of imported) {
+			job.taskNumber = ++number;
+			this.jobs.push(job);
+		}
+		this.logActivity('planned', `Imported ${imported.length} task(s), paused for review`);
+		await this.saveState();
+		return imported.length;
 	}
 
 	// Obsidian's bundled moment; its typings describe the namespace, not the callable.
@@ -782,7 +933,8 @@ export class AISchedulerPlugin extends Plugin {
 
 	async addJob(raw: Record<string, unknown>): Promise<Job> {
 		const job = normalizeJob(raw);
-		if (job.schedule.kind !== 'event' && !job.nextRunAt) {
+		this.checkChain(job.id, job.schedule);
+		if (!waitsForTrigger(job.schedule) && !job.nextRunAt) {
 			throw new Error(`Cannot create "${job.title}": its schedule is invalid or has no valid time.`);
 		}
 		this.assignTaskNumbers();
@@ -1178,8 +1330,8 @@ export class AISchedulerPlugin extends Plugin {
 			: (typeof plan.clarification === 'string' && plan.clarification.trim()
 				? plan.clarification.trim()
 				: null);
-		const nextRunAt = normalized.kind === 'event' ? null : getScheduleNextRun(normalized);
-		if (normalized.kind !== 'event' && !nextRunAt) {
+		const nextRunAt = waitsForTrigger(normalized) ? null : getScheduleNextRun(normalized);
+		if (!waitsForTrigger(normalized) && !nextRunAt) {
 			throw new Error(`Invalid schedule for "${titleStr}": no valid next run time`);
 		}
 		return {
@@ -1513,10 +1665,12 @@ export class AISchedulerPlugin extends Plugin {
 	}
 
 	async updateJob(job: Job, changes: Partial<Job> & { cooldownMinutes?: number }): Promise<void> {
+		// Checked before anything changes, so a refused edit leaves the task as it was.
+		this.checkChain(job.id, Object.assign({}, job.schedule, changes.schedule || {}));
 		Object.assign(job, changes);
 		job.schedule = Object.assign({}, job.schedule, changes.schedule || {});
 		job.schedule.maxIterations = normalizeMaxIterations(job.schedule.maxIterations);
-		job.nextRunAt = job.schedule.kind === 'event' ? null : getScheduleNextRun(job.schedule, new Date(Date.now() - 1000));
+		job.nextRunAt = waitsForTrigger(job.schedule) ? null : getScheduleNextRun(job.schedule, new Date(Date.now() - 1000));
 		job.lastError = null;
 		job.retryCount = 0;
 		if (this.jobs.includes(job) && job.status === 'disabled') {
@@ -1529,7 +1683,7 @@ export class AISchedulerPlugin extends Plugin {
 		}
 		if (!this.jobs.includes(job)) {
 			// New tasks (e.g. from the calendar) are edited before they are registered.
-			if (job.schedule.kind !== 'event' && !job.nextRunAt) {
+			if (!waitsForTrigger(job.schedule) && !job.nextRunAt) {
 				throw new Error(`Cannot create "${job.title}": its schedule is invalid or has no valid time.`);
 			}
 			this.assignTaskNumbers();
@@ -1548,6 +1702,7 @@ export class AISchedulerPlugin extends Plugin {
 		job.lastError = null;
 		job.retryCount = 0;
 		job.nextRunAt = new Date(Date.now() - 1000).toISOString();
+		this.manualRuns.add(job.id);
 		await this.saveState();
 		await this.tick();
 	}
@@ -1589,6 +1744,31 @@ export class AISchedulerPlugin extends Plugin {
 		]);
 	}
 
+	/** Status bar text when nothing runs: paused, quiet hours, or the next run. */
+	private idleStatusText(): { text: string; tooltip: string } | null {
+		const now = new Date();
+		const block = startBlockReason(this.settings, now);
+		if (block === 'paused') {
+			const until = this.settings.pausedUntil ? ` until ${shortTime(new Date(this.settings.pausedUntil), now)}` : '';
+			return { text: `AI Scheduler paused${until}`, tooltip: 'No task starts on its own. Click to open the dashboard and resume.' };
+		}
+		if (!this.settings.statusBarNextRun) return null;
+		if (block === 'quiet') {
+			return {
+				text: `AI: quiet hours until ${shortTime(quietHoursEnd(now, this.settings.quietEnd), now)}`,
+				tooltip: 'Tasks due now wait until the quiet hours end. Click to open the dashboard.',
+			};
+		}
+		const next = this.jobs
+			.filter(job => job.enabled && job.nextRunAt)
+			.sort((a, b) => new Date(a.nextRunAt as string).getTime() - new Date(b.nextRunAt as string).getTime())[0];
+		if (!next?.nextRunAt) return null;
+		return {
+			text: `AI: next ${shortTime(new Date(next.nextRunAt), now)}`,
+			tooltip: `Next: #${next.taskNumber} ${next.title} at ${formatDate(next.nextRunAt)}. Click to open the dashboard.`,
+		};
+	}
+
 	updateStatusBar(): void {
 		if (!this.statusBarEl) return;
 		const runningList = this.jobs.filter(job => this.runningJobs.has(job.id) || job.status === 'running');
@@ -1598,7 +1778,15 @@ export class AISchedulerPlugin extends Plugin {
 				this.statusBarTimer = null;
 			}
 			this.statusBarEl.empty();
-			this.statusBarEl.hide();
+			const idle = this.idleStatusText();
+			if (!idle) {
+				this.statusBarEl.hide();
+				return;
+			}
+			this.statusBarEl.show();
+			this.statusBarEl.createSpan({ cls: 'ai-scheduler-status-bar-text', text: idle.text });
+			this.statusBarEl.setAttribute('title', idle.tooltip);
+			this.statusBarEl.onclick = () => new AssistantModal(this.app, this).open();
 			return;
 		}
 
@@ -1633,3 +1821,12 @@ export class AISchedulerPlugin extends Plugin {
 	}
 }
 
+/** "14:30" today, "Mon 14:30" within a week, otherwise the date and time. */
+function shortTime(date: Date, now: Date): string {
+	const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+	if (date.toDateString() === now.toDateString()) return time;
+	if (date.getTime() - now.getTime() < 6 * 24 * 60 * 60 * 1000) {
+		return `${date.toLocaleDateString([], { weekday: 'short' })} ${time}`;
+	}
+	return date.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+}
