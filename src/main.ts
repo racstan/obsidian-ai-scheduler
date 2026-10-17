@@ -1,5 +1,5 @@
 /*
- * AI Scheduler - an autonomy layer for Claudian and Obsidian Copilot.
+ * AI Scheduler - an autonomy layer for Claudian and Copilot.
  *
  * This plugin deliberately does not call an AI provider directly. The selected
  * backend owns providers, models, permissions, and vault tools; this plugin
@@ -1459,18 +1459,18 @@ export class AISchedulerPlugin extends Plugin {
 	getBackendReadiness(): { ok: boolean; message: string } {
 		const mode = this.settings.backendMode;
 		if (mode === 'none' || !mode) {
-			return { ok: false, message: 'No AI backend selected. Choose Claudian, Oh My Claudian or Obsidian Copilot in AI Scheduler settings.' };
+			return { ok: false, message: 'No AI backend selected. Choose Claudian, Oh My Claudian or Copilot in AI Scheduler settings.' };
 		}
 		if (mode === 'copilot') {
 			const copilot = this.getCopilotPlugin();
 			if (!copilot) {
-				return { ok: false, message: 'Obsidian Copilot plugin is not installed or enabled.' };
+				return { ok: false, message: 'Copilot plugin is not installed or enabled.' };
 			}
 			const check = this.checkCopilotSetup();
 			if (!check.ok) {
 				return { ok: false, message: check.message };
 			}
-			return { ok: true, message: 'Obsidian Copilot is ready.' };
+			return { ok: true, message: 'Copilot is ready.' };
 		} else {
 			const name = BACKEND_INFO[mode].name;
 			const claudian = this.getClaudianPlugin();

@@ -16,11 +16,11 @@ It works with the AI plugins you likely already have installed:
 
 - **[Claudian](https://github.com/YishenTu/claudian)**
 - **[Oh My Claudian](https://github.com/lee259/oh-my-claudian)**
-- **[Obsidian Copilot](https://github.com/logancyang/obsidian-copilot)**
+- **[Copilot](https://github.com/logancyang/obsidian-copilot)**
 
 AI Scheduler does not call AI providers directly. It drives Claudian, Oh My Claudian or Copilot — whichever you have configured — and owns only the scheduling and execution layer.
 
-Supported versions: Claudian 2.x (including the 2.3.2x releases), Oh My Claudian, and Obsidian Copilot 3.x and 4.x. Claudian's providers (Claude, Codex, OpenCode, Pi and others) and Oh My Claudian's extra providers are supported.
+Supported versions: Claudian 2.x (including the 2.3.2x releases), Oh My Claudian, and Copilot 3.x and 4.x. Claudian's providers (Claude, Codex, OpenCode, Pi and others) and Oh My Claudian's extra providers are supported.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/racstan/obsidian-ai-scheduler/main/docs/media/demo.gif" alt="Planning a task in plain English: AI Scheduler creates and schedules it" width="860">
@@ -131,11 +131,11 @@ AI Scheduler needs one of these backends installed and working first. Install it
 
 - **[Claudian](https://github.com/YishenTu/claudian)**
 - **[Oh My Claudian](https://github.com/lee259/oh-my-claudian)**
-- **[Obsidian Copilot](https://github.com/logancyang/obsidian-copilot)**
+- **[Copilot](https://github.com/logancyang/obsidian-copilot)**
 
 Then in **Settings → AI Scheduler**:
 
-1. Pick your **AI backend** (Claudian, Oh My Claudian or Obsidian Copilot).
+1. Pick your **AI backend** (Claudian, Oh My Claudian or Copilot).
 2. Choose models for **Planning model**, **Scheduled task model**, **Daily preview model** and **Periodic review model**.
 3. Optionally enable **Schedule notes** to mirror tasks as vault Markdown files.
 4. Optionally enable **Periodic AI review**, choose its cadence and time, and pick a review folder.
@@ -256,7 +256,7 @@ All commands are available from the command palette (`Ctrl/Cmd + P`):
 ## Privacy
 
 - No third-party servers, no telemetry, no analytics.
-- Prompts and vault files go only to your configured backend (Claudian, Oh My Claudian or Obsidian Copilot) and then to whatever AI provider you have set up there.
+- Prompts and vault files go only to your configured backend (Claudian, Oh My Claudian or Copilot) and then to whatever AI provider you have set up there.
 - Periodic reviews and automated note reading are opt-in.
 - Follow-up tasks that the AI proposes in its replies are created **disabled** — you review and enable them yourself.
 - Task output is written as Markdown notes. The plugin never replaces a note it did not create; it only adds to an existing note when you choose **Add to one note** or **Add to today's daily note** for that task. It never writes into hidden or `.obsidian` folders.
@@ -285,6 +285,20 @@ npm run check   # TypeScript typecheck
 npm run smoke   # smoke test against mock Obsidian API
 npm run build   # production bundle
 ```
+
+---
+
+## Credits
+
+AI Scheduler runs your tasks through these plugins and would not exist without them. Thanks to their authors:
+
+- **[Claudian](https://github.com/YishenTu/claudian)** by [Yishen Tu](https://github.com/YishenTu)
+- **[Oh My Claudian](https://github.com/lee259/oh-my-claudian)** by [Lee](https://github.com/lee259)
+- **[Copilot](https://github.com/logancyang/obsidian-copilot)** by [Logan Yang](https://github.com/logancyang)
+
+Each plugin is developed and licensed by its own author; AI Scheduler is not affiliated with them.
+
+Thanks also to everyone who contributed code, reported issues or suggested features. They are credited in each release of the [changelog](CHANGELOG.md) and in the plugin's **What's new** window.
 
 ---
 

@@ -15,7 +15,7 @@ export default tseslint.config(
 			'obsidianmd/ui/sentence-case': [
 				'warn',
 				{
-					brands: ['Obsidian', 'Markdown', 'Claudian', 'Copilot', 'Obsidian Copilot', 'AI Scheduler', 'AI Planner', 'AI reviews', 'Claude', 'Gemini', 'Ollama', 'OpenAI', 'Windows', 'macOS', 'Linux', 'English'],
+					brands: ['Obsidian', 'Markdown', 'Claudian', 'Oh My Claudian', 'Copilot', 'AI Scheduler', 'AI Planner', 'AI reviews', 'Claude', 'Gemini', 'Ollama', 'OpenAI', 'Windows', 'macOS', 'Linux', 'English'],
 					acronyms: ['AI', 'UI', 'ID', 'OK', 'DST', 'OS'],
 				},
 			],

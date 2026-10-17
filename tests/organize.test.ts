@@ -176,3 +176,43 @@ test('every template makes a valid task', () => {
 		assert.ok(made.prompt.length > 20, `${template.id} has instructions`);
 	}
 });
+
+test('summarizeNextRun groups tasks due at the same minute and reports holds', async () => {
+	const { summarizeNextRun, listTitles } = await import('../src/nextRun');
+	const settings = { ...DEFAULT_SETTINGS, paused: false, pausedUntil: null, quietHoursEnabled: false };
+	const now = at(8);
+	const a = job({ id: 'a', title: 'A', taskNumber: 1, nextRunAt: at(9).toISOString() });
+	const b = job({ id: 'b', title: 'B', taskNumber: 2, nextRunAt: new Date(at(9).getTime() + 30_000).toISOString() });
+	const c = job({ id: 'c', title: 'C', taskNumber: 3, nextRunAt: at(10).toISOString() });
+	const trigger = job({ id: 't', title: 'T', schedule: { kind: 'event' } });
+	const off = job({ id: 'o', title: 'Off', enabled: false, nextRunAt: at(8, 30).toISOString() });
+
+	let s = summarizeNextRun([c, b, a, trigger, off], new Set(), settings, now);
+	assert.deepEqual(s.next.map(j => j.id), ['a', 'b'], 'tasks in the same minute are listed together');
+	assert.equal(s.overdue, false);
+	assert.equal(s.waitingForTrigger, 1);
+	assert.equal(s.hold, null);
+
+	s = summarizeNextRun([a, b, c], new Set(['a']), settings, now);
+	assert.deepEqual(s.running.map(j => j.id), ['a']);
+	assert.deepEqual(s.next.map(j => j.id), ['b'], 'a running task is not also "next"');
+
+	s = summarizeNextRun([a, b, c], new Set(), settings, at(9, 30));
+	assert.equal(s.overdue, true);
+	assert.deepEqual(s.next.map(j => j.id), ['a', 'b'], 'every overdue task is listed');
+
+	s = summarizeNextRun([trigger], new Set(), settings, now);
+	assert.equal(s.nextAt, null);
+	assert.equal(s.waitingForTrigger, 1);
+
+	s = summarizeNextRun([a], new Set(), { ...settings, paused: true }, now);
+	assert.deepEqual(s.hold, { reason: 'paused', until: null });
+
+	s = summarizeNextRun([a], new Set(), { ...settings, quietHoursEnabled: true, quietStart: '08:30', quietEnd: '09:30' }, now);
+	assert.equal(s.hold?.reason, 'quiet', 'a run that falls in quiet hours waits');
+	assert.equal(s.hold?.until, at(9, 30).toISOString());
+
+	assert.equal(listTitles([a]), 'A');
+	assert.equal(listTitles([a, b]), 'A and B');
+	assert.equal(listTitles([a, b, c, trigger]), 'A, B and 2 more');
+});

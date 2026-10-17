@@ -96,14 +96,14 @@ export class AssistantSettingTab extends PluginSettingTab {
 			const infoBox = containerEl.createDiv({ cls: 'ai-scheduler-card ai-scheduler-card-flush' });
 			infoBox.createDiv({
 				cls: 'ai-scheduler-hint',
-				text: '👉 Select an AI backend above to configure your AI models and connections. AI Scheduler connects to your installed Claudian, Oh My Claudian or Obsidian Copilot plugin.',
+				text: '👉 Select an AI backend above to configure your AI models and connections. AI Scheduler connects to your installed Claudian, Oh My Claudian or Copilot plugin.',
 			});
 		} else if (mode === 'copilot') {
 			this.renderBackendStatus(containerEl);
 			const infoBox = containerEl.createDiv({ cls: 'ai-scheduler-card ai-scheduler-card-flush' });
 			infoBox.createDiv({
 				cls: 'ai-scheduler-hint',
-				text: 'Obsidian Copilot uses the active model and provider configured inside the Copilot plugin settings.',
+				text: 'Copilot uses the active model and provider set in its own settings.',
 			});
 		} else if (isClaudianBackend(mode)) {
 			this.renderBackendStatus(containerEl);

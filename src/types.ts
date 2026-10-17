@@ -1,5 +1,5 @@
 /*
- * AI Scheduler - an autonomy layer for Claudian and Obsidian Copilot.
+ * AI Scheduler - an autonomy layer for Claudian and Copilot.
  *
  * This plugin deliberately does not call an AI provider directly. The selected
  * backend owns providers, models, permissions, and vault tools; this plugin
@@ -235,7 +235,7 @@ export const BACKEND_INFO = {
 		githubUrl: 'https://github.com/lee259/oh-my-claudian',
 	},
 	copilot: {
-		name: 'Obsidian Copilot',
+		name: 'Copilot',
 		pluginId: 'copilot',
 		githubUrl: 'https://github.com/logancyang/obsidian-copilot',
 	},

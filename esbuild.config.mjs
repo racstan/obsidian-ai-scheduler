@@ -4,7 +4,7 @@ import process from "process";
 const prod = process.argv[2] === "production";
 
 const banner = `/*
-AI Scheduler - an autonomy layer for Claudian and Obsidian Copilot.
+AI Scheduler - an autonomy layer for Claudian and Copilot.
 This plugin deliberately does not call an AI provider directly. The selected
 backend owns providers, models, permissions, and vault tools; this plugin owns
 when the agent should wake up and what should happen after it replies.

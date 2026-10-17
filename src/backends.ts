@@ -1,6 +1,6 @@
 /*
  * Backend integration for Claudian (and its fork Oh My Claudian) and
- * Obsidian Copilot.
+ * Copilot.
  *
  * Both backends are driven through their published plugin internals with
  * duck-typed guards, exactly like the original implementation: this plugin
@@ -463,9 +463,9 @@ export async function sendToCopilot(host: BackendHost, prompt: string, context: 
 	const chatManager = copilotChatApi(copilot);
 	const chain = copilot?.chainOwner && typeof copilot.chainOwner.getCurrentChainManager === 'function'
 		? copilot.chainOwner.getCurrentChainManager() : null;
-	if (!copilot) throw new Error('Obsidian Copilot is not installed or enabled. Install or enable Copilot, then try again.');
+	if (!copilot) throw new Error('Copilot is not installed or enabled. Install or enable Copilot, then try again.');
 	if (!chatManager || typeof chatManager.sendMessage !== 'function' || typeof chatManager.getLLMMessage !== 'function' || !chain || typeof chain.runChain !== 'function') {
-		throw new Error('Obsidian Copilot is installed, but its automation API is unavailable. Update Copilot and try again.');
+		throw new Error('Copilot is installed, but its automation API is unavailable. Update Copilot and try again.');
 	}
 	const paths = context && Array.isArray(context.paths) ? context.paths : [];
 	const notes = paths
@@ -483,7 +483,7 @@ export async function sendToCopilot(host: BackendHost, prompt: string, context: 
 		false,
 	);
 	const llmMessage = chatManager.getLLMMessage(messageId);
-	if (!llmMessage) throw new Error('Obsidian Copilot did not prepare the scheduler message.');
+	if (!llmMessage) throw new Error('Copilot did not prepare the scheduler message.');
 	let reply = '';
 	const abort = new AbortController();
 	if (signal?.aborted) throw new Error('Cancelled by user.');
@@ -501,7 +501,7 @@ export async function sendToCopilot(host: BackendHost, prompt: string, context: 
 		abort.abort(); // stop the chain instead of letting it keep running unseen
 		const message = errorText(error);
 		// Our own timeout/cancel messages stay as they are; anything else came from Copilot.
-		throw /timed out|Cancelled by user/.test(message) ? error : new Error(`Obsidian Copilot reported an error: ${message}`);
+		throw /timed out|Cancelled by user/.test(message) ? error : new Error(`Copilot reported an error: ${message}`);
 	}
 	return (reply || '').trim();
 }
@@ -692,7 +692,7 @@ export function checkBackendSetup(host: BackendHost, mode = host.settings.backen
 
 export async function resolveModel(host: BackendHost, value: string | null | undefined, action = 'this action'): Promise<ResolvedExecution> {
 	if (host.settings.backendMode === 'none' || !host.settings.backendMode) {
-		throw new Error(`No AI backend selected for ${action}. Choose Claudian, Oh My Claudian or Obsidian Copilot in AI Scheduler settings.`);
+		throw new Error(`No AI backend selected for ${action}. Choose Claudian, Oh My Claudian or Copilot in AI Scheduler settings.`);
 	}
 	if (host.settings.backendMode === 'copilot') {
 		const setup = checkCopilotSetup(host);

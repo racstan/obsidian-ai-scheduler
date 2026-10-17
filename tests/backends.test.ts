@@ -7,7 +7,7 @@ import { AISettings, BackendMode } from '../src/types';
 // Timers in the plugin go through `window` (the renderer); Node only has globalThis.
 (globalThis as unknown as { window?: typeof globalThis }).window ??= globalThis;
 
-/** A fake Obsidian Copilot whose chain resolves after `delayMs`, tracking overlap. */
+/** A fake Copilot whose chain resolves after `delayMs`, tracking overlap. */
 function copilotHost(delayMs = 20) {
 	const stats = { active: 0, maxActive: 0, aborted: 0 };
 	const copilot = {

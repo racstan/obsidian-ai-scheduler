@@ -1,6 +1,6 @@
 /*
  * AI backend status shown at the top of the scheduler windows. AI Scheduler
- * does not talk to AI providers itself: Claudian (or Oh My Claudian) or Obsidian Copilot must be
+ * does not talk to AI providers itself: Claudian (or Oh My Claudian) or Copilot must be
  * installed, enabled, and set up (providers, keys, models) in their own
  * settings. This bar always offers a one-click way to the right place.
  */
@@ -90,7 +90,7 @@ export function renderBackendBar(
 		cls: 'ai-scheduler-backend-bar-desc',
 		text: selected
 			? `${BACKEND_INFO[selected].name} is selected but not ${backendInstallState(app, selected) === 'disabled' ? 'enabled' : 'installed'}. Install and enable it, set up its providers and models in its own settings, or choose another backend in AI Scheduler settings.`
-			: 'AI Scheduler runs your tasks through Claudian, Oh My Claudian or Obsidian Copilot. Install and enable one, set up its providers and models in its own settings, then choose it in AI Scheduler settings.',
+			: 'AI Scheduler runs your tasks through Claudian, Oh My Claudian or Copilot. Install and enable one, set up its providers and models in its own settings, then choose it in AI Scheduler settings.',
 	});
 	// Offer the selected backend, or (with none selected) the two main ones; Oh My
 	// Claudian is a Claudian fork for people who already use it.

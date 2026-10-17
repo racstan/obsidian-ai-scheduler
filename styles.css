@@ -110,9 +110,36 @@
 
 .ai-scheduler-stats {
 	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
+	grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 2fr);
 	gap: 12px;
 	margin: 20px 0 24px;
+}
+
+@media (max-width: 700px) {
+	.ai-scheduler-stats {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+
+	.ai-scheduler-stat-next {
+		grid-column: 1 / -1;
+	}
+}
+
+.ai-scheduler-stat-detail {
+	margin-top: 6px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ai-scheduler-stat-hold {
+	color: var(--text-warning);
+}
+
+.ai-scheduler-stat-clickable {
+	cursor: pointer;
 }
 
 .ai-scheduler-stat-value {

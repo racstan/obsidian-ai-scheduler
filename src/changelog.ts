@@ -38,7 +38,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 			'Starter templates: daily summary, weekly review, morning plan, inbox triage, action items, flashcards, link suggestions and monthly reflection. Each opens the task editor pre-filled so you can adjust it before saving.',
 			'Chained tasks: the new schedule "When another task finishes" runs a task after another one succeeds; {{previous_result}} and {{previous_output}} pass on its result.',
 			'Pause and quiet hours: pause every task for 1 hour, 4 hours, until tomorrow or until you resume, and set daily quiet hours during which due tasks wait. "Run now" still works.',
-			'Works with the latest Claudian and Obsidian Copilot 4, and adds Oh My Claudian as an AI backend.',
+			'Works with the latest Claudian and Copilot 4, and adds Oh My Claudian as an AI backend.',
 		],
 		added: [
 			'Tags on tasks, plus a search box, tag filter and sorting on the dashboard.',
@@ -49,13 +49,14 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 			'Oh My Claudian, the Claudian fork, can be chosen as the AI backend, including its extra providers (#6).',
 		],
 		changed: [
-			'When the AI backend is ready, the dashboard, planner and AI editor show a plain "Claudian settings" or "Obsidian Copilot settings" button instead of a large box; the box only appears when something needs fixing.',
+			'When the AI backend is ready, the dashboard, planner and AI editor show a plain "Claudian settings" or "Copilot settings" button instead of a large box; the box only appears when something needs fixing.',
 			'The dashboard\'s Settings button is now "AI Scheduler settings", and the Calendar button has no emoji.',
 			'The calendar has a "Back to dashboard" button like the other windows.',
 			'Task IDs are no longer shown on the dashboard cards; they remain in the task details and editor. Activity rows link to the task with "View".',
+			'The dashboard shows Paused tasks and Past tasks in separate boxes. Next run lists every task due at that time and what is running, and says when pause or quiet hours hold a run back.',
 		],
 		fixed: [
-			'Obsidian Copilot 4 was reported as having no automation API; AI Scheduler now uses Copilot 4\'s chat interface (#8).',
+			'Copilot 4 was reported as having no automation API; AI Scheduler now uses Copilot 4\'s chat interface (#8).',
 			'With recent Claudian versions, AI Scheduler said "Claudian is installed, but its chat runtime is not ready"; it now finds Claudian\'s chat view and conversations where newer versions keep them (#7).',
 			'Pi models in Claudian are named the way Claudian expects, so they can be used for tasks.',
 			'The changelog window shows the contributors of every release again.',
@@ -107,7 +108,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 			'Back buttons show a space after the arrow ("← Back to dashboard").',
 		],
 		changed: [
-			'Claudian and Obsidian Copilot are referred to by name in the AI backend setting and the getting started guide.',
+			'Claudian and Copilot are referred to by name in the AI backend setting and the getting started guide.',
 			'README: demo animation, walkthrough video and screenshots.',
 		],
 		contributors: [MAINTAINER],
@@ -129,11 +130,11 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		date: '2026-10-08',
 		title: 'Getting Started Guide & Backend Shortcuts',
 		highlights: [
-			'Getting started guide: on first install, a short "AI Scheduler - Getting started" note explains the setup order (install Claudian or Obsidian Copilot, set up its providers and models in its own settings, then connect AI Scheduler). Reopen it any time from the command palette or settings.',
-			'Backend status bar in the dashboard, planner and AI task editor, always with a button to open your backend\'s settings (Claudian or Obsidian Copilot), where providers, keys and models are managed.',
+			'Getting started guide: on first install, a short "AI Scheduler - Getting started" note explains the setup order (install Claudian or Copilot, set up its providers and models in its own settings, then connect AI Scheduler). Reopen it any time from the command palette or settings.',
+			'Backend status bar in the dashboard, planner and AI task editor, always with a button to open your backend\'s settings (Claudian or Copilot), where providers, keys and models are managed.',
 		],
 		added: [
-			'When no backend is ready, the bar offers to install or enable Claudian or Obsidian Copilot, or to choose one in AI Scheduler settings.',
+			'When no backend is ready, the bar offers to install or enable Claudian or Copilot, or to choose one in AI Scheduler settings.',
 			'"Open getting started guide" command and settings button.',
 		],
 		contributors: [MAINTAINER],
@@ -151,7 +152,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 			'The planner tells an empty reply apart from a reply without a usable schedule.',
 		],
 		changed: [
-			'Obsidian Copilot errors are labelled as coming from Copilot.',
+			'Copilot errors are labelled as coming from Copilot.',
 		],
 		contributors: [MAINTAINER],
 	},
@@ -296,7 +297,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 			'Updated license to PolyForm Noncommercial License 1.0.0.',
 			'Cleaned branding, removed legacy BRAT references and external donation buttons.',
 			'Updated author attributions to @racstan GitHub profile.',
-			'Updated README documentation with clean Obsidian Copilot and Claudian setup guides.',
+			'Updated README documentation with clean Copilot and Claudian setup guides.',
 		],
 		contributors: [
 			{
@@ -797,11 +798,11 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		date: '2026-09-06',
 		title: 'Strict TypeScript Architecture & Official Linting Readiness',
 		highlights: [
-			'100% strict TypeScript types across all Claudian and Obsidian Copilot integration bridges.',
+			'100% strict TypeScript types across all Claudian and Copilot integration bridges.',
 			'Zero ESLint warnings under official eslint-plugin-obsidianmd ruleset.',
 		],
 		added: [
-			'Type-safe bridge interfaces for Claudian and Obsidian Copilot internals.',
+			'Type-safe bridge interfaces for Claudian and Copilot internals.',
 			'Safe profile parsers and tab resolution helpers.',
 		],
 		changed: [
@@ -873,11 +874,11 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 		date: '2026-08-22',
 		title: 'Dual Backend Architecture & Task Context Binding',
 		highlights: [
-			'Native support for Obsidian Copilot alongside Claudian.',
+			'Native support for Copilot alongside Claudian.',
 			'Contextual note and folder binding for scheduled tasks.',
 		],
 		added: [
-			'Dual backend switch in settings (Claudian or Obsidian Copilot).',
+			'Dual backend switch in settings (Claudian or Copilot).',
 			'Interval schedules (every N minutes or hours with bounded iteration limits).',
 			'Vault project folder and active note context binding.',
 			'Custom output routing to dedicated vault folders.',

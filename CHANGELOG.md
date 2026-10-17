@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Starter templates**: daily summary, weekly review, morning plan, inbox triage, action items, flashcards, link suggestions and monthly reflection. Each opens the task editor pre-filled so you can adjust it before saving.
 - **Chained tasks**: the new schedule *When another task finishes* runs a task after another one succeeds; `{{previous_result}}` and `{{previous_output}}` pass on its result.
 - **Pause and quiet hours**: pause every task for 1 hour, 4 hours, until tomorrow or until you resume, and set daily quiet hours during which due tasks wait. "Run now" still works.
-- **Newer backends**: works with the latest Claudian and Obsidian Copilot 4, and adds **Oh My Claudian** as an AI backend.
+- **Newer backends**: works with the latest Claudian and Copilot 4, and adds **Oh My Claudian** as an AI backend.
 
 ### Added
 - Tags on tasks, plus a search box, tag filter and sorting on the dashboard.
@@ -22,13 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Oh My Claudian**, the Claudian fork, can be chosen as the AI backend, including its extra providers ([#6](https://github.com/racstan/obsidian-ai-scheduler/issues/6)).
 
 ### Changed
-- When the AI backend is ready, the dashboard, planner and AI editor show a plain **Claudian settings** or **Obsidian Copilot settings** button instead of a large box; the box only appears when something needs fixing.
+- When the AI backend is ready, the dashboard, planner and AI editor show a plain **Claudian settings** or **Copilot settings** button instead of a large box; the box only appears when something needs fixing.
 - The dashboard's Settings button is now **AI Scheduler settings**, and the Calendar button has no emoji.
 - The calendar has a **Back to dashboard** button like the other windows.
 - Task IDs are no longer shown on the dashboard cards; they remain in the task details and editor. Activity rows link to the task with **View**.
+- The dashboard shows **Paused tasks** and **Past tasks** in separate boxes. **Next run** lists every task due at that time and what is running, and says when pause or quiet hours hold a run back.
 
 ### Fixed
-- Obsidian Copilot 4 was reported as having no automation API; AI Scheduler now uses Copilot 4's chat interface ([#8](https://github.com/racstan/obsidian-ai-scheduler/issues/8)).
+- Copilot 4 was reported as having no automation API; AI Scheduler now uses Copilot 4's chat interface ([#8](https://github.com/racstan/obsidian-ai-scheduler/issues/8)).
 - With recent Claudian versions, AI Scheduler said "Claudian is installed, but its chat runtime is not ready"; it now finds Claudian's chat view and conversations where newer versions keep them ([#7](https://github.com/racstan/obsidian-ai-scheduler/issues/7)).
 - Pi models in Claudian are named the way Claudian expects, so they can be used for tasks.
 - The changelog window shows the contributors of every release again.
@@ -66,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Back buttons show a space after the arrow ("← Back to dashboard").
 
 ### Changed
-- Claudian and Obsidian Copilot are referred to by name in the AI backend setting and the getting started guide.
+- Claudian and Copilot are referred to by name in the AI backend setting and the getting started guide.
 - README: demo animation, walkthrough video and screenshots.
 
 ### Contributors
@@ -86,11 +87,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.1.22] - 2026-10-08
 
 ### Highlights
-- **Getting started guide**: on first install, a short *AI Scheduler - Getting started* note explains the setup order: install Claudian or Obsidian Copilot, set up its providers and models in its own settings, then connect AI Scheduler. Reopen it any time with **AI Scheduler: Open getting started guide** or from settings.
-- **Backend shortcuts**: the dashboard, planner and AI task editor show the backend's status, always with a button to open its settings (Claudian or Obsidian Copilot), where providers, keys and models are managed.
+- **Getting started guide**: on first install, a short *AI Scheduler - Getting started* note explains the setup order: install Claudian or Copilot, set up its providers and models in its own settings, then connect AI Scheduler. Reopen it any time with **AI Scheduler: Open getting started guide** or from settings.
+- **Backend shortcuts**: the dashboard, planner and AI task editor show the backend's status, always with a button to open its settings (Claudian or Copilot), where providers, keys and models are managed.
 
 ### Added
-- When no backend is ready, the status bar offers to install or enable Claudian or Obsidian Copilot, or to choose one in AI Scheduler settings.
+- When no backend is ready, the status bar offers to install or enable Claudian or Copilot, or to choose one in AI Scheduler settings.
 
 ### Contributors
 - [@racstan](https://github.com/racstan)
@@ -106,7 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The planner tells an empty reply apart from a reply without a usable schedule.
 
 ### Changed
-- Obsidian Copilot errors are labelled as coming from Copilot.
+- Copilot errors are labelled as coming from Copilot.
 
 ### Contributors
 - [@racstan](https://github.com/racstan)
@@ -241,7 +242,7 @@ Versioning returns to [Semantic Versioning](https://semver.org/) (`x.y.z`), whic
 - Updated license to PolyForm Noncommercial License 1.0.0.
 - Cleaned branding, removed legacy BRAT references and external donation buttons.
 - Updated author attributions to @racstan GitHub profile.
-- Updated README documentation with clean Obsidian Copilot and Claudian setup guides.
+- Updated README documentation with clean Copilot and Claudian setup guides.
 
 ### Contributors
 - [@racstan](https://github.com/racstan)
@@ -619,13 +620,13 @@ Versioning returns to [Semantic Versioning](https://semver.org/) (`x.y.z`), whic
 ## [2.1.3] - 2026-09-06
 
 ### Highlights
-- **100% Strict TypeScript Integration Bridges**: Fully eliminated `@typescript-eslint/no-explicit-any` directives across the backend integration layer. Claudian and Obsidian Copilot internals are now mapped with rigorous TypeScript typings.
+- **100% Strict TypeScript Integration Bridges**: Fully eliminated `@typescript-eslint/no-explicit-any` directives across the backend integration layer. Claudian and Copilot internals are now mapped with rigorous TypeScript typings.
 - **Obsidian Official Review Ready**: Zero ESLint warnings or rule suppressions under the official `eslint-plugin-obsidianmd` standard ruleset.
 - **Refined Settings & UI Lifecycles**: Replaced deprecated `display()` re-invocation patterns with decoupled `renderSettings()` execution, eliminating Obsidian deprecation notices.
 - **Hardened Input Sanitization**: Safe parsing and validation for clock inputs and task configurations.
 
 ### Added
-- Comprehensive bridge interface definitions for Claudian (`ClaudianPlugin`, `ClaudianView`, `ClaudianTabRecord`, `ClaudianConversation`, `ClaudianProviderInfo`) and Obsidian Copilot (`CopilotPlugin`, `CopilotApp`, `CopilotQAChain`, `CopilotPromptChain`).
+- Comprehensive bridge interface definitions for Claudian (`ClaudianPlugin`, `ClaudianView`, `ClaudianTabRecord`, `ClaudianConversation`, `ClaudianProviderInfo`) and Copilot (`CopilotPlugin`, `CopilotApp`, `CopilotQAChain`, `CopilotPromptChain`).
 - Type-safe profile parsers (`parseProfileValue`) and tab resolution helpers (`getTab`) to safeguard against missing or reconfigured assistant contexts.
 
 ### Changed
@@ -673,7 +674,7 @@ Versioning returns to [Semantic Versioning](https://semver.org/) (`x.y.z`), whic
 ## [2.1.0] - 2026-08-22
 
 ### Added
-- **Dual Backend Architecture**: Added native support for [Obsidian Copilot](https://github.com/logancyang/obsidian-copilot) alongside [Claudian](https://github.com/YishenTu/claudian). Switch seamlessly between backends in settings.
+- **Dual Backend Architecture**: Added native support for [Copilot](https://github.com/logancyang/obsidian-copilot) alongside [Claudian](https://github.com/YishenTu/claudian). Switch seamlessly between backends in settings.
 - **Interval Schedules**: Run jobs every *N* minutes or *N* hours with optional bounded iteration limits (e.g., "run every 30 minutes for 8 iterations").
 - **Task Context Binding**: Attach active notes or entire vault project folders to any scheduled task so the AI receives fresh, relevant vault context on every run.
 - **Custom Output Routing**: Route outputs and reports generated by specific tasks directly into dedicated vault folders.

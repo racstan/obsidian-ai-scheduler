@@ -14,6 +14,7 @@ import { Job } from '../types';
 import { quietHoursEnd, startBlockReason } from '../engine';
 import { errorText } from '../util';
 import { SORT_LABELS, TaskSort, sortTasks, taskMatches } from '../taskFilter';
+import { listTitles, summarizeNextRun } from '../nextRun';
 
 
 export class ConfirmModal extends Modal {
@@ -197,29 +198,21 @@ export class AssistantModal extends Modal {
 
 		const userJobs = this.plugin.jobs.filter(job => !isNightlyReviewJob(job));
 		const activeCount = userJobs.filter(job => job.enabled).length;
-		const pausedCount = userJobs.filter(job => !job.enabled).length;
-		const runningJobs = userJobs.filter(job => job.status === 'running' || this.plugin.runningJobs.has(job.id));
-		const next = userJobs.filter(job => job.enabled && job.nextRunAt && job.status !== 'running').sort((a, b) => new Date(a.nextRunAt as string).getTime() - new Date(b.nextRunAt as string).getTime())[0];
+		// Counted the same way as the "Disabled tasks" and "Past tasks" sections below.
+		const pausedCount = summarizeTasks(userJobs.filter(job => isDisabledTask(job))).length;
+		const pastCount = summarizeTasks(userJobs.filter(job => !job.enabled && !isDisabledTask(job))).length;
 
 		const stats = shell.createDiv({ cls: 'ai-scheduler-stats' });
-
-		// Stat 1: Active tasks
-		const statActive = makeCard(stats, 'ai-scheduler-card-stat');
-		statActive.createDiv({ cls: 'ai-scheduler-stat-value', text: String(activeCount) });
-		statActive.createDiv({ cls: 'ai-scheduler-stat-label', text: 'Active tasks' });
-
-		// Stat 2: Paused / Past
-		const statPaused = makeCard(stats, 'ai-scheduler-card-stat');
-		statPaused.createDiv({ cls: 'ai-scheduler-stat-value', text: String(pausedCount) });
-		statPaused.createDiv({ cls: 'ai-scheduler-stat-label', text: 'Paused / past' });
-
-		// Stat 3: Next run
-		const statNext = makeCard(stats, 'ai-scheduler-card-stat');
-		const nextRunDisplay = runningJobs.length > 0
-			? 'Running now'
-			: (next && next.nextRunAt ? formatDate(next.nextRunAt) : 'None');
-		statNext.createDiv({ cls: 'ai-scheduler-stat-value ai-scheduler-stat-sm', text: nextRunDisplay });
-		statNext.createDiv({ cls: 'ai-scheduler-stat-label', text: 'Next run' });
+		const addStat = (value: string, label: string, title: string) => {
+			const card = makeCard(stats, 'ai-scheduler-card-stat');
+			card.setAttr('title', title);
+			card.createDiv({ cls: 'ai-scheduler-stat-value', text: value });
+			card.createDiv({ cls: 'ai-scheduler-stat-label', text: label });
+		};
+		addStat(String(activeCount), 'Active tasks', 'Enabled tasks that run on their schedule or trigger');
+		addStat(String(pausedCount), 'Paused tasks', 'Tasks you disabled; enable them to schedule them again');
+		addStat(String(pastCount), 'Past tasks', 'One-time tasks that finished, failed or were missed');
+		this.renderNextRunStat(stats);
 
 		if (userJobs.length > 1) {
 			const bulkSection = shell.createDiv('ai-scheduler-bulk-section');
@@ -385,6 +378,62 @@ export class AssistantModal extends Modal {
 
 	private sorted(jobs: Job[]): Job[] {
 		return this.sort === 'default' ? jobs : sortTasks(jobs, this.sort);
+	}
+
+	/** The "Next run" box: what is running, what runs next (possibly several tasks at once) and what holds it back. */
+	private renderNextRunStat(stats: HTMLElement): void {
+		const userJobs = this.plugin.jobs.filter(job => !isNightlyReviewJob(job));
+		const summary = summarizeNextRun(userJobs, this.plugin.runningJobs, this.plugin.settings);
+		const card = makeCard(stats, 'ai-scheduler-card-stat ai-scheduler-stat-next');
+		if (summary.running.length) card.addClass('ai-scheduler-stat-running');
+
+		const when = summary.nextAt ? (summary.overdue ? 'Due now' : formatDate(summary.nextAt)) : '';
+		const value = summary.running.length
+			? (summary.running.length === 1 ? 'Running now' : `${summary.running.length} running now`)
+			: when || 'None';
+		card.createDiv({ cls: 'ai-scheduler-stat-value ai-scheduler-stat-sm', text: value });
+		card.createDiv({ cls: 'ai-scheduler-stat-label', text: 'Next run' });
+
+		const detail = (text: string, cls = '') => card.createDiv({ cls: `ai-scheduler-stat-detail ${cls}`.trim(), text });
+		const tasks = (jobs: Job[]) => `${jobs.length > 1 ? `${jobs.length} tasks: ` : ''}${listTitles(jobs)}`;
+		if (summary.running.length) {
+			detail(listTitles(summary.running));
+			if (summary.nextAt) detail(`Then ${when === 'Due now' ? 'due now' : when}: ${tasks(summary.next)}`);
+		} else if (summary.nextAt) {
+			detail(tasks(summary.next));
+		} else {
+			detail(summary.waitingForTrigger
+				? `${summary.waitingForTrigger} task${summary.waitingForTrigger === 1 ? '' : 's'} waiting for a trigger`
+				: 'No task is scheduled');
+		}
+		if (summary.hold) {
+			const until = summary.hold.until ? formatDate(summary.hold.until) : '';
+			detail(summary.hold.reason === 'paused'
+				? (until ? `Paused until ${until}` : 'Paused until you resume')
+				: `Waits for quiet hours to end at ${until}`, 'ai-scheduler-stat-hold');
+		}
+
+		// The tooltip lists every task when the box only has room for a few.
+		const lines = [
+			...summary.running.map(job => `Running: ${job.title}`),
+			...summary.next.map(job => `${summary.overdue ? 'Due now' : formatDate(job.nextRunAt)}: ${job.title}`),
+		];
+		if (lines.length) card.setAttr('title', lines.join('\n'));
+
+		// With exactly one task in the box, clicking opens it.
+		const only = [...summary.running, ...summary.next];
+		if (only.length === 1) {
+			const job = only[0];
+			card.addClass('ai-scheduler-stat-clickable');
+			makeClickable(card, `Open ${job.title}`, () => {
+				this.close();
+				window.setTimeout(() => {
+					new TaskViewModal(this.app, this.plugin, job, () => {
+						new AssistantModal(this.app, this.plugin).open();
+					}).open();
+				}, 50);
+			});
+		}
 	}
 
 	/** The scheduled, disabled and past task lists (already filtered). */
