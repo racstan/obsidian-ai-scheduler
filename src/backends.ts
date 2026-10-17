@@ -1,5 +1,6 @@
 /*
- * Backend integration for Claudian and Obsidian Copilot.
+ * Backend integration for Claudian (and its fork Oh My Claudian) and
+ * Obsidian Copilot.
  *
  * Both backends are driven through their published plugin internals with
  * duck-typed guards, exactly like the original implementation: this plugin
@@ -7,7 +8,7 @@
  * instance so the orchestration stays in main.ts.
  */
 import { App, TFile, TFolder } from 'obsidian';
-import { AISettings, BACKEND_INFO, Job } from './types';
+import { AISettings, BACKEND_INFO, ClaudianBackend, Job, isClaudianBackend } from './types';
 import { JobContext } from './context';
 import { contentFromMessage, errorText, isPeriodicReviewJob, sleep, withTimeout } from './util';
 
@@ -117,7 +118,7 @@ export interface ClaudianProviderConfig {
 }
 
 /** Claudian prefixes some providers' model ids in conversations (e.g. "opencode:<id>"). */
-const CLAUDIAN_MODEL_PREFIX: Record<string, string> = { opencode: 'opencode:' };
+const CLAUDIAN_MODEL_PREFIX: Record<string, string> = { opencode: 'opencode:', pi: 'pi:', omp: 'omp:', cursor: 'cursor:' };
 
 /**
  * The models Claudian itself offers: the visible models of every enabled
@@ -145,7 +146,18 @@ export function configuredClaudianModels(settings: ClaudianSettings | undefined)
 	return options;
 }
 
+/** Conversation and view functions; on the plugin itself before Claudian 2.3.2x, on its chat host after. */
+export interface ClaudianHost {
+	getAllViews?: () => ClaudianView[];
+	getConversationSync?: (id: string) => ClaudianConversation | null;
+	createConversation?: (options: { providerId: string; selectedModel?: string }) => Promise<ClaudianConversation>;
+	renameConversation?: (id: string, name: string) => Promise<void>;
+}
+
 export interface ClaudianPlugin {
+	/** Claudian 2.3.2x keeps the conversation and view functions here. */
+	chatHost?: ClaudianHost;
+	manifest?: { id?: string };
 	getAllViews?: () => ClaudianView[];
 	activateView?: () => Promise<void>;
 	getConversationSync?: (id: string) => ClaudianConversation | null;
@@ -185,7 +197,10 @@ export interface CopilotChainManager {
 }
 
 export interface CopilotPlugin {
+	/** Copilot 3.x. */
 	chatManager?: CopilotChatManager;
+	/** Copilot 4.x wraps its chat manager here, with the same sendMessage/getLLMMessage. */
+	chatUIState?: CopilotChatManager;
 	chainOwner?: {
 		getCurrentChainManager?: () => CopilotChainManager | null;
 	};
@@ -197,25 +212,74 @@ function pluginRegistry(host: BackendHost): Record<string, unknown> | null {
 	return registry || null;
 }
 
+/** Plugin ids and chat view type of each Claudian-family backend (current id first). */
+export const CLAUDIAN_FAMILY: Record<ClaudianBackend, { pluginIds: string[]; viewType: string }> = {
+	// Claudian's published id is realclaudian; the old id is kept for development builds.
+	claudian: { pluginIds: ['realclaudian', 'claudian'], viewType: 'claudian-view' },
+	'oh-my-claudian': { pluginIds: ['oh-my-claudian'], viewType: 'oh-my-claudian-view' },
+};
+
+/** The selected Claudian-family backend (Claudian unless Oh My Claudian is chosen). */
+function claudianBackend(host: BackendHost): ClaudianBackend {
+	return isClaudianBackend(host.settings.backendMode) ? host.settings.backendMode : 'claudian';
+}
+
+/** Display name of the selected Claudian-family backend, for messages. */
+export function claudianName(host: BackendHost): string {
+	return BACKEND_INFO[claudianBackend(host)].name;
+}
+
 export function getClaudianPlugin(host: BackendHost): ClaudianPlugin | null {
 	const plugins = pluginRegistry(host);
 	if (!plugins) return null;
-	// Claudian's published Obsidian id is realclaudian. Keep the old id as a
-	// fallback for development builds and older installations.
-	const candidate = plugins.realclaudian ?? plugins.claudian;
-	return (candidate as ClaudianPlugin) ?? null;
+	const id = CLAUDIAN_FAMILY[claudianBackend(host)].pluginIds.find(candidate => plugins[candidate]);
+	return id ? (plugins[id] as ClaudianPlugin) : null;
+}
+
+/**
+ * Where the conversation functions live: on the plugin before Claudian 2.3.2x,
+ * on its chat host after (the same object Claudian hands its chat views).
+ */
+export function getClaudianHost(claudian: ClaudianPlugin | null): ClaudianHost | null {
+	if (!claudian) return null;
+	if (typeof claudian.createConversation === 'function') return claudian;
+	const chatHost = claudian.chatHost;
+	return chatHost && typeof chatHost.createConversation === 'function' ? chatHost : claudian;
+}
+
+/** Open chat views: from the plugin when it lists them, otherwise from Obsidian's workspace. */
+function claudianViews(host: BackendHost, claudian: ClaudianPlugin): ClaudianView[] {
+	if (typeof claudian.getAllViews === 'function') return claudian.getAllViews();
+	const chatHost = getClaudianHost(claudian);
+	if (chatHost && typeof chatHost.getAllViews === 'function') return chatHost.getAllViews();
+	const viewType = CLAUDIAN_FAMILY[claudianBackend(host)].viewType;
+	const workspace = host.app.workspace as unknown as { getLeavesOfType?: (type: string) => Array<{ view: unknown }> } | undefined;
+	return typeof workspace?.getLeavesOfType === 'function'
+		? workspace.getLeavesOfType(viewType).map(leaf => leaf.view as ClaudianView)
+		: [];
+}
+
+/** Opens the chat view: the plugin's own function if it has one, otherwise its "Open view" command. */
+async function openClaudianView(host: BackendHost, claudian: ClaudianPlugin): Promise<void> {
+	if (typeof claudian.activateView === 'function') {
+		await claudian.activateView();
+		return;
+	}
+	const id = claudian.manifest?.id ?? CLAUDIAN_FAMILY[claudianBackend(host)].pluginIds[0];
+	const commands = (host.app as unknown as { commands?: { executeCommandById?: (id: string) => boolean } }).commands;
+	commands?.executeCommandById?.(`${id}:open-view`);
 }
 
 export async function getClaudianView(host: BackendHost): Promise<ClaudianView | null> {
 	const claudian = getClaudianPlugin(host);
 	if (!claudian) return null;
-	let views: ClaudianView[] = typeof claudian.getAllViews === 'function' ? claudian.getAllViews() : [];
-	if (!views.length && typeof claudian.activateView === 'function') {
-		try { await claudian.activateView(); } catch { /* Claudian may already be opening */ }
+	let views = claudianViews(host, claudian);
+	if (!views.length) {
+		try { await openClaudianView(host, claudian); } catch { /* Claudian may already be opening */ }
 		await sleep(1200);
 	}
 	for (let attempt = 0; attempt < 6; attempt++) {
-		views = typeof claudian.getAllViews === 'function' ? claudian.getAllViews() : [];
+		views = claudianViews(host, claudian);
 		if (views[0] && getTabManager(views[0])) return views[0];
 		await sleep(500);
 	}
@@ -252,20 +316,20 @@ export function tabIsBusy(view: ClaudianView | null, tab: ClaudianTab | null): b
 	return Boolean(working || tab.state?.isStreaming || tab.isStreaming || item?.isWorking || item?.isStreaming);
 }
 
-export async function waitForTabIdle(view: ClaudianView | null, tab: ClaudianTab | null, signal?: AbortSignal): Promise<void> {
+export async function waitForTabIdle(view: ClaudianView | null, tab: ClaudianTab | null, signal?: AbortSignal, name = 'Claudian'): Promise<void> {
 	const started = Date.now();
 	while (tabIsBusy(view, tab)) {
 		if (signal?.aborted) throw new Error('Cancelled by user.');
 		if (tab?.state?.error) {
-			throw new Error(`Claudian reported an error: ${errorText(tab.state.error)}`);
+			throw new Error(`${name} reported an error: ${errorText(tab.state.error)}`);
 		}
 		if (Date.now() - started > AGENT_TIMEOUT_MS) {
-			throw new Error(`AI task timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes. The AI backend did not finish or may be waiting for tool execution/confirmation in Claudian.`);
+			throw new Error(`AI task timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes. The AI backend did not finish or may be waiting for tool execution/confirmation in ${name}.`);
 		}
 		await sleep(1000);
 	}
 	if (tab?.state?.error) {
-		throw new Error(`Claudian reported an error: ${errorText(tab.state.error)}`);
+		throw new Error(`${name} reported an error: ${errorText(tab.state.error)}`);
 	}
 }
 
@@ -273,9 +337,9 @@ export function getTabMessages(host: BackendHost, view: ClaudianView | null, tab
 	const direct = tab?.state?.messages;
 	if (Array.isArray(direct) && direct.length) return direct;
 	const conversationId = tab?.conversationId;
-	const claudian = getClaudianPlugin(host);
-	const conversation = conversationId && claudian && typeof claudian.getConversationSync === 'function'
-		? claudian.getConversationSync(conversationId) : null;
+	const claudianHost = getClaudianHost(getClaudianPlugin(host));
+	const conversation = conversationId && claudianHost && typeof claudianHost.getConversationSync === 'function'
+		? claudianHost.getConversationSync(conversationId) : null;
 	return Array.isArray(conversation?.messages) ? conversation.messages : [];
 }
 
@@ -302,16 +366,17 @@ export async function sendToClaudian(
 	context: JobContext | null = null,
 	signal?: AbortSignal,
 ): Promise<string> {
+	const name = claudianName(host);
 	const view = await getClaudianView(host);
 	const manager = getTabManager(view);
-	if (!view || !manager) throw new Error('Claudian is installed but its chat view is not ready. Open the Claudian view once, then try again.');
+	if (!view || !manager) throw new Error(`${name} is installed but its chat view is not ready. Open the ${name} view once, then try again.`);
 	if (conversationId && typeof manager.openConversation === 'function') {
 		await manager.openConversation(conversationId, { preferNewTab: false, activate: true });
 		await sleep(300);
 	}
 	const target = conversationId ? getActiveTab(view, manager) : getTab(host, view, tabNumber);
-	if (!target) throw new Error(`Claudian chat ${tabNumber} does not exist.`);
-	await waitForTabIdle(view, target);
+	if (!target) throw new Error(`${name} chat ${tabNumber} does not exist.`);
+	await waitForTabIdle(view, target, undefined, name);
 	const activeId = typeof manager.getActiveTabId === 'function' ? manager.getActiveTabId() : manager.activeTabId;
 	if (activeId !== target.id && typeof manager.switchToTab === 'function') {
 		await manager.switchToTab(target.id);
@@ -319,7 +384,7 @@ export async function sendToClaudian(
 	}
 	const active = getActiveTab(view, manager) || target;
 	const controller = active?.controllers?.inputController;
-	if (!controller || typeof controller.sendMessage !== 'function') throw new Error('Claudian input controller is unavailable.');
+	if (!controller || typeof controller.sendMessage !== 'function') throw new Error(`${name} input controller is unavailable.`);
 
 	const turnRequest: Record<string, unknown> = { text: prompt };
 	if (context && context.linkedContentPath) turnRequest.linkedContentPath = context.linkedContentPath;
@@ -342,7 +407,7 @@ export async function sendToClaudian(
 		try {
 			const send = controller.sendMessage({ content: prompt, turnRequestOverride: turnRequest });
 			await withTimeout(send, AGENT_TIMEOUT_MS, `AI task timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes`);
-			await waitForTabIdle(view, active, signal);
+			await waitForTabIdle(view, active, signal, name);
 		} catch (error) {
 			cancel();
 			throw error;
@@ -354,11 +419,11 @@ export async function sendToClaudian(
 			const reply = lastAssistantReply(host, view, active, beforeCount);
 			// Pass Claudian's own error on instead of treating it as the AI's answer.
 			const backendError = claudianErrorFromReply(reply);
-			if (backendError) throw new Error(`Claudian reported an error: ${backendError}`);
+			if (backendError) throw new Error(`${name} reported an error: ${backendError}`);
 			return reply;
 		}
 		if (attempt >= CLAUDIAN_SEND_ATTEMPTS) {
-			throw new Error('Claudian refused to send the message ("Message was not sent"), even after retrying. This usually means Claudian could not start the selected model or provider: try sending a message to that model in Claudian directly to see its error, or choose another model in AI Scheduler settings.');
+			throw new Error(`${name} refused to send the message ("Message was not sent"), even after retrying. This usually means ${name} could not start the selected model or provider: try sending a message to that model in ${name} directly to see its error, or choose another model in AI Scheduler settings.`);
 		}
 		await sleep(1500 * attempt);
 	}
@@ -384,9 +449,18 @@ export function getCopilotPlugin(host: BackendHost): CopilotPlugin | null {
 	return (candidate as CopilotPlugin) ?? null;
 }
 
+/** Copilot's chat API: chatManager in 3.x, chatUIState (same methods) in 4.x. */
+export function copilotChatApi(copilot: CopilotPlugin | null): CopilotChatManager | null {
+	if (!copilot) return null;
+	const usable = (api: CopilotChatManager | undefined) => !!api && typeof api.sendMessage === 'function' && typeof api.getLLMMessage === 'function';
+	if (usable(copilot.chatManager)) return copilot.chatManager as CopilotChatManager;
+	if (usable(copilot.chatUIState)) return copilot.chatUIState as CopilotChatManager;
+	return null;
+}
+
 export async function sendToCopilot(host: BackendHost, prompt: string, context: JobContext | null = null, signal?: AbortSignal): Promise<string> {
 	const copilot = getCopilotPlugin(host);
-	const chatManager = copilot?.chatManager;
+	const chatManager = copilotChatApi(copilot);
 	const chain = copilot?.chainOwner && typeof copilot.chainOwner.getCurrentChainManager === 'function'
 		? copilot.chainOwner.getCurrentChainManager() : null;
 	if (!copilot) throw new Error('Obsidian Copilot is not installed or enabled. Install or enable Copilot, then try again.');
@@ -464,6 +538,9 @@ export function getProviderName(providerId: string | null | undefined): string {
 		opencode: 'OpenCode',
 		pi: 'Pi',
 		acp: 'ACP',
+		deepseek: 'DeepSeek',
+		omp: 'Oh My Pi',
+		cursor: 'Cursor',
 	};
 	if (providerId && providerId in names) {
 		return names[providerId];
@@ -571,7 +648,7 @@ export function getModelOptions(host: BackendHost): ModelOption[] {
 export async function refreshModels(host: BackendHost): Promise<ModelOption[]> {
 	const view = await getClaudianView(host);
 	if (!view || !getTabManager(view)) {
-		throw new Error('Claudian is not ready. Open Claudian once, then refresh the model list.');
+		throw new Error(`${claudianName(host)} is not ready. Open it once, then refresh the model list.`);
 	}
 	return getModelOptions(host);
 }
@@ -588,20 +665,19 @@ export function checkCopilotSetup(host: BackendHost): { ok: boolean; needsInstal
 	} catch {
 		chain = null;
 	}
-	if (!copilot.chatManager || typeof copilot.chatManager.sendMessage !== 'function' || typeof copilot.chatManager.getLLMMessage !== 'function'
-		|| !chain || typeof chain.runChain !== 'function') {
+	if (!copilotChatApi(copilot) || !chain || typeof chain.runChain !== 'function') {
 		return { ok: false, needsInstall: false, message: `${info.name} is installed, but its automation API is unavailable. Update Copilot.`, githubUrl: info.githubUrl };
 	}
 	return { ok: true, needsInstall: false, message: `${info.name} is ready. Its active Copilot model will be used.`, githubUrl: info.githubUrl };
 }
 
 export async function checkClaudianSetup(host: BackendHost): Promise<{ ok: boolean; needsInstall: boolean; message: string; githubUrl: string }> {
-	const info = BACKEND_INFO.claudian;
+	const info = BACKEND_INFO[claudianBackend(host)];
 	const claudian = getClaudianPlugin(host);
 	if (!claudian) return { ok: false, needsInstall: true, message: `${info.name} is not installed or enabled.`, githubUrl: info.githubUrl };
 	const view = await getClaudianView(host);
 	const manager = getTabManager(view);
-	if (!view || !manager) return { ok: false, needsInstall: false, message: `${info.name} is installed, but its chat runtime is not ready. Open Claudian once and try again.`, githubUrl: info.githubUrl };
+	if (!view || !manager) return { ok: false, needsInstall: false, message: `${info.name} is installed, but its chat runtime is not ready. Open ${info.name} once and try again.`, githubUrl: info.githubUrl };
 	const models = getModelOptions(host);
 	if (!models.some(model => model.providerId)) return { ok: false, needsInstall: false, message: `${info.name} is open, but no provider/model is configured.`, githubUrl: info.githubUrl };
 	return { ok: true, needsInstall: false, message: `${info.name} is ready with ${models.length} available model option${models.length === 1 ? '' : 's'}.`, githubUrl: info.githubUrl };
@@ -616,7 +692,7 @@ export function checkBackendSetup(host: BackendHost, mode = host.settings.backen
 
 export async function resolveModel(host: BackendHost, value: string | null | undefined, action = 'this action'): Promise<ResolvedExecution> {
 	if (host.settings.backendMode === 'none' || !host.settings.backendMode) {
-		throw new Error(`No AI backend selected for ${action}. Choose Claudian or Obsidian Copilot in AI Scheduler settings.`);
+		throw new Error(`No AI backend selected for ${action}. Choose Claudian, Oh My Claudian or Obsidian Copilot in AI Scheduler settings.`);
 	}
 	if (host.settings.backendMode === 'copilot') {
 		const setup = checkCopilotSetup(host);
@@ -630,21 +706,22 @@ export async function resolveModel(host: BackendHost, value: string | null | und
 	if (!selected) {
 		throw new Error(`No model selected for ${action}. Choose a model in AI Scheduler settings first.`);
 	}
+	const name = claudianName(host);
 	if (!getClaudianPlugin(host)) {
-		const info = BACKEND_INFO.claudian;
+		const info = BACKEND_INFO[claudianBackend(host)];
 		throw new Error(`${info.name} is not installed or enabled. Install it from ${info.githubUrl}. It is required for ${action}.`);
 	}
 	const availableModels = getModelOptions(host);
 	if (!availableModels.some(model => model.value === selected)) {
-		throw new Error(`The selected model for ${action} is no longer available in Claudian. Refresh the model list and choose another model.`);
+		throw new Error(`The selected model for ${action} is no longer available in ${name}. Refresh the model list and choose another model.`);
 	}
 	const profile = parseProfileValue(selected);
 	if (!profile || !profile.providerId) {
 		throw new Error(`The selected model configuration for ${action} is invalid.`);
 	}
-	const claudian = getClaudianPlugin(host);
-	if (!claudian) throw new Error(`Claudian is not installed or enabled. It is required for ${action}.`);
-	if (typeof claudian.createConversation !== 'function') throw new Error(`Claudian cannot create a conversation for ${action}.`);
+	const claudian = getClaudianHost(getClaudianPlugin(host));
+	if (!claudian) throw new Error(`${name} is not installed or enabled. It is required for ${action}.`);
+	if (typeof claudian.createConversation !== 'function') throw new Error(`${name} cannot create a conversation for ${action}.`);
 	let conversation: ClaudianConversation;
 	try {
 		conversation = await claudian.createConversation({
@@ -653,15 +730,15 @@ export async function resolveModel(host: BackendHost, value: string | null | und
 		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		throw new Error(`Claudian could not create the selected model for ${action}: ${message}`);
+		throw new Error(`${name} could not create the selected model for ${action}: ${message}`);
 	}
-	if (!conversation || !conversation.id) throw new Error(`Claudian returned no conversation for ${action}.`);
+	if (!conversation || !conversation.id) throw new Error(`${name} returned no conversation for ${action}.`);
 	if (conversation.id && typeof claudian.renameConversation === 'function') {
 		// Cosmetic only: a failed rename must not fail the run.
 		try {
 			await claudian.renameConversation(conversation.id, `AI Scheduler - ${action.charAt(0).toUpperCase()}${action.slice(1)}`);
 		} catch (error) {
-			console.warn('[ai-scheduler] Could not rename Claudian conversation:', errorText(error));
+			console.warn(`[ai-scheduler] Could not rename the ${name} conversation:`, errorText(error));
 		}
 	}
 	return { modelRef: selected, tab: host.settings.assistantTab, conversationId: conversation.id, providerId: profile.providerId, model: profile.model || null };

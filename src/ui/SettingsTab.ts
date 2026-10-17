@@ -1,6 +1,6 @@
 import { PluginSettingTab, App, Setting, Notice, TextComponent } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
-import { AISettings, BACKEND_INFO, BackendMode } from '../types';
+import { AISettings, BACKEND_INFO, BackendMode, isClaudianBackend } from '../types';
 import { errorText } from '../util';
 import { validClock } from '../schedule';
 import { ChangelogModal } from './ChangelogModal';
@@ -28,7 +28,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 		const mode = this.plugin.settings.backendMode;
 		if (mode === 'none' || !mode) return;
 
-		const info = BACKEND_INFO[mode === 'copilot' ? 'copilot' : 'claudian'];
+		const info = BACKEND_INFO[mode];
 		const setting = new Setting(containerEl)
 			.setName('Backend connection status')
 			.setDesc('Checking readiness...');
@@ -75,11 +75,12 @@ export class AssistantSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('AI backend')
-			.setDesc('Select Claudian or Obsidian Copilot. Providers and models are set up in that plugin\'s own settings.')
+			.setDesc(`Select ${BACKEND_INFO.claudian.name}, ${BACKEND_INFO['oh-my-claudian'].name} or ${BACKEND_INFO.copilot.name}. Providers and models are set up in that plugin's own settings.`)
 			.addDropdown(dropdown => dropdown
 				.addOption('none', 'Select an AI backend...')
-				.addOption('claudian', 'Claudian')
-				.addOption('copilot', 'Obsidian Copilot')
+				.addOption('claudian', BACKEND_INFO.claudian.name)
+				.addOption('oh-my-claudian', BACKEND_INFO['oh-my-claudian'].name)
+				.addOption('copilot', BACKEND_INFO.copilot.name)
 				.setValue(this.plugin.settings.backendMode || 'none')
 				.onChange(value => {
 					void (async () => {
@@ -95,7 +96,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 			const infoBox = containerEl.createDiv({ cls: 'ai-scheduler-card ai-scheduler-card-flush' });
 			infoBox.createDiv({
 				cls: 'ai-scheduler-hint',
-				text: '👉 Select an AI backend above to configure your AI models and connections. AI Scheduler connects to your installed Claudian or Obsidian Copilot plugin.',
+				text: '👉 Select an AI backend above to configure your AI models and connections. AI Scheduler connects to your installed Claudian, Oh My Claudian or Obsidian Copilot plugin.',
 			});
 		} else if (mode === 'copilot') {
 			this.renderBackendStatus(containerEl);
@@ -104,18 +105,19 @@ export class AssistantSettingTab extends PluginSettingTab {
 				cls: 'ai-scheduler-hint',
 				text: 'Obsidian Copilot uses the active model and provider configured inside the Copilot plugin settings.',
 			});
-		} else if (mode === 'claudian') {
+		} else if (isClaudianBackend(mode)) {
 			this.renderBackendStatus(containerEl);
+			const name = BACKEND_INFO[mode].name;
 
 			new Setting(containerEl)
-				.setName('Available Claudian models')
-				.setDesc('The models Claudian offers: the visible models of each provider enabled in Claudian\'s settings. Refresh after changing them there.')
+				.setName(`Available ${name} models`)
+				.setDesc(`The models ${name} offers: the visible models of each provider enabled in its settings. Refresh after changing them there.`)
 				.addButton(button => button.setButtonText('Refresh models').onClick(() => {
 					void (async () => {
 						button.setDisabled(true);
 						try {
 							await this.plugin.refreshModels();
-							new Notice('Claudian model list refreshed.');
+							new Notice(`${name} model list refreshed.`);
 							this.renderSettings();
 						} catch (error) {
 							new Notice(`Could not refresh models: ${errorText(error)}`, 8000);
@@ -128,12 +130,12 @@ export class AssistantSettingTab extends PluginSettingTab {
 
 			const addModelSetting = (name: string, desc: string, key: 'planningModel' | 'executionModel' | 'dailyReviewModel' | 'nightlyReviewModel') => new Setting(containerEl)
 				.setName(name)
-				// A model removed in Claudian can't be used any more; say so instead of silently blanking it.
+				// A model removed in the backend can't be used any more; say so instead of silently blanking it.
 				.setDesc(this.plugin.settings[key] && !models.some(model => model.value === this.plugin.settings[key])
-					? `${desc} The model chosen before is no longer available in Claudian: pick one from the list.`
+					? `${desc} The model chosen before is no longer available in ${name}: pick one from the list.`
 					: desc)
 				.addDropdown(dropdown => {
-					dropdown.addOption('', models.length ? 'Select a model' : 'No models found - open Claudian');
+					dropdown.addOption('', models.length ? 'Select a model' : `No models found - open ${name}`);
 					models.forEach(model => { dropdown.addOption(model.value, model.label); });
 					const selected = this.plugin.settings[key] || '';
 					dropdown.setValue(models.some(model => model.value === selected) ? selected : '');
@@ -626,7 +628,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Help & community').setHeading();
 		new Setting(containerEl)
 			.setName('Getting started guide')
-			.setDesc('Step-by-step setup: install a backend (Claudian or Obsidian Copilot), set up its providers and models, then connect AI Scheduler. Opens the guide note, creating it if needed.')
+			.setDesc('Step-by-step setup: install an AI backend plugin, set up its providers and models, then connect AI Scheduler. Opens the guide note, creating it if needed.')
 			.addButton(button => button.setButtonText('Open guide').onClick(() => {
 				void this.plugin.openGettingStarted().catch(error => new Notice(`Could not open the guide: ${errorText(error)}`, 8000));
 			}));

@@ -1414,7 +1414,7 @@ export class AISchedulerPlugin extends Plugin {
 	}
 
 	backendInfo(mode = this.settings.backendMode) {
-		return BACKEND_INFO[mode === 'copilot' ? 'copilot' : 'claudian'];
+		return BACKEND_INFO[mode === 'none' || !mode ? 'claudian' : mode];
 	}
 
 	async checkBackendSetup(mode = this.settings.backendMode) {
@@ -1459,7 +1459,7 @@ export class AISchedulerPlugin extends Plugin {
 	getBackendReadiness(): { ok: boolean; message: string } {
 		const mode = this.settings.backendMode;
 		if (mode === 'none' || !mode) {
-			return { ok: false, message: 'No AI backend selected. Choose Claudian or Obsidian Copilot in AI Scheduler settings.' };
+			return { ok: false, message: 'No AI backend selected. Choose Claudian, Oh My Claudian or Obsidian Copilot in AI Scheduler settings.' };
 		}
 		if (mode === 'copilot') {
 			const copilot = this.getCopilotPlugin();
@@ -1472,18 +1472,19 @@ export class AISchedulerPlugin extends Plugin {
 			}
 			return { ok: true, message: 'Obsidian Copilot is ready.' };
 		} else {
+			const name = BACKEND_INFO[mode].name;
 			const claudian = this.getClaudianPlugin();
 			if (!claudian) {
-				return { ok: false, message: 'Claudian plugin is not installed or enabled.' };
+				return { ok: false, message: `${name} plugin is not installed or enabled.` };
 			}
 			const models = this.getModelOptions();
 			if (!models.length) {
-				return { ok: false, message: 'No Claudian models found. Open Claudian to configure providers and API keys, then refresh models in Settings.' };
+				return { ok: false, message: `No ${name} models found. Open ${name} to configure providers and API keys, then refresh models in Settings.` };
 			}
 			if (!this.settings.planningModel && !this.settings.executionModel) {
 				return { ok: false, message: 'No AI model selected for tasks or planning. Please choose a model in AI Scheduler settings.' };
 			}
-			return { ok: true, message: 'Claudian is ready.' };
+			return { ok: true, message: `${name} is ready.` };
 		}
 	}
 

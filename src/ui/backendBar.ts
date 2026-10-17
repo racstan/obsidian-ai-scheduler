@@ -1,6 +1,6 @@
 /*
  * AI backend status shown at the top of the scheduler windows. AI Scheduler
- * does not talk to AI providers itself: Claudian or Obsidian Copilot must be
+ * does not talk to AI providers itself: Claudian (or Oh My Claudian) or Obsidian Copilot must be
  * installed, enabled, and set up (providers, keys, models) in their own
  * settings. This bar always offers a one-click way to the right place.
  */
@@ -14,6 +14,7 @@ type InstallState = 'enabled' | 'disabled' | 'missing';
 /** Plugin ids each backend has been published under (current id first). */
 const PLUGIN_IDS: Record<BackendKey, string[]> = {
 	claudian: ['realclaudian', 'claudian'],
+	'oh-my-claudian': ['oh-my-claudian'],
 	copilot: ['copilot', 'obsidian-copilot'],
 };
 
@@ -52,7 +53,7 @@ export function renderBackendBar(
 	const app = plugin.app;
 	const readiness = plugin.getBackendReadiness();
 	const mode = plugin.settings.backendMode;
-	const selected: BackendKey | null = mode === 'claudian' || mode === 'copilot' ? mode : null;
+	const selected: BackendKey | null = mode === 'none' || !mode ? null : mode;
 	if (selected && readiness.ok && backendInstallState(app, selected) === 'enabled') {
 		const row = buttonRow ?? container.createDiv({ cls: 'ai-scheduler-backend-link-row' });
 		const name = BACKEND_INFO[selected].name;
@@ -88,10 +89,13 @@ export function renderBackendBar(
 	text.createDiv({
 		cls: 'ai-scheduler-backend-bar-desc',
 		text: selected
-			? `${BACKEND_INFO[selected].name} is selected but not ${backendInstallState(app, selected) === 'disabled' ? 'enabled' : 'installed'}. AI Scheduler runs your tasks through Claudian or Obsidian Copilot: install and enable one, set up its providers and models in its own settings, then choose it in AI Scheduler settings.`
-			: 'AI Scheduler runs your tasks through Claudian or Obsidian Copilot. Install and enable one, set up its providers and models in its own settings, then choose it in AI Scheduler settings.',
+			? `${BACKEND_INFO[selected].name} is selected but not ${backendInstallState(app, selected) === 'disabled' ? 'enabled' : 'installed'}. Install and enable it, set up its providers and models in its own settings, or choose another backend in AI Scheduler settings.`
+			: 'AI Scheduler runs your tasks through Claudian, Oh My Claudian or Obsidian Copilot. Install and enable one, set up its providers and models in its own settings, then choose it in AI Scheduler settings.',
 	});
-	for (const key of Object.keys(BACKEND_INFO) as BackendKey[]) {
+	// Offer the selected backend, or (with none selected) the two main ones; Oh My
+	// Claudian is a Claudian fork for people who already use it.
+	const offered = selected ? [selected] : (['claudian', 'copilot'] as BackendKey[]);
+	for (const key of offered) {
 		const name = BACKEND_INFO[key].name;
 		const state = backendInstallState(app, key);
 		if (state === 'enabled') button(`Open ${name} settings`, () => plugin.openSettingsTab(installedId(app, key)));

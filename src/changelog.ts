@@ -33,11 +33,12 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
 		version: '2.1.26',
 		date: '2026-10-17',
-		title: 'Templates, Chained Tasks, Pause & Quiet Hours',
+		title: 'Templates, Chained Tasks, Pause & Newer Backends',
 		highlights: [
 			'Starter templates: daily summary, weekly review, morning plan, inbox triage, action items, flashcards, link suggestions and monthly reflection. Each opens the task editor pre-filled so you can adjust it before saving.',
 			'Chained tasks: the new schedule "When another task finishes" runs a task after another one succeeds; {{previous_result}} and {{previous_output}} pass on its result.',
 			'Pause and quiet hours: pause every task for 1 hour, 4 hours, until tomorrow or until you resume, and set daily quiet hours during which due tasks wait. "Run now" still works.',
+			'Works with the latest Claudian and Obsidian Copilot 4, and adds Oh My Claudian as an AI backend.',
 		],
 		added: [
 			'Tags on tasks, plus a search box, tag filter and sorting on the dashboard.',
@@ -45,6 +46,7 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 			'Prompt preview in the task details: exactly what a task would send now, with variables filled in.',
 			'The status bar shows the next run, or that AI Scheduler is paused or in quiet hours (can be turned off).',
 			'Commands: Pause all tasks, Resume all tasks, New task from a template, Export tasks to a file, Import tasks from a file.',
+			'Oh My Claudian, the Claudian fork, can be chosen as the AI backend, including its extra providers (#6).',
 		],
 		changed: [
 			'When the AI backend is ready, the dashboard, planner and AI editor show a plain "Claudian settings" or "Obsidian Copilot settings" button instead of a large box; the box only appears when something needs fixing.',
@@ -53,9 +55,26 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 			'Task IDs are no longer shown on the dashboard cards; they remain in the task details and editor. Activity rows link to the task with "View".',
 		],
 		fixed: [
+			'Obsidian Copilot 4 was reported as having no automation API; AI Scheduler now uses Copilot 4\'s chat interface (#8).',
+			'With recent Claudian versions, AI Scheduler said "Claudian is installed, but its chat runtime is not ready"; it now finds Claudian\'s chat view and conversations where newer versions keep them (#7).',
+			'Pi models in Claudian are named the way Claudian expects, so they can be used for tasks.',
 			'The changelog window shows the contributors of every release again.',
 		],
-		contributors: [MAINTAINER],
+		contributors: [
+			MAINTAINER,
+			{
+				name: 'ROHAN KHALE',
+				username: 'rkhale',
+				url: 'https://github.com/rkhale',
+				role: 'Reported Copilot 4 compatibility (#8)',
+			},
+			{
+				name: 'Frédéric',
+				username: 'fmatray',
+				url: 'https://github.com/fmatray',
+				role: 'Reported the Claudian runtime error (#7) and suggested Oh My Claudian support (#6)',
+			},
+		],
 	},
 	{
 		version: '2.1.25',

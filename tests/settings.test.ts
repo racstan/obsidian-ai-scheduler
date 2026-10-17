@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeJob } from '../src/settings';
+import { normalizeJob, parseStoredData } from '../src/settings';
 import { TaskSchedule } from '../src/types';
 
 const SCHEDULES: TaskSchedule[] = [
@@ -76,4 +76,11 @@ test('normalizeJob keeps valid output modes, run options and history, and drops 
 	assert.equal(bad.retryDelayMinutes, undefined);
 	assert.equal(bad.timeoutMinutes, undefined);
 	assert.equal(bad.onlyIfChanged, undefined);
+});
+
+test('the backend choice survives a reload, including Oh My Claudian', () => {
+	for (const mode of ['claudian', 'oh-my-claudian', 'copilot', 'none'] as const) {
+		assert.equal(parseStoredData({ settings: { backendMode: mode } }).settings.backendMode, mode);
+	}
+	assert.equal(parseStoredData({ settings: { backendMode: 'bogus' } }).settings.backendMode, 'claudian');
 });

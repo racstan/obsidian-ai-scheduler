@@ -5,7 +5,14 @@
  * backend owns providers, models, permissions, and vault tools; this plugin
  * owns when the agent should wake up and what should happen after it replies.
  */
-export type BackendMode = 'claudian' | 'copilot' | 'none';
+export type BackendMode = 'claudian' | 'oh-my-claudian' | 'copilot' | 'none';
+
+/** Claudian and its fork Oh My Claudian share one integration. */
+export type ClaudianBackend = 'claudian' | 'oh-my-claudian';
+
+export function isClaudianBackend(mode: string | null | undefined): mode is ClaudianBackend {
+	return mode === 'claudian' || mode === 'oh-my-claudian';
+}
 
 export type ScheduleKind = 'once' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'multi' | 'hourly' | 'interval' | 'event' | 'after' | 'cron';
 
@@ -221,6 +228,11 @@ export const BACKEND_INFO = {
 		name: 'Claudian',
 		pluginId: 'realclaudian',
 		githubUrl: 'https://github.com/YishenTu/claudian',
+	},
+	'oh-my-claudian': {
+		name: 'Oh My Claudian',
+		pluginId: 'oh-my-claudian',
+		githubUrl: 'https://github.com/lee259/oh-my-claudian',
 	},
 	copilot: {
 		name: 'Obsidian Copilot',

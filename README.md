@@ -12,12 +12,13 @@
 
 Instead of manually opening a chat sidebar every time, you describe what you want once, set a cadence, and the plugin handles execution for you: running periodic vault reviews, summarizing notes, processing project folders, generating reports, and more — while you work or sleep.
 
-It works with two backends you likely already have installed:
+It works with the AI plugins you likely already have installed:
 
 - **[Claudian](https://github.com/YishenTu/claudian)**
+- **[Oh My Claudian](https://github.com/lee259/oh-my-claudian)**
 - **[Obsidian Copilot](https://github.com/logancyang/obsidian-copilot)**
 
-AI Scheduler does not call AI providers directly. It drives Claudian or Copilot — whichever you have configured — and owns only the scheduling and execution layer.
+AI Scheduler does not call AI providers directly. It drives Claudian, Oh My Claudian or Copilot — whichever you have configured — and owns only the scheduling and execution layer.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/racstan/obsidian-ai-scheduler/main/docs/media/demo.gif" alt="Planning a task in plain English: AI Scheduler creates and schedules it" width="860">
@@ -127,11 +128,12 @@ All schedule types support an optional **max iterations** limit — the job stop
 AI Scheduler needs one of these backends installed and working first. Install it from the community plugin store, then set up your providers and models in its own settings:
 
 - **[Claudian](https://github.com/YishenTu/claudian)**
+- **[Oh My Claudian](https://github.com/lee259/oh-my-claudian)**
 - **[Obsidian Copilot](https://github.com/logancyang/obsidian-copilot)**
 
 Then in **Settings → AI Scheduler**:
 
-1. Pick your **Active backend** (Claudian or Obsidian Copilot).
+1. Pick your **Active backend** (Claudian, Oh My Claudian or Obsidian Copilot).
 2. Choose models for **Planning model**, **Scheduled task model**, **Daily preview model** and **Periodic review model**.
 3. Optionally enable **Schedule notes** to mirror tasks as vault Markdown files.
 4. Optionally enable **Periodic AI review**, choose its cadence and time, and pick a review folder.

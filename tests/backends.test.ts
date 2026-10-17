@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BackendHost, claudianErrorFromReply, configuredClaudianModels, modelValue, parseProfileValue, resolveJobExecution, sendToAI } from '../src/backends';
+import { BackendHost, checkCopilotSetup, claudianErrorFromReply, claudianName, configuredClaudianModels, copilotChatApi, getClaudianHost, getClaudianPlugin, getClaudianView, modelValue, parseProfileValue, resolveJobExecution, resolveModel, sendToAI } from '../src/backends';
 import { DEFAULT_SETTINGS, normalizeJob } from '../src/settings';
-import { AISettings } from '../src/types';
+import { AISettings, BackendMode } from '../src/types';
 
 // Timers in the plugin go through `window` (the renderer); Node only has globalThis.
 (globalThis as unknown as { window?: typeof globalThis }).window ??= globalThis;
@@ -110,4 +110,70 @@ test('Claudian models come from its enabled providers\' visible models, not stal
 	// Aliases set in Claudian win, and older Claudian versions (no provider configs) fall back.
 	assert.equal(configuredClaudianModels({ providerConfigs: { claude: { visibleModels: ['sonnet'], modelAliases: { sonnet: 'Sonnet (work)' } } } })?.[0].label, 'Claude / Sonnet (work)');
 	assert.equal(configuredClaudianModels({ model: 'x' }), null);
+});
+
+test('Copilot 4.x: the chat API is found on chatUIState (issue #8)', async () => {
+	const chatUIState = { sendMessage: async () => 'id', getLLMMessage: () => ({}) };
+	const copilot = {
+		chatUIState,
+		chainOwner: { getCurrentChainManager: () => ({ runChain: async (_m: unknown, _a: unknown, _u: unknown, done: (m: unknown) => void) => { done({ content: 'v4 reply' }); } }) },
+	};
+	assert.equal(copilotChatApi(copilot), chatUIState);
+	assert.equal(copilotChatApi({ chatManager: chatUIState }), chatUIState, 'Copilot 3.x still works');
+	assert.equal(copilotChatApi({}), null);
+	const settings: AISettings = { ...DEFAULT_SETTINGS, backendMode: 'copilot' };
+	const host = { app: { plugins: { plugins: { copilot } }, vault: { getAbstractFileByPath: () => null } }, settings } as unknown as BackendHost;
+	assert.equal(checkCopilotSetup(host).ok, true);
+	assert.equal(await sendToAI(host, 'hello'), 'v4 reply');
+});
+
+/** A Claudian-family plugin in the given shape: old (functions on the plugin) or 2.3.2x (chatHost + workspace views). */
+function claudianHost(mode: BackendMode, shape: 'old' | 'new', pluginId: string, viewType: string) {
+	const manager = { getAllTabs: () => [{ id: 't1' }], getActiveTab: () => ({ id: 't1' }) };
+	const view = shape === 'new' ? { tabManager: manager } : { getTabManager: () => manager };
+	const created: Array<Record<string, unknown>> = [];
+	const conversations = {
+		createConversation: async (options: Record<string, unknown>) => { created.push(options); return { id: 'conv-1' }; },
+		renameConversation: async () => undefined,
+		getConversationSync: () => null,
+	};
+	const settings = { providerConfigs: { pi: { enabled: true, visibleModels: ['anthropic/claude'] } } };
+	const plugin = shape === 'old'
+		? { ...conversations, settings, getAllViews: () => [view], activateView: async () => undefined }
+		: { settings, manifest: { id: pluginId }, chatHost: conversations };
+	const leaves: Record<string, Array<{ view: unknown }>> = { [viewType]: [{ view }] };
+	const app = {
+		plugins: { plugins: { [pluginId]: plugin } },
+		workspace: { getLeavesOfType: (type: string) => leaves[type] ?? [] },
+	};
+	const host = { app, settings: { ...DEFAULT_SETTINGS, backendMode: mode } } as unknown as BackendHost;
+	return { host, plugin, view, created };
+}
+
+test('Claudian 2.3.2x: views come from the workspace, conversations from chatHost (issue #7)', async () => {
+	const { host, plugin, view, created } = claudianHost('claudian', 'new', 'realclaudian', 'claudian-view');
+	assert.equal(getClaudianPlugin(host), plugin);
+	assert.equal(getClaudianHost(plugin as never), plugin.chatHost);
+	assert.equal(await getClaudianView(host), view);
+	const value = modelValue('pi', 'pi:anthropic/claude');
+	assert.equal(configuredClaudianModels(plugin.settings as never)?.[0].value, value, 'Pi models get the pi: prefix');
+	const execution = await resolveModel(host, value, 'a test');
+	assert.equal(execution.conversationId, 'conv-1');
+	assert.deepEqual(created, [{ providerId: 'pi', selectedModel: 'pi:anthropic/claude' }]);
+});
+
+test('Older Claudian (functions on the plugin) keeps working', async () => {
+	const { host, plugin, view } = claudianHost('claudian', 'old', 'realclaudian', 'claudian-view');
+	assert.equal(getClaudianHost(plugin as never), plugin);
+	assert.equal(await getClaudianView(host), view);
+});
+
+test('Oh My Claudian is its own backend with its own plugin id and view (issue #6)', async () => {
+	const { host, plugin, view } = claudianHost('oh-my-claudian', 'old', 'oh-my-claudian', 'oh-my-claudian-view');
+	assert.equal(claudianName(host), 'Oh My Claudian');
+	assert.equal(getClaudianPlugin(host), plugin);
+	assert.equal(await getClaudianView(host), view);
+	// Choosing Claudian does not pick up Oh My Claudian, and vice versa.
+	const claudianOnly = claudianHost('claudian', 'old', 'oh-my-claudian', 'oh-my-claudian-view');
+	assert.equal(getClaudianPlugin(claudianOnly.host), null);
 });

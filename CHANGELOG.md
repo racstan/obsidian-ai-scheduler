@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Starter templates**: daily summary, weekly review, morning plan, inbox triage, action items, flashcards, link suggestions and monthly reflection. Each opens the task editor pre-filled so you can adjust it before saving.
 - **Chained tasks**: the new schedule *When another task finishes* runs a task after another one succeeds; `{{previous_result}}` and `{{previous_output}}` pass on its result.
 - **Pause and quiet hours**: pause every task for 1 hour, 4 hours, until tomorrow or until you resume, and set daily quiet hours during which due tasks wait. "Run now" still works.
+- **Newer backends**: works with the latest Claudian and Obsidian Copilot 4, and adds **Oh My Claudian** as an AI backend.
 
 ### Added
 - Tags on tasks, plus a search box, tag filter and sorting on the dashboard.
@@ -18,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prompt preview in the task details: exactly what a task would send now, with variables filled in.
 - The status bar shows the next run, or that AI Scheduler is paused or in quiet hours (can be turned off).
 - Commands: **Pause all tasks**, **Resume all tasks**, **New task from a template**, **Export tasks to a file**, **Import tasks from a file**.
+- **Oh My Claudian**, the Claudian fork, can be chosen as the AI backend, including its extra providers ([#6](https://github.com/racstan/obsidian-ai-scheduler/issues/6)).
 
 ### Changed
 - When the AI backend is ready, the dashboard, planner and AI editor show a plain **Claudian settings** or **Obsidian Copilot settings** button instead of a large box; the box only appears when something needs fixing.
@@ -26,10 +28,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Task IDs are no longer shown on the dashboard cards; they remain in the task details and editor. Activity rows link to the task with **View**.
 
 ### Fixed
+- Obsidian Copilot 4 was reported as having no automation API; AI Scheduler now uses Copilot 4's chat interface ([#8](https://github.com/racstan/obsidian-ai-scheduler/issues/8)).
+- With recent Claudian versions, AI Scheduler said "Claudian is installed, but its chat runtime is not ready"; it now finds Claudian's chat view and conversations where newer versions keep them ([#7](https://github.com/racstan/obsidian-ai-scheduler/issues/7)).
+- Pi models in Claudian are named the way Claudian expects, so they can be used for tasks.
 - The changelog window shows the contributors of every release again.
 
 ### Contributors
 - [@racstan](https://github.com/racstan)
+- [@rkhale](https://github.com/rkhale) (ROHAN KHALE - reported Copilot 4 compatibility, [#8](https://github.com/racstan/obsidian-ai-scheduler/issues/8))
+- [@fmatray](https://github.com/fmatray) (Frédéric - reported the Claudian runtime error, [#7](https://github.com/racstan/obsidian-ai-scheduler/issues/7), and suggested Oh My Claudian support, [#6](https://github.com/racstan/obsidian-ai-scheduler/issues/6))
 
 ## [2.1.25] - 2026-10-17
 

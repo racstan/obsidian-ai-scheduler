@@ -18,6 +18,7 @@ AI Scheduler runs AI tasks for you in the background: on a schedule, at a set ti
 Pick one (you can switch later):
 
 - **Claudian**: [Open in Community plugins](obsidian://show-plugin?id=realclaudian)
+- **Oh My Claudian**: [Open in Community plugins](obsidian://show-plugin?id=oh-my-claudian)
 - **Obsidian Copilot**: [Open in Community plugins](obsidian://show-plugin?id=copilot)
 
 Then enable it: **Settings → Community plugins**, and turn it on.
@@ -32,7 +33,7 @@ AI Scheduler has no settings for providers or keys. It simply uses what you conf
 
 In **Settings → AI Scheduler**:
 
-1. **AI backend**: choose Claudian or Obsidian Copilot.
+1. **AI backend**: choose Claudian, Oh My Claudian or Obsidian Copilot.
 2. **Models** (Claudian): pick the models for planning, scheduled tasks and reviews. If the list is empty, finish step 2 and refresh it.
 
 The AI Scheduler dashboard shows whether the backend is ready, with a button to open its settings.
