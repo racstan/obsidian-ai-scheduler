@@ -5,6 +5,7 @@
  */
 import { Modal, Notice } from 'obsidian';
 import { PLANNER_DRAFT } from '../drafts';
+import { PastTimePlanError } from '../planCheck';
 import { bindDraft } from './draftBanner';
 import { AISchedulerPlugin } from '../main';
 import { errorText, formatDate } from '../util';
@@ -32,6 +33,17 @@ function appendTaskIdBadge(container: HTMLElement, id: string): void {
 	});
 }
 
+/** "12:00 PM" today, "tomorrow at 12:00 PM", otherwise the date and time. */
+function shortWhen(iso: string, now: Date): string {
+	const date = new Date(iso);
+	const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+	const tomorrow = new Date(now);
+	tomorrow.setDate(tomorrow.getDate() + 1);
+	if (date.toDateString() === now.toDateString()) return time;
+	if (date.toDateString() === tomorrow.toDateString()) return `tomorrow at ${time}`;
+	return formatDate(iso);
+}
+
 export class PlannerModal extends Modal {
 	plugin: AISchedulerPlugin;
 	private plannedJobs: Job[] | null = null;
@@ -39,6 +51,8 @@ export class PlannerModal extends Modal {
 	private detachHighlight: (() => void) | null = null;
 	/** Saves the typed request when the window closes before it went through. */
 	private saveDraftOnClose: (() => void) | null = null;
+	/** False once the window is closed; a failure then falls back to a notice. */
+	private shown = false;
 
 	constructor(app: AISchedulerPlugin['app'], plugin: AISchedulerPlugin, plannedJobs: Job[] | null = null) {
 		super(app);
@@ -47,6 +61,7 @@ export class PlannerModal extends Modal {
 	}
 
 	async onOpen(): Promise<void> {
+		this.shown = true;
 		closeExistingSchedulerModals(this);
 		if (this.plannedJobs && this.plannedJobs.length) this.renderResults();
 		else await this.renderForm();
@@ -111,10 +126,59 @@ export class PlannerModal extends Modal {
 		this.saveDraftOnClose = draft.capture;
 
 		const footer = shell.createDiv({ cls: 'ai-scheduler-footer' });
+		let problem: HTMLElement | null = null;
+		const clearProblem = () => { problem?.remove(); problem = null; };
+		const planned = (jobs: Job[]) => {
+			new Notice(`AI created ${jobs.length} task(s)`, 6000);
+			draft.clear();
+			this.saveDraftOnClose = null;
+			this.plannedJobs = jobs;
+			this.renderResults();
+		};
+		/** Shows why planning failed right above the buttons, not only in a passing notice. */
+		const showProblem = (error: unknown) => {
+			clearProblem();
+			if (!this.shown) {
+				new Notice(`Planning failed: ${errorText(error).replace(/[.\s]+$/, '')}. Your request is saved as a draft.`, 8000);
+				return;
+			}
+			problem = createDiv({ cls: 'ai-scheduler-alert-banner ai-scheduler-plan-problem' });
+			footer.parentElement?.insertBefore(problem, footer);
+			const actions = createDiv({ cls: 'ai-scheduler-plan-problem-actions' });
+			if (error instanceof PastTimePlanError) {
+				const now = new Date();
+				const many = error.times.length > 1;
+				problem.createDiv({ cls: 'ai-scheduler-alert-title', text: many ? 'Those times have already passed' : 'That time has already passed' });
+				problem.createDiv({
+					cls: 'ai-scheduler-alert-desc',
+					text: `Unless you've built a time machine, ${shortWhen(error.times[0], now)} is already behind us (it's ${shortWhen(now.toISOString(), now)} now). Did you mean a later time?`,
+				});
+				problem.appendChild(actions);
+				makeButton(actions, many ? 'Move them to the next day' : `Schedule for ${shortWhen(error.nextTimes[0], now)}`, async button => {
+					button.disabled = true;
+					try {
+						planned(await error.reschedule());
+					} catch (rescheduleError) {
+						showProblem(rescheduleError);
+					}
+				}, true);
+				makeButton(actions, 'Change the time', () => {
+					clearProblem();
+					textarea.focus();
+				});
+			} else {
+				problem.createDiv({ cls: 'ai-scheduler-alert-title', text: 'Planning didn\'t work this time' });
+				problem.createDiv({ cls: 'ai-scheduler-alert-desc', text: errorText(error) });
+				problem.createDiv({ cls: 'ai-scheduler-alert-desc ai-scheduler-plan-problem-hint', text: 'Your request is saved as a draft. Reword it and try again, or check your AI backend.' });
+			}
+			problem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+		};
+
 		makeButton(footer, 'Cancel', () => this.close());
 		makeButton(footer, 'Create AI plan', async button => {
 			const goal = textarea.value.trim();
 			if (!goal) { new Notice('Describe what you want AI Scheduler to do.'); return; }
+			clearProblem();
 
 			button.disabled = true;
 			button.setText('AI is planning...');
@@ -129,11 +193,7 @@ export class PlannerModal extends Modal {
 
 			try {
 				const result = await this.plugin.planAndCreate(goal, contextPicker.getPaths(), resultFolder.value.trim());
-				new Notice(`AI created ${result.jobs.length} task(s)`, 6000);
-				draft.clear();
-				this.saveDraftOnClose = null;
-				this.plannedJobs = result.jobs;
-				this.renderResults();
+				planned(result.jobs);
 			} catch (error) {
 				loader.remove();
 				textarea.disabled = false;
@@ -141,7 +201,7 @@ export class PlannerModal extends Modal {
 				button.disabled = false;
 				button.setText('Create AI plan');
 				draft.fail(errorText(error));
-				new Notice(`Planning failed: ${errorText(error)}. Your request is saved as a draft.`, 8000);
+				showProblem(error);
 			}
 		}, true);
 	}
@@ -268,6 +328,7 @@ export class PlannerModal extends Modal {
 	}
 
 	onClose(): void {
+		this.shown = false;
 		this.saveDraftOnClose?.();
 		this.saveDraftOnClose = null;
 		this.detachMention?.();

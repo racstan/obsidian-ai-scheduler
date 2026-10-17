@@ -131,7 +131,7 @@ function makeClaudian() {
 					const content = payload && payload.content || '';
 					tab.state.messages.push({
 						role: 'assistant',
-						content: content.includes('planning brain') ? PLANNER_REPLY : GENERIC_REPLY,
+						content: content.includes('planning brain') ? (tab.plannerReply ?? PLANNER_REPLY) : GENERIC_REPLY,
 					});
 				},
 			},
@@ -318,6 +318,24 @@ async function main() {
 	await assert.rejects(first.planAndCreate('Every weekday morning, review my notes'), /refused to send the message/);
 	claudianTab.rejectSends = 0;
 	for (const job of retried.jobs) await first.deleteJob(job);
+
+	// "At 12 pm today" asked after noon: nothing is created, the error offers the next day instead.
+	const pastAt = new Date(Date.now() - 90 * 60_000).toISOString();
+	claudianTab.plannerReply = '<assistant-scheduler>[{"title":"Tech news","prompt":"Fetch the latest tech news","schedule":{"kind":"once","at":"' + pastAt + '"}}]</assistant-scheduler>';
+	const jobsBeforePast = first.jobs.length;
+	const pastError = await first.planAndCreate('at 12pm today fetch latest tech news').then(() => null, error => error);
+	assert.equal(pastError?.name, 'PastTimePlanError', 'a plan in the past is reported as such');
+	assert.equal(first.jobs.length, jobsBeforePast, 'nothing is created for a past time');
+	assert.equal(new Date(pastError.nextTimes[0]).getTime(), new Date(pastAt).getTime() + 24 * 3600_000, 'moves to the same time tomorrow');
+	const moved = await pastError.reschedule();
+	assert.equal(moved.length, 1);
+	assert.equal(moved[0].nextRunAt, pastError.nextTimes[0], 'the rescheduled task runs tomorrow');
+	await first.deleteJob(moved[0]);
+
+	// A reply without any schedule shows what the AI said.
+	claudianTab.plannerReply = 'Sorry, 12 pm today has already passed. Did you mean tomorrow?';
+	await assert.rejects(first.planAndCreate('at 12pm today fetch latest tech news'), /It said: "Sorry, 12 pm today has already passed/);
+	delete claudianTab.plannerReply;
 
 	// A model/provider error from Claudian reaches the user with Claudian's own message,
 	// for the planner and for scheduled runs (which must fail, not "complete").

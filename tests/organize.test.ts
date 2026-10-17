@@ -249,3 +249,20 @@ test('drafts keep only requests with text, newest first, and survive settings pa
 	assert.equal(parsed.settings.drafts.planner.text, 'Keep me');
 	assert.deepEqual(parseStoredData({ version: 6, settings: {}, jobs: [] }).settings.drafts, {});
 });
+
+test('past one-time plans are detected and moved to the next day', async () => {
+	const { isPastOncePlan, movePlanToFuture, nextFutureTime, replyExcerpt } = await import('../src/planCheck');
+	const now = at(13, 31);
+	assert.equal(isPastOncePlan({ schedule: { kind: 'once', at: at(12).toISOString() } }, now), true);
+	assert.equal(isPastOncePlan({ schedule: { at: at(12).toISOString() } }, now), true, 'once is the default kind');
+	assert.equal(isPastOncePlan({ schedule: { kind: 'once', at: at(15).toISOString() } }, now), false);
+	assert.equal(isPastOncePlan({ schedule: { kind: 'daily', time: '12:00' } }, now), false);
+	assert.equal(isPastOncePlan({ schedule: { kind: 'once', at: 'nonsense' } }, now), false);
+	assert.equal(nextFutureTime(at(12).toISOString(), now), new Date(2026, 9, 18, 12).toISOString());
+	assert.equal(nextFutureTime(new Date(2026, 9, 10, 9).toISOString(), now), new Date(2026, 9, 18, 9).toISOString(), 'days ago moves to the next upcoming day');
+	assert.equal(nextFutureTime(at(13, 31, ).toISOString(), now), new Date(2026, 9, 18, 13, 31).toISOString(), 'right now is not "ahead"');
+	const moved = movePlanToFuture({ title: 'T', schedule: { kind: 'once', at: at(12).toISOString() } }, now);
+	assert.deepEqual(moved.schedule, { kind: 'once', at: new Date(2026, 9, 18, 12).toISOString() });
+	assert.equal(replyExcerpt('<assistant-scheduler>\n  hi \n there </assistant-scheduler>'), 'hi there');
+	assert.equal(replyExcerpt('x'.repeat(300)).length, 241);
+});

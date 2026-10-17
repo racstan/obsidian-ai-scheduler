@@ -1,6 +1,7 @@
 import { Modal, Notice } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
-import { errorText, isNightlyReviewJob } from '../util';
+import { errorText, formatDate, isNightlyReviewJob } from '../util';
+import { isPastOncePlan } from '../planCheck';
 import { SCHEDULE_KINDS, ScheduleKind, TaskSchedule } from '../types';
 import { DAY_SHORT_NAMES, MONTH_NAMES, formatMultiRules, getScheduleNextRun, normalizeMaxIterations, parseMultiRulesText, previewSchedule, validClock, waitsForTrigger } from '../schedule';
 import { validateCron } from '../cron';
@@ -295,6 +296,9 @@ export class JobModal extends Modal {
 				const contextPaths = contextPicker.getPaths();
 				const plan = await this.plugin.refineJob(this.job, change, contextPaths);
 				const schedule = plan.schedule || this.job.schedule;
+				if (isPastOncePlan({ schedule })) {
+					throw new Error(`Unless you've built a time machine, ${formatDate(schedule.at)} has already passed. Ask for a later time`);
+				}
 				if (!waitsForTrigger(schedule) && !getScheduleNextRun(schedule, new Date(Date.now() - 1000))) {
 					throw new Error('AI returned an invalid schedule. Ask for a concrete time or cadence.');
 				}
@@ -314,7 +318,7 @@ export class JobModal extends Modal {
 				this.close();
 			} catch (error) {
 				draft.fail(errorText(error));
-				new Notice(`Could not update task: ${errorText(error)}. Your request is saved as a draft.`, 8000);
+				new Notice(`Could not update task: ${errorText(error).replace(/[.\s]+$/, '')}. Your request is saved as a draft.`, 8000);
 				button.disabled = false;
 				button.setText('Update task with AI');
 			}

@@ -33,6 +33,7 @@ export function plannerPrompt(goal: string, contextPaths: string[]): string {
 		'Schedule rules and natural language time parsing:',
 		'- When interpreting times in natural shorthand: e.g. "150" or "150 today" or "at 150" means 1:50 PM (13:50) or 01:50, NOT 15:00. "330" means 3:30 (15:30), "1130" means 11:30, "9" means 09:00.',
 		'- For one-time tasks or "today", schedule.kind must be "once" with "at" as an exact ISO-8601 string for that date and time.',
+		'- If a one-time time the user asks for has already passed, still return it exactly as asked (do not move it to another day and do not reply without JSON); AI Scheduler will ask the user what to do.',
 		'schedule must be one of:',
 		'- {"kind":"once","at":"ISO-8601 timestamp"}',
 		'- {"kind":"daily","time":"HH:MM"}',

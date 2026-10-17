@@ -177,3 +177,37 @@ test('Oh My Claudian is its own backend with its own plugin id and view (issue #
 	const claudianOnly = claudianHost('claudian', 'old', 'oh-my-claudian', 'oh-my-claudian-view');
 	assert.equal(getClaudianPlugin(claudianOnly.host), null);
 });
+
+/** Copilot 4.0.15's order: streamed text, the finished message, then an empty update clearing the preview. */
+function copilot4Host(runChain: (update: (text: string) => void, done: (message: unknown) => void) => Promise<unknown>) {
+	const copilot = {
+		chatUIState: { sendMessage: async () => 'id', getLLMMessage: () => ({}) },
+		chainOwner: { getCurrentChainManager: () => ({
+			runChain: (_m: unknown, _a: unknown, update: (text: string) => void, done: (message: unknown) => void) => runChain(update, done),
+		}) },
+	};
+	const settings: AISettings = { ...DEFAULT_SETTINGS, backendMode: 'copilot' };
+	return { app: { plugins: { plugins: { copilot } }, vault: { getAbstractFileByPath: () => null } }, settings } as unknown as BackendHost;
+}
+
+test('Copilot 4: the reply survives the empty update that clears the streaming preview', async () => {
+	const host = copilot4Host(async (update, done) => {
+		update('Partial');
+		update('Partial reply');
+		done({ message: 'Full reply', sender: 'AI', isVisible: true });
+		update('');
+		return 'Full reply';
+	});
+	assert.equal(await sendToAI(host, 'plan'), 'Full reply');
+
+	// Older runners that only stream, or only return the text, still work.
+	assert.equal(await sendToAI(copilot4Host(async update => { update('Streamed only'); update(''); }), 'x'), 'Streamed only');
+	assert.equal(await sendToAI(copilot4Host(async () => 'Returned only'), 'x'), 'Returned only');
+});
+
+test('Copilot 4: an error message from the model is reported instead of "no reply"', async () => {
+	const host = copilot4Host(async (_update, done) => {
+		done({ message: 'Model request failed: invalid API key', isErrorMessage: true });
+	});
+	await assert.rejects(sendToAI(host, 'plan'), /Copilot reported an error: Model request failed: invalid API key/);
+});

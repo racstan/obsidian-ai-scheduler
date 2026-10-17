@@ -55,6 +55,7 @@ import { ScheduleNotesSync } from './notes';
 import { buildIcs } from './ics';
 import { GETTING_STARTED_PATH, gettingStartedNote } from './gettingStarted';
 import { AIDraft, normalizeDrafts, sameDraft } from './drafts';
+import { PastTimePlanError, isPastOncePlan, movePlanToFuture, replyExcerpt } from './planCheck';
 
 const TICK_MS = 15000;
 
@@ -1368,30 +1369,33 @@ export class AISchedulerPlugin extends Plugin {
 			if (!reply.trim()) throw new Error('The AI backend sent no reply. Check the conversation in your AI backend, then try again.');
 			const plans = extractJson(reply)
 				.map(item => validateJobSchema(item))
-				.filter((item): item is Record<string, unknown> => Boolean(item));
-			if (!plans.length) throw new Error('The AI returned no valid schedule. Ask it for a concrete time or cadence.');
-			const jobs: Job[] = [];
-			const skipped: string[] = [];
-			for (const plan of plans.slice(0, 10)) {
-				// One malformed plan must not abort the others (some may already be added).
-				try {
-					const planRecord = plan as { contextPaths?: string[]; context?: { paths?: string[] }; output?: JobOutput | null };
-					const newJob = await this.addJob(Object.assign(
-						this.jobFromPlan(Object.assign({}, plan, {
-							contextPaths: planRecord.contextPaths || (planRecord.context && planRecord.context.paths) || validatedPaths,
-							output: planRecord.output || (resultFolder ? { folder: resultFolder } : null),
-						}), execution.tab as number, 'planner'),
-						{ profile: execution.modelRef, conversationId: execution.conversationId, providerId: execution.providerId, model: execution.model },
-					));
-					jobs.push(newJob);
-					if (newJob.doubt) {
-						new Notice(`AI Planning Note: ${newJob.doubt}`, 9000);
-					}
-					this.logActivity('planned', `AI created Task #${newJob.taskNumber}: ${newJob.title}${newJob.doubt ? ` (${newJob.doubt})` : ''}`, newJob.id);
-				} catch (error) {
-					skipped.push(errorText(error));
-				}
+				.filter((item): item is Record<string, unknown> => Boolean(item))
+				.slice(0, 10);
+			if (!plans.length) {
+				// Show what the AI said instead: it often explains the problem (a vague or impossible time).
+				const said = replyExcerpt(reply);
+				throw new Error(said
+					? `The AI did not return a schedule. It said: "${said}"`
+					: 'The AI returned no valid schedule. Ask it for a concrete time or cadence.');
 			}
+			// "At 12 pm today" asked at 1:30 pm: nothing is created, and the user can move it to the next day.
+			const now = new Date();
+			const past = plans.filter(plan => isPastOncePlan(plan, now));
+			if (past.length === plans.length) {
+				const moved = past.map(plan => movePlanToFuture(plan, now));
+				throw new PastTimePlanError(
+					past.map(plan => (plan.schedule as { at: string }).at),
+					moved.map(plan => (plan.schedule as { at: string }).at),
+					async () => {
+						const created = await this.createPlannedJobs(moved, execution, validatedPaths, resultFolder);
+						if (!created.jobs.length) throw new Error(created.skipped[0] || 'The AI returned no valid schedule.');
+						await this.saveState();
+						return created.jobs;
+					},
+				);
+			}
+			const { jobs, skipped } = await this.createPlannedJobs(plans.filter(plan => !past.includes(plan)), execution, validatedPaths, resultFolder);
+			if (past.length) skipped.push(`"${String(past[0].title)}" was planned for a time that has already passed`);
 			if (!jobs.length) throw new Error(skipped[0] || 'The AI returned no valid schedule.');
 			if (skipped.length) new Notice(`Skipped ${skipped.length} invalid planned ${skipped.length === 1 ? 'task' : 'tasks'}: ${skipped[0]}`, 9000);
 			await this.saveState();
@@ -1401,6 +1405,38 @@ export class AISchedulerPlugin extends Plugin {
 			this.activePlanningGoal = null;
 			this.updateStatusBar();
 		}
+	}
+
+	/** Adds the planned tasks one by one; a malformed plan is skipped without stopping the others. */
+	private async createPlannedJobs(
+		plans: Record<string, unknown>[],
+		execution: Awaited<ReturnType<typeof backends.resolveModel>>,
+		validatedPaths: string[],
+		resultFolder: string,
+	): Promise<{ jobs: Job[]; skipped: string[] }> {
+		const jobs: Job[] = [];
+		const skipped: string[] = [];
+		for (const plan of plans) {
+			// One malformed plan must not abort the others (some may already be added).
+			try {
+				const planRecord = plan as { contextPaths?: string[]; context?: { paths?: string[] }; output?: JobOutput | null };
+				const newJob = await this.addJob(Object.assign(
+					this.jobFromPlan(Object.assign({}, plan, {
+						contextPaths: planRecord.contextPaths || (planRecord.context && planRecord.context.paths) || validatedPaths,
+						output: planRecord.output || (resultFolder ? { folder: resultFolder } : null),
+					}), execution.tab as number, 'planner'),
+					{ profile: execution.modelRef, conversationId: execution.conversationId, providerId: execution.providerId, model: execution.model },
+				));
+				jobs.push(newJob);
+				if (newJob.doubt) {
+					new Notice(`AI Planning Note: ${newJob.doubt}`, 9000);
+				}
+				this.logActivity('planned', `AI created Task #${newJob.taskNumber}: ${newJob.title}${newJob.doubt ? ` (${newJob.doubt})` : ''}`, newJob.id);
+			} catch (error) {
+				skipped.push(errorText(error));
+			}
+		}
+		return { jobs, skipped };
 	}
 
 	getDraft(key: string): AIDraft | null {

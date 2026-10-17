@@ -484,26 +484,42 @@ export async function sendToCopilot(host: BackendHost, prompt: string, context: 
 	);
 	const llmMessage = chatManager.getLLMMessage(messageId);
 	if (!llmMessage) throw new Error('Copilot did not prepare the scheduler message.');
-	let reply = '';
+	// Copilot streams the reply as text, then hands over the finished message and
+	// clears its streaming preview with an empty update (4.x). Empty updates are
+	// ignored and the finished message wins over the last streamed text.
+	let streamed = '';
+	let finished = '';
+	let failure = '';
 	const abort = new AbortController();
 	if (signal?.aborted) throw new Error('Cancelled by user.');
 	signal?.addEventListener('abort', () => abort.abort(), { once: true });
 	const run = chain.runChain(
 		llmMessage,
 		abort,
-		(message: unknown) => { reply = typeof message === 'string' ? message : contentFromMessage(message) || reply; },
-		(message: unknown) => { reply = contentFromMessage(message) || reply; },
+		(message: unknown) => {
+			const text = typeof message === 'string' ? message : contentFromMessage(message);
+			if (text) streamed = text;
+		},
+		(message: unknown) => {
+			const text = contentFromMessage(message);
+			if (!text) return;
+			if ((message as { isErrorMessage?: boolean } | null)?.isErrorMessage) failure = text;
+			else finished = text;
+		},
 		{ debug: false },
 	);
+	let returned: unknown;
 	try {
-		await withTimeout(run, AGENT_TIMEOUT_MS, `AI task timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes`);
+		returned = await withTimeout(run, AGENT_TIMEOUT_MS, `AI task timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes`);
 	} catch (error) {
 		abort.abort(); // stop the chain instead of letting it keep running unseen
 		const message = errorText(error);
 		// Our own timeout/cancel messages stay as they are; anything else came from Copilot.
 		throw /timed out|Cancelled by user/.test(message) ? error : new Error(`Copilot reported an error: ${message}`);
 	}
-	return (reply || '').trim();
+	const reply = finished || (typeof returned === 'string' ? returned : '') || streamed;
+	if (!reply.trim() && failure) throw new Error(`Copilot reported an error: ${failure}`);
+	return reply.trim();
 }
 
 /* Scheduled runs, the planner and manual reviews can overlap. They share the
