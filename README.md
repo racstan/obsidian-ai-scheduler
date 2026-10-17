@@ -20,6 +20,8 @@ It works with the AI plugins you likely already have installed:
 
 AI Scheduler does not call AI providers directly. It drives Claudian, Oh My Claudian or Copilot — whichever you have configured — and owns only the scheduling and execution layer.
 
+Supported versions: Claudian 2.x (including the 2.3.2x releases), Oh My Claudian, and Obsidian Copilot 3.x and 4.x. Claudian's providers (Claude, Codex, OpenCode, Pi and others) and Oh My Claudian's extra providers are supported.
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/racstan/obsidian-ai-scheduler/main/docs/media/demo.gif" alt="Planning a task in plain English: AI Scheduler creates and schedules it" width="860">
 </p>
@@ -133,12 +135,12 @@ AI Scheduler needs one of these backends installed and working first. Install it
 
 Then in **Settings → AI Scheduler**:
 
-1. Pick your **Active backend** (Claudian, Oh My Claudian or Obsidian Copilot).
+1. Pick your **AI backend** (Claudian, Oh My Claudian or Obsidian Copilot).
 2. Choose models for **Planning model**, **Scheduled task model**, **Daily preview model** and **Periodic review model**.
 3. Optionally enable **Schedule notes** to mirror tasks as vault Markdown files.
 4. Optionally enable **Periodic AI review**, choose its cadence and time, and pick a review folder.
 
-On first install the plugin creates a short **AI Scheduler - Getting started** note with these steps; reopen it any time with **AI Scheduler: Open getting started guide** or from **Settings → AI Scheduler → Help & community**. The dashboard, planner and task editor always show your backend's status with a button to open its settings.
+On first install the plugin creates a short **AI Scheduler - Getting started** note with these steps; reopen it any time with **AI Scheduler: Open getting started guide** or from **Settings → AI Scheduler → Help & community**. The dashboard, planner and AI task editor have a button to open your backend's settings (for example **Claudian settings**), and show what to fix if the backend isn't installed, enabled or set up.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/racstan/obsidian-ai-scheduler/main/docs/media/settings-notes-help.png" alt="Settings: schedule notes, release notes and the getting started guide" width="640">
@@ -254,10 +256,10 @@ All commands are available from the command palette (`Ctrl/Cmd + P`):
 ## Privacy
 
 - No third-party servers, no telemetry, no analytics.
-- Prompts and vault files go only to your configured backend (Claudian or Copilot) and then to whatever AI provider you have set up there.
+- Prompts and vault files go only to your configured backend (Claudian, Oh My Claudian or Obsidian Copilot) and then to whatever AI provider you have set up there.
 - Periodic reviews and automated note reading are opt-in.
 - Follow-up tasks that the AI proposes in its replies are created **disabled** — you review and enable them yourself.
-- Task output is written as new Markdown notes; the plugin never overwrites a note it did not create, and never writes into hidden or `.obsidian` folders.
+- Task output is written as Markdown notes. The plugin never replaces a note it did not create; it only adds to an existing note when you choose **Add to one note** or **Add to today's daily note** for that task. It never writes into hidden or `.obsidian` folders.
 - You control iteration limits and can pause or delete any task at any time.
 
 ---
