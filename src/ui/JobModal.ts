@@ -5,6 +5,8 @@ import { SCHEDULE_KINDS, ScheduleKind, TaskSchedule } from '../types';
 import { DAY_SHORT_NAMES, MONTH_NAMES, formatMultiRules, getScheduleNextRun, normalizeMaxIterations, parseMultiRulesText, previewSchedule, validClock, waitsForTrigger } from '../schedule';
 import { validateCron } from '../cron';
 import { createContextPicker } from './contextPicker';
+import { bindDraft } from './draftBanner';
+import { taskDraftKey } from '../drafts';
 import { closeExistingSchedulerModals, linkLabel, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
 import { renderBackendBar } from './backendBar';
 import { FolderSuggest } from './folderSuggest';
@@ -60,6 +62,8 @@ export class JobModal extends Modal {
 	backLabel: string;
 	private detachMention: (() => void) | null = null;
 	private detachHighlight: (() => void) | null = null;
+	/** Saves the typed AI request when the window closes before it went through. */
+	private saveDraftOnClose: (() => void) | null = null;
 	private editMode: 'manual' | 'ai' = 'manual';
 	private kind: ScheduleKind;
 	private scheduleInputs: ScheduleInputs = { dayChecks: [] };
@@ -277,6 +281,8 @@ export class JobModal extends Modal {
 		});
 
 		const resultFolder = this.createResultFolderInput(shell);
+		const draft = bindDraft({ plugin: this.plugin, key: taskDraftKey(this.job.id), before: requestLabel, textarea: request, contextPicker, resultFolder });
+		this.saveDraftOnClose = draft.capture;
 
 		const footer = shell.createDiv({ cls: 'ai-scheduler-footer-wrap' });
 		makeButton(footer, 'Cancel', () => this.close());
@@ -301,11 +307,14 @@ export class JobModal extends Modal {
 					contextPaths,
 					output: Object.values(output).some(value => value !== undefined) ? output : null,
 				});
+				draft.clear();
+				this.saveDraftOnClose = null;
 				new Notice('AI updated and saved the scheduled task.', 6000);
 				this.onSaved();
 				this.close();
 			} catch (error) {
-				new Notice(`Could not update task: ${errorText(error)}`, 8000);
+				draft.fail(errorText(error));
+				new Notice(`Could not update task: ${errorText(error)}. Your request is saved as a draft.`, 8000);
 				button.disabled = false;
 				button.setText('Update task with AI');
 			}
@@ -868,6 +877,8 @@ export class JobModal extends Modal {
 	}
 
 	onClose(): void {
+		this.saveDraftOnClose?.();
+		this.saveDraftOnClose = null;
 		this.detachMention?.();
 		this.detachMention = null;
 		this.detachHighlight?.();

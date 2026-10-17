@@ -54,6 +54,7 @@ import { ChangelogModal } from './ui/ChangelogModal';
 import { ScheduleNotesSync } from './notes';
 import { buildIcs } from './ics';
 import { GETTING_STARTED_PATH, gettingStartedNote } from './gettingStarted';
+import { AIDraft, normalizeDrafts, sameDraft } from './drafts';
 
 const TICK_MS = 15000;
 
@@ -1400,6 +1401,20 @@ export class AISchedulerPlugin extends Plugin {
 			this.activePlanningGoal = null;
 			this.updateStatusBar();
 		}
+	}
+
+	getDraft(key: string): AIDraft | null {
+		return this.settings.drafts[key] || null;
+	}
+
+	/** Saves an unsent AI request, or forgets it when `draft` is null. */
+	async saveDraft(key: string, draft: Omit<AIDraft, 'savedAt'> | null): Promise<void> {
+		if (sameDraft(this.settings.drafts[key], draft)) return;
+		const drafts = { ...this.settings.drafts };
+		if (draft && draft.text.trim()) drafts[key] = { ...draft, savedAt: new Date().toISOString() };
+		else delete drafts[key];
+		this.settings.drafts = normalizeDrafts(drafts);
+		await this.saveState();
 	}
 
 	async refineJob(job: Job, request: string, contextPaths: string[] = job.contextPaths || []): Promise<{ title: string; prompt: string; schedule: TaskSchedule }> {

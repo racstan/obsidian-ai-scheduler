@@ -592,6 +592,16 @@ async function main() {
 	assert.equal(second.jobs.length, countBefore + importedCount);
 	assert.ok(second.jobs.slice(-importedCount).every(j => !j.enabled), 'imported tasks are paused');
 
+	// A failed AI request is saved as a draft in data.json and forgotten once it goes through.
+	await second.saveDraft('planner', { text: 'Plan my week', contextPaths: [], resultFolder: '', error: 'Backend not ready' });
+	assert.equal(app._pluginData.settings.drafts.planner.error, 'Backend not ready', 'draft persisted');
+	const savesBefore = app._savedCount;
+	await second.saveDraft('planner', { text: 'Plan my week', contextPaths: [], resultFolder: '', error: 'Backend not ready' });
+	assert.equal(app._savedCount, savesBefore, 'an unchanged draft is not saved again');
+	await second.saveDraft('planner', null);
+	assert.equal(second.getDraft('planner'), null);
+	assert.equal(app._pluginData.settings.drafts.planner, undefined, 'draft cleared');
+
 	await second.deleteAllJobs();
 	assert.equal(second.jobs.length, 1, 'nightly review job survives delete-all');
 	console.log('SMOKE OK');

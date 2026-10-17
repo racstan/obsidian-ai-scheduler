@@ -216,3 +216,36 @@ test('summarizeNextRun groups tasks due at the same minute and reports holds', a
 	assert.equal(listTitles([a, b]), 'A and B');
 	assert.equal(listTitles([a, b, c, trigger]), 'A, B and 2 more');
 });
+
+test('drafts keep only requests with text, newest first, and survive settings parsing', async () => {
+	const { normalizeDrafts, sameDraft, MAX_DRAFTS, taskDraftKey } = await import('../src/drafts');
+	const drafts = normalizeDrafts({
+		planner: { text: 'Plan my week', contextPaths: ['Notes', 3], resultFolder: 'AI', savedAt: '2026-10-17T10:00:00.000Z', error: 'Backend not ready' },
+		empty: { text: '   ', savedAt: '2026-10-17T11:00:00.000Z' },
+		broken: 'nope',
+		[taskDraftKey('abc')]: { text: 'Move to 9am', savedAt: 'not a date' },
+	});
+	assert.deepEqual(Object.keys(drafts), ['planner', 'task:abc']);
+	assert.deepEqual(drafts.planner.contextPaths, ['Notes']);
+	assert.equal(drafts.planner.error, 'Backend not ready');
+	assert.equal(drafts['task:abc'].error, null);
+	assert.equal(drafts['task:abc'].resultFolder, '');
+	assert.deepEqual(normalizeDrafts(null), {});
+	assert.deepEqual(normalizeDrafts([1, 2]), {});
+
+	const many = Object.fromEntries(Array.from({ length: MAX_DRAFTS + 5 }, (_, i) => [`k${i}`, { text: 't', savedAt: new Date(2026, 0, 1, 0, i).toISOString() }]));
+	const kept = Object.keys(normalizeDrafts(many));
+	assert.equal(kept.length, MAX_DRAFTS);
+	assert.equal(kept[0], `k${MAX_DRAFTS + 4}`, 'the newest drafts are kept');
+
+	const base = { text: 'a', contextPaths: ['x'], resultFolder: '', error: null };
+	assert.equal(sameDraft(base, { ...base }), true);
+	assert.equal(sameDraft(base, { ...base, error: 'failed' }), false);
+	assert.equal(sameDraft(base, { ...base, contextPaths: ['y'] }), false);
+	assert.equal(sameDraft(null, null), true);
+	assert.equal(sameDraft(base, null), false);
+
+	const parsed = parseStoredData({ version: 6, settings: { drafts: { planner: { text: 'Keep me', savedAt: '2026-10-17T10:00:00.000Z' } } }, jobs: [] });
+	assert.equal(parsed.settings.drafts.planner.text, 'Keep me');
+	assert.deepEqual(parseStoredData({ version: 6, settings: {}, jobs: [] }).settings.drafts, {});
+});

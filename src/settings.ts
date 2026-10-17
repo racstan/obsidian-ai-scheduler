@@ -3,6 +3,7 @@
 import { ActivityEntry, AISettings, Job, JobOutput, OUTPUT_MODES, OutputMode, RunRecord, SCHEDULE_KINDS, TaskSchedule } from './types';
 import { getScheduleNextRun, normalizeMaxIterations } from './schedule';
 import { id, localDateKey } from './util';
+import { normalizeDrafts } from './drafts';
 
 export const DEFAULT_SETTINGS: AISettings = {
 	assistantTab: 1,
@@ -40,6 +41,7 @@ export const DEFAULT_SETTINGS: AISettings = {
 	quietStart: '23:00',
 	quietEnd: '07:00',
 	statusBarNextRun: true,
+	drafts: {},
 };
 
 const VALID_STATUSES = new Set(['scheduled', 'running', 'completed', 'failed', 'missed', 'disabled']);
@@ -261,6 +263,7 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 	if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(settings.quietStart))) settings.quietStart = DEFAULT_SETTINGS.quietStart;
 	if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(settings.quietEnd))) settings.quietEnd = DEFAULT_SETTINGS.quietEnd;
 	settings.statusBarNextRun = settings.statusBarNextRun !== false;
+	settings.drafts = normalizeDrafts(settings.drafts);
 	if (typeof settings.icsExportPath !== 'string' || !settings.icsExportPath.trim()) settings.icsExportPath = DEFAULT_SETTINGS.icsExportPath;
 	const rawIcsDays = Number(settings.icsExportDays);
 	settings.icsExportDays = Number.isInteger(rawIcsDays) && rawIcsDays >= 1 && rawIcsDays <= 366 ? rawIcsDays : DEFAULT_SETTINGS.icsExportDays;

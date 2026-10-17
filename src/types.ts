@@ -5,6 +5,7 @@
  * backend owns providers, models, permissions, and vault tools; this plugin
  * owns when the agent should wake up and what should happen after it replies.
  */
+import { AIDraft } from './drafts';
 export type BackendMode = 'claudian' | 'oh-my-claudian' | 'copilot' | 'none';
 
 /** Claudian and its fork Oh My Claudian share one integration. */
@@ -205,6 +206,8 @@ export interface AISettings {
 	quietEnd: string;
 	/** Show the next run in the status bar when nothing is running. */
 	statusBarNextRun: boolean;
+	/** Unsent AI requests ("Ask AI to plan", "Update task with AI"), by form. */
+	drafts: Record<string, AIDraft>;
 }
 
 export interface ActivityEntry {

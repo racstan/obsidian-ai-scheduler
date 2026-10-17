@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The status bar shows the next run, or that AI Scheduler is paused or in quiet hours (can be turned off).
 - Commands: **Pause all tasks**, **Resume all tasks**, **New task from a template**, **Export tasks to a file**, **Import tasks from a file**.
 - **Oh My Claudian**, the Claudian fork, can be chosen as the AI backend, including its extra providers ([#6](https://github.com/racstan/obsidian-ai-scheduler/issues/6)).
+- **Drafts for AI requests**: if **Ask AI to plan** or **Update task with AI** fails, or the window is closed before it finishes, what you typed is saved and restored next time, with the reason it failed.
 
 ### Changed
 - When the AI backend is ready, the dashboard, planner and AI editor show a plain **Claudian settings** or **Copilot settings** button instead of a large box; the box only appears when something needs fixing.

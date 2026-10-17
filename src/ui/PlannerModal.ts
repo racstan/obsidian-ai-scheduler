@@ -4,6 +4,8 @@
  * loading animations, and interactive review/edit/discard capabilities for planned jobs.
  */
 import { Modal, Notice } from 'obsidian';
+import { PLANNER_DRAFT } from '../drafts';
+import { bindDraft } from './draftBanner';
 import { AISchedulerPlugin } from '../main';
 import { errorText, formatDate } from '../util';
 import { cronFormFor, describeSchedule, previewSchedule } from '../schedule';
@@ -35,6 +37,8 @@ export class PlannerModal extends Modal {
 	private plannedJobs: Job[] | null = null;
 	private detachMention: (() => void) | null = null;
 	private detachHighlight: (() => void) | null = null;
+	/** Saves the typed request when the window closes before it went through. */
+	private saveDraftOnClose: (() => void) | null = null;
 
 	constructor(app: AISchedulerPlugin['app'], plugin: AISchedulerPlugin, plannedJobs: Job[] | null = null) {
 		super(app);
@@ -103,6 +107,9 @@ export class PlannerModal extends Modal {
 			},
 		});
 
+		const draft = bindDraft({ plugin: this.plugin, key: PLANNER_DRAFT, before: goalLabel, textarea, contextPicker, resultFolder });
+		this.saveDraftOnClose = draft.capture;
+
 		const footer = shell.createDiv({ cls: 'ai-scheduler-footer' });
 		makeButton(footer, 'Cancel', () => this.close());
 		makeButton(footer, 'Create AI plan', async button => {
@@ -123,6 +130,8 @@ export class PlannerModal extends Modal {
 			try {
 				const result = await this.plugin.planAndCreate(goal, contextPicker.getPaths(), resultFolder.value.trim());
 				new Notice(`AI created ${result.jobs.length} task(s)`, 6000);
+				draft.clear();
+				this.saveDraftOnClose = null;
 				this.plannedJobs = result.jobs;
 				this.renderResults();
 			} catch (error) {
@@ -131,7 +140,8 @@ export class PlannerModal extends Modal {
 				resultFolder.disabled = false;
 				button.disabled = false;
 				button.setText('Create AI plan');
-				new Notice(`Planning failed: ${errorText(error)}`, 8000);
+				draft.fail(errorText(error));
+				new Notice(`Planning failed: ${errorText(error)}. Your request is saved as a draft.`, 8000);
 			}
 		}, true);
 	}
@@ -258,6 +268,8 @@ export class PlannerModal extends Modal {
 	}
 
 	onClose(): void {
+		this.saveDraftOnClose?.();
+		this.saveDraftOnClose = null;
 		this.detachMention?.();
 		this.detachMention = null;
 		this.detachHighlight?.();
