@@ -62,7 +62,10 @@ export class AssistantSettingTab extends PluginSettingTab {
 
 	renderSettings(): void {
 		const { containerEl } = this;
+		// Re-rendering after a toggle must not jump back to the top of the page.
+		const scrollTop = containerEl.scrollTop;
 		containerEl.empty();
+		window.requestAnimationFrame(() => { containerEl.scrollTop = scrollTop; });
 
 		// -------------------------------------------------------------------------
 		// Section 1: AI Backend & Models
@@ -470,11 +473,6 @@ export class AssistantSettingTab extends PluginSettingTab {
 					await this.plugin.saveState();
 				})();
 			}));
-
-		new Setting(containerEl)
-			.setName('Test notifications')
-			.setDesc('Send a test alert to verify both Obsidian in-app notices and system desktop notifications.')
-			.addButton(button => button.setButtonText('Send test notification').onClick(() => this.plugin.testNotification()));
 
 		new Setting(containerEl)
 			.setName('Run missed jobs after startup')

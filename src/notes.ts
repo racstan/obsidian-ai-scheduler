@@ -11,6 +11,7 @@ import { TAbstractFile, TFile, getFrontMatterInfo, normalizePath, parseYaml, str
 import { Job, JobOutput, SCHEDULE_KINDS, TaskSchedule } from './types';
 import { cronFormFor, describeSchedule, getScheduleNextRun, previewSchedule, waitsForTrigger } from './schedule';
 import { normalizeJob } from './settings';
+import { rescheduleEnabledJob } from './engine';
 
 /** Reads the plugin's definition from a schedule note's frontmatter. Exported for tests. */
 export function definitionFromContent(content: string): NoteDefinition | null {
@@ -196,7 +197,7 @@ export class ScheduleNotesSync {
 				this.lastWritten.set(path, content);
 				return;
 			}
-			await this.plugin.app.vault.modify(existing, content);
+			await this.plugin.app.vault.process(existing, () => content);
 		} else {
 			await this.plugin.app.vault.create(path, content);
 		}
@@ -221,8 +222,22 @@ export class ScheduleNotesSync {
 		if (!String(definition.prompt || '').trim()) return false;
 		const schedule = scheduleRaw as unknown as TaskSchedule;
 		const existing = this.plugin.jobs.find(job => job.id === definition.id);
-		if (existing) {
+		// A copy of another task's note becomes a task of its own instead of taking the original over.
+		const isCopy = Boolean(existing && existing.notePath && existing.notePath !== file.path
+			&& this.plugin.app.vault.getAbstractFileByPath(existing.notePath) instanceof TFile);
+		if (existing && !isCopy) {
 			this.applyDefinition(existing, definition, file.path);
+			return true;
+		}
+		// The note of a deleted task was restored (e.g. from the trash): bring that task back, not a duplicate.
+		const deleted = existing ? undefined : this.plugin.deletedJobs.find(job => job.id === definition.id);
+		if (deleted) {
+			this.plugin.deletedJobs = this.plugin.deletedJobs.filter(job => job !== deleted);
+			deleted.notePath = file.path;
+			this.plugin.jobs.push(deleted);
+			this.plugin.assignTaskNumbers();
+			this.applyDefinition(deleted, definition, file.path);
+			if (!deleted.enabled) deleted.nextRunAt = null;
 			return true;
 		}
 		const job = normalizeJob({
@@ -252,7 +267,20 @@ export class ScheduleNotesSync {
 	private applyDefinition(job: Job, definition: NoteDefinition, notePath: string): void {
 		if (definition.title) job.title = String(definition.title);
 		if (typeof definition.prompt === 'string') job.prompt = definition.prompt;
-		if (typeof definition.enabled === 'boolean') job.enabled = definition.enabled;
+		if (typeof definition.enabled === 'boolean' && definition.enabled !== job.enabled) {
+			const pastOnce = job.schedule.kind === 'once' && (!job.schedule.at || new Date(job.schedule.at).getTime() <= Date.now());
+			if (!definition.enabled) {
+				job.enabled = false;
+				job.nextRunAt = null;
+				job.status = 'disabled';
+				job.lastStatus = 'disabled';
+			} else if (!pastOnce) {
+				// Turned on in the note: schedule it like Enable in the dashboard does.
+				// (A one-time task whose time has passed stays off; it would run at once.)
+				job.enabled = true;
+				rescheduleEnabledJob(job);
+			}
+		}
 		if (typeof definition.notify === 'boolean') job.notify = definition.notify;
 		if (Array.isArray(definition.contextPaths)) job.contextPaths = definition.contextPaths.map(String);
 		if (definition.output === null || typeof definition.output === 'object') {

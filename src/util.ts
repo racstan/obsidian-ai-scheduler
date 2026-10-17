@@ -148,6 +148,11 @@ export function isDisabledTask(job: Job): boolean {
 		&& (job.status === 'disabled' || job.lastStatus === 'disabled'));
 }
 
+/** A finished, failed or missed task (not paused by the user, not a review). */
+export function isPastTask(job: Job): boolean {
+	return Boolean(job && !isNightlyReviewJob(job) && !job.enabled && !isDisabledTask(job));
+}
+
 export function taskIdentity(job: Job): string {
 	return String(job && job.taskNumber || job && job.id || `${job && job.title}\n${job && job.prompt}`);
 }

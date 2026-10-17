@@ -266,3 +266,41 @@ test('past one-time plans are detected and moved to the next day', async () => {
 	assert.equal(replyExcerpt('<assistant-scheduler>\n  hi \n there </assistant-scheduler>'), 'hi there');
 	assert.equal(replyExcerpt('x'.repeat(300)).length, 241);
 });
+
+test('audit fixes: every-N-weeks counts calendar weeks and start dates are respected', async () => {
+	const { nextWeeklyRun, nextMonthlyRun } = await import('../src/schedule');
+	// Created Wed 14 Oct 2026, Mon + Fri every 2 weeks: the start week runs Fri 16, then Mon 26 + Fri 30.
+	let from = new Date(2026, 9, 14, 12);
+	const runs: string[] = [];
+	for (let i = 0; i < 3; i++) {
+		const next = new Date(nextWeeklyRun('09:00', [1, 5], 2, '2026-10-14', from));
+		runs.push(next.toDateString());
+		from = next;
+	}
+	assert.deepEqual(runs, [new Date(2026, 9, 16).toDateString(), new Date(2026, 9, 26).toDateString(), new Date(2026, 9, 30).toDateString()]);
+	// A future start date is never run before, with or without a step.
+	assert.equal(new Date(nextMonthlyRun('09:00', 5, 2, '2026-12-01', new Date(2026, 9, 17))).toDateString(), new Date(2026, 11, 5).toDateString(), 'not Nov 5, before the start');
+	assert.equal(new Date(nextWeeklyRun('09:00', [1], 1, '2026-11-20', new Date(2026, 9, 17))).toDateString(), new Date(2026, 10, 23).toDateString());
+});
+
+test('audit fixes: recovery, imports and damaged data', async () => {
+	const { recoverInterruptedRuns } = await import('../src/engine');
+	const trigger = job({ schedule: { kind: 'event', event: 'modify' }, status: 'running', nextRunAt: at(8).toISOString(), retryCount: 2 });
+	recoverInterruptedRuns([trigger]);
+	assert.equal(trigger.nextRunAt, null, 'an interrupted trigger run is not re-run');
+	assert.equal(trigger.retryCount, 0);
+
+	const file = JSON.stringify({ format: 'ai-scheduler-tasks', version: 1, tasks: [{ id: 'x', title: 'T', prompt: 'p', schedule: { kind: 'daily', time: '09:00' }, notePath: 'AI Schedules/other.md', routine: 'periodic-review', runCount: 99 }] });
+	const [imported] = importTasks(file, []);
+	assert.equal(imported.notePath ?? null, null, 'note links in an import file are ignored');
+	assert.equal(imported.routine, null, 'an import cannot turn a task into the review');
+	assert.equal(imported.runCount, 0);
+
+	const parsed = parseStoredData({ version: 6, settings: {}, jobs: [null, 'x', { title: 'Ok', prompt: 'p', schedule: { kind: 'interval', intervalMinutes: 0.01 }, createdAt: 'bad' }], deletedJobs: [null], activity: [null, { id: 'a', at: 'now', type: 't', message: 'm' }] });
+	assert.equal(parsed.jobs.length, 1, 'damaged entries are skipped instead of stopping the plugin');
+	assert.equal(parsed.jobs[0].schedule.intervalMinutes, 1, 'intervals are at least one minute');
+	assert.ok(!Number.isNaN(new Date(parsed.jobs[0].createdAt).getTime()));
+	assert.equal(parsed.deletedJobs.length, 0);
+	assert.equal(parsed.activity.length, 1);
+	assert.equal(normalizeJob({ title: 'C', prompt: 'p', lastStatus: 'cancelled', schedule: { kind: 'daily', time: '09:00' } }).lastStatus, 'cancelled');
+});

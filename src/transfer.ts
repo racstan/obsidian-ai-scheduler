@@ -59,8 +59,11 @@ export function importTasks(text: string, existing: Job[], now: Date = new Date(
 
 	const idMap = new Map<string, string>();
 	const jobs = raw.map(task => {
+		// Only the definition is read; run state, note links and bindings in the file are ignored.
+		const definition: Record<string, unknown> = {};
+		for (const key of DEFINITION_KEYS) if (key !== 'id' && key in task) definition[key] = task[key];
 		const job = normalizeJob({
-			...task,
+			...definition,
 			id: undefined,
 			enabled: false,
 			status: 'disabled',

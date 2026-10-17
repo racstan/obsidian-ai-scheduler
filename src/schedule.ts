@@ -37,6 +37,17 @@ export function parseAnchor(startAt: string | undefined): Date | null {
 }
 
 /** Calendar-day number of a local date; differences are exact across DST changes. */
+/** The day an "Initial starting date" begins, or null. Runs never happen before it. */
+function anchorDay(startAt: string | undefined): Date | null {
+	const anchor = parseAnchor(startAt);
+	return anchor ? new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate()) : null;
+}
+
+/** Where to start looking for the next run: now, or just before a future start date. */
+function searchStart(anchor: Date | null, from: Date): Date {
+	return anchor && anchor.getTime() > from.getTime() ? new Date(anchor.getTime() - 1) : from;
+}
+
 function dayNumber(date: Date): number {
 	return Math.round(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000);
 }
@@ -75,17 +86,21 @@ export function nextWeeklyRun(time: string, days: number[] | undefined, everyWee
 		? [...new Set(days.map(Number).filter(d => d >= 0 && d <= 6))].sort((a, b) => a - b)
 		: [from.getDay()];
 	const stepWeeks = Number.isInteger(everyWeeks) && everyWeeks > 1 ? everyWeeks : 1;
+	const anchor = anchorDay(startAt);
+	const start = searchStart(anchor, from);
 
 	for (let offset = 0; offset <= 7 * stepWeeks * 4; offset++) {
-		const candidate = new Date(from);
+		const candidate = new Date(start);
 		candidate.setDate(candidate.getDate() + offset);
 		candidate.setHours(clock.hour, clock.minute, 0, 0);
-		if (candidate <= from) continue;
+		if (candidate <= start) continue;
 		if (wanted.includes(candidate.getDay())) {
-			const anchor = stepWeeks > 1 ? parseAnchor(startAt) : null;
-			if (anchor) {
-				const diffWeeks = Math.floor((dayNumber(candidate) - dayNumber(anchor)) / 7);
-				if (diffWeeks >= 0 && diffWeeks % stepWeeks !== 0) continue;
+			if (anchor && stepWeeks > 1) {
+				// Whole calendar weeks (Sunday to Saturday) since the start week, so
+				// every chosen weekday of an "on" week runs.
+				const weekOf = (date: Date) => dayNumber(date) - date.getDay();
+				const diffWeeks = Math.round((weekOf(candidate) - weekOf(anchor)) / 7);
+				if (diffWeeks % stepWeeks !== 0) continue;
 			}
 			return candidate.toISOString();
 		}
@@ -97,9 +112,11 @@ export function nextMonthlyRun(time: string, dayOfMonth = 1, everyMonths = 1, st
 	const clock = parseClock(time);
 	const targetDay = Number.isInteger(dayOfMonth) && dayOfMonth >= 1 && dayOfMonth <= 31 ? dayOfMonth : 1;
 	const stepMonths = Number.isInteger(everyMonths) && everyMonths > 1 ? everyMonths : 1;
+	const anchor = anchorDay(startAt);
+	const start = searchStart(anchor, from);
 
-	let year = from.getFullYear();
-	let month = from.getMonth();
+	let year = start.getFullYear();
+	let month = start.getMonth();
 
 	// Enough months to reach the next step even for long "every N months" cadences.
 	for (let i = 0; i < 48 * stepMonths; i++) {
@@ -107,11 +124,10 @@ export function nextMonthlyRun(time: string, dayOfMonth = 1, everyMonths = 1, st
 		const clampedDay = Math.min(targetDay, daysInMonth);
 		const candidate = new Date(year, month, clampedDay, clock.hour, clock.minute, 0, 0);
 
-		if (candidate > from) {
-			const anchor = stepMonths > 1 ? parseAnchor(startAt) : null;
-			if (anchor) {
+		if (candidate > start) {
+			if (anchor && stepMonths > 1) {
 				const monthDiff = (year - anchor.getFullYear()) * 12 + (month - anchor.getMonth());
-				if (monthDiff >= 0 && monthDiff % stepMonths !== 0) {
+				if (monthDiff % stepMonths !== 0) {
 					month += 1;
 					if (month > 11) {
 						year += Math.floor(month / 12);

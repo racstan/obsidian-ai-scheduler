@@ -44,7 +44,16 @@ export const DEFAULT_SETTINGS: AISettings = {
 	drafts: {},
 };
 
-const VALID_STATUSES = new Set(['scheduled', 'running', 'completed', 'failed', 'missed', 'disabled']);
+const VALID_STATUSES = new Set(['scheduled', 'running', 'completed', 'failed', 'missed', 'disabled', 'cancelled']);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** An interval in whole minutes (at least 1), or null when there is none. */
+function wholeMinutes(value: number): number | null {
+	return Number.isFinite(value) && value > 0 ? Math.max(1, Math.round(value)) : null;
+}
 
 function normalizeOutput(output: unknown): JobOutput | null {
 	if (!output || typeof output !== 'object') return null;
@@ -92,9 +101,7 @@ export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date(
 		event: typeof scheduleRaw.event === 'string'
 			? (['modify', 'vault-change'].includes(scheduleRaw.event) ? scheduleRaw.event : 'modify')
 			: undefined,
-		intervalMinutes: Number.isFinite(Number(scheduleRaw.intervalMinutes || scheduleRaw.everyMinutes || (Number(scheduleRaw.everyHours || 0) * 60)))
-			? Number(scheduleRaw.intervalMinutes || scheduleRaw.everyMinutes || (Number(scheduleRaw.everyHours || 0) * 60))
-			: null,
+		intervalMinutes: wholeMinutes(Number(scheduleRaw.intervalMinutes || scheduleRaw.everyMinutes || (Number(scheduleRaw.everyHours || 0) * 60))),
 		maxIterations: normalizeMaxIterations(scheduleRaw.maxIterations || scheduleRaw.maxRuns || scheduleRaw.iterations),
 		expression: typeof scheduleRaw.expression === 'string' ? scheduleRaw.expression : undefined,
 		afterTask: typeof scheduleRaw.afterTask === 'string' && scheduleRaw.afterTask ? scheduleRaw.afterTask : undefined,
@@ -151,7 +158,7 @@ export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date(
 		tab: Number.isInteger(tab) && tab > 0 ? tab : 1,
 		enabled,
 		status,
-		createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString(),
+		createdAt: typeof raw.createdAt === 'string' && !Number.isNaN(new Date(raw.createdAt).getTime()) ? raw.createdAt : new Date().toISOString(),
 		lastRunAt: typeof raw.lastRunAt === 'string' ? raw.lastRunAt : null,
 		lastStatus: typeof raw.lastStatus === 'string' && VALID_STATUSES.has(raw.lastStatus) ? raw.lastStatus : null,
 		lastReply: typeof raw.lastReply === 'string' ? raw.lastReply : '',
@@ -280,7 +287,7 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 
 	const legacyTasks = stored.tasks as Array<Record<string, unknown>> | undefined;
 	const jobs = Array.isArray(stored.jobs)
-		? (stored.jobs as Array<Record<string, unknown>>).map(job => normalizeJob(job))
+		? (stored.jobs as unknown[]).filter(isRecord).map(job => normalizeJob(job))
 		: (Array.isArray(legacyTasks)
 			? legacyTasks.map(task => normalizeJob({
 				...task,
@@ -291,8 +298,11 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 			}))
 			: []);
 	const deletedJobs = Array.isArray(stored.deletedJobs)
-		? (stored.deletedJobs as Array<Record<string, unknown>>).map(job => normalizeJob(job))
+		? (stored.deletedJobs as unknown[]).filter(isRecord).map(job => normalizeJob(job))
 		: [];
-	const activity = Array.isArray(stored.activity) ? (stored.activity as ActivityEntry[]).slice(-50) : [];
+	// One damaged entry in data.json must not stop the plugin from loading.
+	const activity = Array.isArray(stored.activity)
+		? (stored.activity as unknown[]).filter((entry): entry is ActivityEntry => isRecord(entry) && typeof entry.message === 'string').slice(-50)
+		: [];
 	return { settings, jobs, deletedJobs, activity };
 }

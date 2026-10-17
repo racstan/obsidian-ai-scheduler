@@ -5,6 +5,8 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+If AI Scheduler is useful to you, you can support its continued development at [buymeacoffee.com/rachitasthana](https://buymeacoffee.com/rachitasthana).
+
 ## [2.1.26] - 2026-10-17
 
 ### Highlights
@@ -28,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The dashboard's Settings button is now **AI Scheduler settings**, and the Calendar button has no emoji.
 - The calendar has a **Back to dashboard** button like the other windows.
 - Task IDs are no longer shown on the dashboard cards; they remain in the task details and editor. Activity rows link to the task with **View**.
+- The **Send test notification** button was removed from the settings.
+- **Run again** on a past task asks whether to run it now or at a time you pick. A task that used to repeat becomes a one-time task, so running it once does not restart its old schedule.
 - The dashboard shows **Paused tasks** and **Past tasks** in separate boxes. **Next run** lists every task due at that time and what is running, and says when pause or quiet hours hold a run back.
 
 ### Fixed
@@ -35,6 +39,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - With recent Claudian versions, AI Scheduler said "Claudian is installed, but its chat runtime is not ready"; it now finds Claudian's chat view and conversations where newer versions keep them ([#7](https://github.com/racstan/obsidian-ai-scheduler/issues/7)).
 - Pi models in Claudian are named the way Claudian expects, so they can be used for tasks.
 - The changelog window shows the contributors of every release again.
+- Turning a setting on or off no longer jumps the settings page back to the top.
+- A one-time task that was running while the plugin reloaded or updated could run twice.
+- "Every 2 weeks" (or more) with several weekdays now runs on every chosen day of the same week, and a start date is respected for weekly and monthly tasks.
+- Missed tasks no longer slip through in the first seconds after Obsidian starts, before the catch-up setting applies.
+- Deleting a running task stops it, and "runs after" chains that would loop are never queued.
+- A result that could not be saved no longer counts as a run.
+- Turning a task on or off in its schedule note now schedules or stops it, a copied schedule note becomes a task of its own, and restoring the note of a deleted task brings that task back instead of a duplicate.
+- Imported task files only bring in task definitions, not run history or links to other notes.
+- One damaged entry in the plugin data no longer stops it from loading, and the calendar file handles every kind of line break and long prompts.
+- "Enable all" leaves one-time tasks whose time has passed off instead of running them at once, and the calendar no longer offers Resume for past tasks.
+- Notes and folders the AI planner picks must exist, and the whole vault is used only if you attached it. The periodic review never proposes follow-up tasks.
+- Cancelling a run also works while the chat tab is busy, a cancelled Copilot run no longer posts its message, and answers that mention errors are no longer mistaken for Claudian errors.
 
 ### Contributors
 - [@racstan](https://github.com/racstan)

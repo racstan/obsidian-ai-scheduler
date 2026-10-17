@@ -376,7 +376,8 @@ export async function sendToClaudian(
 	}
 	const target = conversationId ? getActiveTab(view, manager) : getTab(host, view, tabNumber);
 	if (!target) throw new Error(`${name} chat ${tabNumber} does not exist.`);
-	await waitForTabIdle(view, target, undefined, name);
+	// The user may be chatting in that tab; a reset or the task's time limit still applies while waiting.
+	await waitForTabIdle(view, target, signal, name);
 	const activeId = typeof manager.getActiveTabId === 'function' ? manager.getActiveTabId() : manager.activeTabId;
 	if (activeId !== target.id && typeof manager.switchToTab === 'function') {
 		await manager.switchToTab(target.id);
@@ -438,7 +439,8 @@ const CLAUDIAN_SEND_ATTEMPTS = 3;
  * Returns that error text, or null when the reply is a normal answer.
  */
 export function claudianErrorFromReply(reply: string): string | null {
-	const match = /❌\s*\*\*Error:\*\*\s*([^\n]+)/.exec(reply) ?? /^\s*\*\*Error:\*\*\s*([^\n]+)/.exec(reply);
+	// Only at the start of a line, so an answer that merely mentions errors is not taken for one.
+	const match = /(?:^|\n)\s*❌\s*\*\*Error:\*\*\s*([^\n]+)/.exec(reply) ?? /^\s*\*\*Error:\*\*\s*([^\n]+)/.exec(reply);
 	return match ? match[1].trim() : null;
 }
 
@@ -475,6 +477,8 @@ export async function sendToCopilot(host: BackendHost, prompt: string, context: 
 		.map(path => host.app.vault.getAbstractFileByPath(path))
 		.filter((file): file is TFolder => file instanceof TFolder)
 		.map(folder => folder.path);
+	// Checked before anything reaches the user's Copilot chat.
+	if (signal?.aborted) throw new Error('Cancelled by user.');
 	const messageId = await chatManager.sendMessage(
 		prompt,
 		{ notes, urls: [], folders, selectedTextContexts: [], webTabs: [] },
@@ -492,7 +496,8 @@ export async function sendToCopilot(host: BackendHost, prompt: string, context: 
 	let failure = '';
 	const abort = new AbortController();
 	if (signal?.aborted) throw new Error('Cancelled by user.');
-	signal?.addEventListener('abort', () => abort.abort(), { once: true });
+	const forwardAbort = () => abort.abort();
+	signal?.addEventListener('abort', forwardAbort, { once: true });
 	const run = chain.runChain(
 		llmMessage,
 		abort,
@@ -516,6 +521,8 @@ export async function sendToCopilot(host: BackendHost, prompt: string, context: 
 		const message = errorText(error);
 		// Our own timeout/cancel messages stay as they are; anything else came from Copilot.
 		throw /timed out|Cancelled by user/.test(message) ? error : new Error(`Copilot reported an error: ${message}`);
+	} finally {
+		signal?.removeEventListener('abort', forwardAbort);
 	}
 	const reply = finished || (typeof returned === 'string' ? returned : '') || streamed;
 	if (!reply.trim() && failure) throw new Error(`Copilot reported an error: ${failure}`);

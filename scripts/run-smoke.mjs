@@ -332,6 +332,24 @@ async function main() {
 	assert.equal(moved[0].nextRunAt, pastError.nextTimes[0], 'the rescheduled task runs tomorrow');
 	await first.deleteJob(moved[0]);
 
+	// "Run again" on a past repeating task makes it a one-time task, at a chosen time or now.
+	const ended = await first.addJob({ title: 'Ended daily', prompt: 'p', schedule: { kind: 'daily', time: '09:00' } });
+	ended.enabled = false;
+	ended.status = 'completed';
+	ended.nextRunAt = null;
+	const later = new Date(Date.now() + 3 * 3600_000);
+	await first.rerunJob(ended, later);
+	assert.equal(ended.schedule.kind, 'once', 'a repeating task becomes one-time');
+	assert.equal(ended.enabled, true);
+	assert.equal(ended.nextRunAt, later.toISOString(), 'runs at the chosen time');
+	await assert.rejects(first.rerunJob(ended, new Date(Date.now() - 60_000)), /already passed/);
+	const endedRuns = ended.runCount;
+	await first.rerunJob(ended, null);
+	assert.equal(ended.runCount, endedRuns + 1, 'run now runs it');
+	assert.equal(ended.enabled, false, 'after running once it is past again, not repeating');
+	assert.equal(ended.schedule.kind, 'once');
+	await first.deleteJob(ended);
+
 	// A reply without any schedule shows what the AI said.
 	claudianTab.plannerReply = 'Sorry, 12 pm today has already passed. Did you mean tomorrow?';
 	await assert.rejects(first.planAndCreate('at 12pm today fetch latest tech news'), /It said: "Sorry, 12 pm today has already passed/);

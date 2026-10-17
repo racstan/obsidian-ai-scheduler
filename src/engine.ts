@@ -32,6 +32,7 @@ export function reconcileAfterRun(job: Job, options: { failed?: boolean } = {}):
 }
 
 export function skipMissedJob(job: Job): void {
+	job.retryCount = 0;
 	if (job.schedule.kind === 'once') {
 		job.enabled = false;
 		job.nextRunAt = null;
@@ -81,7 +82,11 @@ export function recoverInterruptedRuns(jobs: Job[]): number {
 	for (const job of jobs) {
 		if (job.status !== 'running') continue;
 		job.status = 'scheduled';
-		if (!waitsForTrigger(job.schedule) && job.schedule.kind !== 'once') {
+		job.retryCount = 0;
+		if (waitsForTrigger(job.schedule)) {
+			// The interrupted trigger counts as consumed; wait for the next one.
+			job.nextRunAt = null;
+		} else if (job.schedule.kind !== 'once') {
 			const next = getScheduleNextRun(job.schedule, new Date());
 			if (next) job.nextRunAt = next;
 		}
@@ -93,6 +98,7 @@ export function recoverInterruptedRuns(jobs: Job[]): number {
 /** Recomputes the next run for a (re-)enabled job. Event jobs wait for their
  * next vault event instead of firing the moment they are enabled. */
 export function rescheduleEnabledJob(job: Job): void {
+	job.retryCount = 0;
 	job.nextRunAt = waitsForTrigger(job.schedule)
 		? null
 		: getScheduleNextRun(job.schedule, new Date(Date.now() - 1000));

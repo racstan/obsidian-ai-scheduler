@@ -7,7 +7,8 @@
 import { App, Modal, Notice, TFile, TFolder, normalizePath } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
 import { Job, RunRecord } from '../types';
-import { describeBinding, formatDate } from '../util';
+import { describeBinding, formatDate, isPastTask } from '../util';
+import { RunAgainModal } from './RunAgainModal';
 import { describeSchedule } from '../schedule';
 import { closeExistingSchedulerModals, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
 import { AssistantModal, ConfirmModal } from './AssistantModal';
@@ -343,6 +344,14 @@ export class TaskViewModal extends Modal {
 			}, false, true);
 		} else {
 			makeButton(footer, this.job.lastStatus === 'failed' ? 'Retry now' : 'Run again', () => {
+				// A past task picks now or a time and stops repeating, like on the dashboard.
+				if (isPastTask(this.job)) {
+					new RunAgainModal(this.app, this.plugin, this.job, () => {
+						this.close();
+						if (this.onBack) this.onBack();
+					}).open();
+					return;
+				}
 				new ConfirmModal(
 					this.app,
 					`Run task #${this.job.taskNumber} (${this.job.title}) immediately? It will execute in the background now.`,

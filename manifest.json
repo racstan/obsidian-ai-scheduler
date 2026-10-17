@@ -6,5 +6,6 @@
   "description": "Run AI tasks on a schedule, when notes change, or as periodic vault reviews, using Claudian or Copilot.",
   "author": "racstan",
   "authorUrl": "https://github.com/racstan",
+  "fundingUrl": "https://buymeacoffee.com/rachitasthana",
   "isDesktopOnly": true
 }

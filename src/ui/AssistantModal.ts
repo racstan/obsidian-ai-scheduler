@@ -10,6 +10,7 @@ import { TaskViewModal } from './TaskViewModal';
 import { CalendarModal } from './CalendarModal';
 import { TemplateModal } from './TemplateModal';
 import { ImportTasksModal } from './ImportTasksModal';
+import { RunAgainModal } from './RunAgainModal';
 import { Job } from '../types';
 import { quietHoursEnd, startBlockReason } from '../engine';
 import { errorText } from '../util';
@@ -605,18 +606,8 @@ export class AssistantModal extends Modal {
 						}).open();
 					}, 50);
 				});
-				makeButton(controls, 'Run again', () => {
-					new ConfirmModal(
-						this.app,
-						`Run task #${job.taskNumber} (${job.title}) immediately? It will execute right now in the background and will no longer be marked as past/missed.`,
-						() => {
-							void (async () => {
-								new Notice(`Starting task #${job.taskNumber} now...`);
-								await this.plugin.runJobNow(job);
-								this.render();
-							})();
-						}
-					).open();
+				makeButton(controls, 'Run again…', () => {
+					new RunAgainModal(this.app, this.plugin, job, () => this.render()).open();
 				});
 				makeButton(controls, 'Delete', () => {
 					new ConfirmModal(this.app, `Delete task #${job.taskNumber}? It will be moved to Deleted tasks and can be restored.`, () => {

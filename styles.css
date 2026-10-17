@@ -719,10 +719,10 @@
 	border: 1px solid var(--interactive-accent);
 	border-radius: var(--radius-m, 8px);
 	box-shadow: 0 0 20px hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.15);
-	animation: aisch-pulse 2s infinite ease-in-out;
+	animation: ai-scheduler-pulse 2s infinite ease-in-out;
 }
 
-@keyframes aisch-pulse {
+@keyframes ai-scheduler-pulse {
 	0%, 100% {
 		box-shadow: 0 0 10px hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.1);
 	}
@@ -3059,4 +3059,40 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 
 .ai-scheduler-activity-view:hover {
 	text-decoration: underline;
+}
+
+/* ---- Run again ---------------------------------------------------------- */
+
+.ai-scheduler-run-again-task {
+	color: var(--text-muted);
+	margin-top: 0;
+}
+
+.ai-scheduler-run-again-note {
+	margin-bottom: 14px;
+}
+
+.ai-scheduler-run-again-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 0;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.ai-scheduler-run-again-label {
+	flex: 1 1 140px;
+	font-weight: 600;
+}
+
+.ai-scheduler-run-again-time {
+	flex: 0 1 auto;
+	width: auto;
+}
+
+.ai-scheduler-run-again-error {
+	color: var(--text-error);
+	font-size: var(--font-ui-small);
+	min-height: 1.2em;
 }

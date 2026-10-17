@@ -51,6 +51,7 @@ import { PlannerModal } from './ui/PlannerModal';
 import { CalendarModal } from './ui/CalendarModal';
 import { AssistantSettingTab } from './ui/SettingsTab';
 import { ChangelogModal } from './ui/ChangelogModal';
+import { closeExistingSchedulerModals } from './ui/dom';
 import { ScheduleNotesSync } from './notes';
 import { buildIcs } from './ics';
 import { GETTING_STARTED_PATH, gettingStartedNote } from './gettingStarted';
@@ -73,6 +74,8 @@ export class AISchedulerPlugin extends Plugin {
 	pendingVaultEvents: string[] = [];
 	private lastTickAt = Date.now();
 	private unloaded = false;
+	/** False until the startup catch-up rules have been applied; until then only "Run now" tasks start. */
+	private startupDone = false;
 	private icsTimer: number | null = null;
 	private lastIcsExportAt = 0;
 	/** Each job's current run: aborting it stops the backend, and a reply arriving after a reset is ignored. */
@@ -342,7 +345,8 @@ export class AISchedulerPlugin extends Plugin {
 				}
 				if (this.settings.scheduleNotesEnabled) await this.notesSync.syncAll();
 				await this.catchUpOnStart();
-			})().catch(error => console.error('[ai-scheduler] Startup tasks failed:', error));
+			})().catch(error => console.error('[ai-scheduler] Startup tasks failed:', error))
+				.finally(() => { this.startupDone = true; });
 		});
 	}
 
@@ -366,8 +370,13 @@ export class AISchedulerPlugin extends Plugin {
 		this.notesSync?.dispose();
 		if (this.icsTimer !== null) window.clearTimeout(this.icsTimer);
 		this.icsTimer = null;
-		// Runs still in flight finish in the background; stop them from saving, or
-		// an old instance could overwrite the reloaded/updated plugin's data.json.
+		// Stop runs still in flight: a reloaded/updated instance recovers them, so
+		// letting them finish here could run a task twice. Saving is off too, or an
+		// old instance could overwrite the new one's data.json.
+		for (const run of this.activeRuns.values()) run.abort();
+		this.activeRuns.clear();
+		// An open dashboard or calendar keeps polling this instance; close it.
+		closeExistingSchedulerModals();
 		this.unloaded = true;
 	}
 
@@ -419,7 +428,7 @@ export class AISchedulerPlugin extends Plugin {
 		if (existing instanceof TFile) {
 			if (await this.app.vault.read(existing) === content) return path;
 			this.markSelfWrite(path);
-			await this.app.vault.modify(existing, content);
+			await this.app.vault.process(existing, () => content);
 		} else if (existing) {
 			throw new Error(`"${path}" is a folder.`);
 		} else {
@@ -467,6 +476,8 @@ export class AISchedulerPlugin extends Plugin {
 		const now = Date.now();
 		const plan = planStartupCatchUp(this.jobs, this.settings, now);
 		for (const job of plan.stale) skipMissedJob(job);
+		// Missed runs are sorted out: scheduled tasks may start from now on.
+		this.startupDone = true;
 		if (!this.settings.catchUpOnStart) {
 			if (plan.stale.length) await this.saveState();
 			return;
@@ -509,7 +520,9 @@ export class AISchedulerPlugin extends Plugin {
 		if (this.running) return;
 		// While paused or in quiet hours only "Run now" tasks start; the rest stay due.
 		const blocked = startBlockReason(this.settings, new Date());
-		const due = dueJobs(this.jobs, Date.now()).filter(job => !blocked || this.manualRuns.has(job.id));
+		// Before the startup catch-up rules ran, a stale missed task must not slip through.
+		const due = dueJobs(this.jobs, Date.now())
+			.filter(job => this.manualRuns.has(job.id) || (this.startupDone && !blocked));
 		if (!due.length) {
 			if (this.pendingVaultEvents.length) {
 				const events = this.pendingVaultEvents.splice(0);
@@ -632,13 +645,14 @@ export class AISchedulerPlugin extends Plugin {
 			job.lastStatus = 'completed';
 			job.lastError = null;
 			job.status = 'completed';
-			job.runCount = Number(job.runCount || 0) + 1;
 			// Reviews write their own report in runDailyReview.
 			if (!isReview) await this.saveRunOutput(job, reply, variables);
+			// Counted only once the output is saved: a failed save is a failed run.
+			job.runCount = Number(job.runCount || 0) + 1;
 			job.retryCount = 0;
 			job.lastSuccessAt = new Date().toISOString();
 			// After the output is safely written; follow-up problems are logged, not fatal.
-			if (job.source !== 'self-talk') await this.processFollowUps(reply, job);
+			if (!isReview && job.source !== 'self-talk') await this.processFollowUps(reply, job);
 			reconcileAfterRun(job);
 			this.queueChainedJobs(job);
 			this.logActivity('completed', `Task #${job.taskNumber} finished: ${job.title}`, job.id);
@@ -731,6 +745,11 @@ export class AISchedulerPlugin extends Plugin {
 	queueChainedJobs(finished: Job): void {
 		for (const next of chainedJobs(this.jobs, finished)) {
 			if (this.runningJobs.has(next.id)) continue;
+			// A loop can still come from a note edit or an import; never run one.
+			if (createsChainLoop(this.jobs, next.id, finished.id)) {
+				this.logActivity('failed', `Task #${next.taskNumber} was not queued: its "runs after" chain loops back to it`, next.id);
+				continue;
+			}
 			next.nextRunAt = new Date(Date.now() + 2000).toISOString();
 			next.status = 'scheduled';
 			this.logActivity('planned', `Task #${next.taskNumber} queued: runs after #${finished.taskNumber} finished`, next.id);
@@ -1190,7 +1209,7 @@ export class AISchedulerPlugin extends Plugin {
 		await this.ensureFolder(folderPath);
 		this.markSelfWrite(path);
 		if (existing instanceof TFile) {
-			await this.app.vault.modify(existing, content);
+			await this.app.vault.process(existing, () => content);
 		} else {
 			await this.app.vault.create(path, content);
 		}
@@ -1420,9 +1439,12 @@ export class AISchedulerPlugin extends Plugin {
 			// One malformed plan must not abort the others (some may already be added).
 			try {
 				const planRecord = plan as { contextPaths?: string[]; context?: { paths?: string[] }; output?: JobOutput | null };
+				// The AI may only name notes and folders that exist, and the whole vault only if the user attached it.
+				const aiPaths = this.validateContextPaths(planRecord.contextPaths || (planRecord.context && planRecord.context.paths) || [])
+					.filter(path => path !== '/' || validatedPaths.includes('/'));
 				const newJob = await this.addJob(Object.assign(
 					this.jobFromPlan(Object.assign({}, plan, {
-						contextPaths: planRecord.contextPaths || (planRecord.context && planRecord.context.paths) || validatedPaths,
+						contextPaths: aiPaths.length ? aiPaths : validatedPaths,
 						output: planRecord.output || (resultFolder ? { folder: resultFolder } : null),
 					}), execution.tab as number, 'planner'),
 					{ profile: execution.modelRef, conversationId: execution.conversationId, providerId: execution.providerId, model: execution.model },
@@ -1539,17 +1561,16 @@ export class AISchedulerPlugin extends Plugin {
 		}
 	}
 
-	testNotification(): void {
-		new Notice('AI Scheduler notifications are working.');
-		const sentSystem = sendSystemNotification('AI Scheduler', 'AI Scheduler desktop notifications are working.');
-		if (!sentSystem && typeof window !== 'undefined' && typeof window.Notification !== 'undefined' && window.Notification.permission === 'denied') {
-			new Notice('System desktop notifications are blocked by Windows/Obsidian permissions.', 6000);
-		}
-		this.logActivity('notification', 'Test notification sent');
-		void this.saveState();
+	/** Stops a run in progress (its reply is then discarded) and forgets a pending "Run now". */
+	private stopRun(job: Job): void {
+		this.activeRuns.get(job.id)?.abort();
+		this.activeRuns.delete(job.id);
+		this.runningJobs.delete(job.id);
+		this.manualRuns.delete(job.id);
 	}
 
 	async deleteJob(job: Job): Promise<void> {
+		this.stopRun(job);
 		this.jobs = this.jobs.filter(candidate => candidate.id !== job.id);
 		this.deletedJobs = [job, ...this.deletedJobs.filter(candidate => candidate.id !== job.id)].slice(0, 100);
 		if (job.notePath) {
@@ -1667,6 +1688,7 @@ export class AISchedulerPlugin extends Plugin {
 	}
 
 	async disableJob(job: Job): Promise<void> {
+		this.manualRuns.delete(job.id);
 		job.enabled = false;
 		job.nextRunAt = null;
 		job.status = 'disabled';
@@ -1678,6 +1700,9 @@ export class AISchedulerPlugin extends Plugin {
 	async enableAllJobs(): Promise<number> {
 		let count = 0;
 		for (const job of this.jobs.filter(candidate => !isNightlyReviewJob(candidate) && isDisabledTask(candidate))) {
+			// A one-time task whose time has passed would run at once; it stays off
+			// (enable it on its own to choose what happens).
+			if (job.schedule.kind === 'once' && (!job.schedule.at || new Date(job.schedule.at).getTime() <= Date.now())) continue;
 			job.enabled = true;
 			job.status = 'scheduled';
 			job.lastStatus = null;
@@ -1695,6 +1720,7 @@ export class AISchedulerPlugin extends Plugin {
 	async deleteAllJobs(): Promise<number> {
 		const toDelete = this.jobs.filter(job => !isNightlyReviewJob(job));
 		for (const job of toDelete) {
+			this.stopRun(job);
 			if (job.notePath) {
 				const file = this.app.vault.getAbstractFileByPath(job.notePath);
 				if (file instanceof TFile) {
@@ -1719,6 +1745,7 @@ export class AISchedulerPlugin extends Plugin {
 	async updateJob(job: Job, changes: Partial<Job> & { cooldownMinutes?: number }): Promise<void> {
 		// Checked before anything changes, so a refused edit leaves the task as it was.
 		this.checkChain(job.id, Object.assign({}, job.schedule, changes.schedule || {}));
+		this.manualRuns.delete(job.id);
 		Object.assign(job, changes);
 		job.schedule = Object.assign({}, job.schedule, changes.schedule || {});
 		job.schedule.maxIterations = normalizeMaxIterations(job.schedule.maxIterations);
@@ -1757,6 +1784,32 @@ export class AISchedulerPlugin extends Plugin {
 		this.manualRuns.add(job.id);
 		await this.saveState();
 		await this.tick();
+	}
+
+	/**
+	 * "Run again" on a past task: it becomes a one-time task that runs now
+	 * (`at` null) or at `at`. A task that used to repeat does not restart its
+	 * old schedule this way.
+	 */
+	async rerunJob(job: Job, at: Date | null): Promise<void> {
+		if (at && at.getTime() <= Date.now()) throw new Error('That time has already passed.');
+		const wasRecurring = job.schedule.kind !== 'once';
+		const when = at || new Date();
+		job.schedule = { kind: 'once', at: when.toISOString() };
+		if (wasRecurring) this.logActivity('edited', `Task #${job.taskNumber} is now a one-time task (run again): ${job.title}`, job.id);
+		if (!at) {
+			await this.runJobNow(job);
+			return;
+		}
+		this.manualRuns.delete(job.id);
+		job.enabled = true;
+		job.status = 'scheduled';
+		job.lastStatus = null;
+		job.lastError = null;
+		job.retryCount = 0;
+		job.nextRunAt = when.toISOString();
+		this.logActivity('scheduled', `Task #${job.taskNumber} will run again at ${formatDate(job.nextRunAt)}: ${job.title}`, job.id);
+		await this.saveState();
 	}
 
 	async resetRunningJob(job: Job): Promise<void> {

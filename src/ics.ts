@@ -17,7 +17,7 @@ function escapeText(value: string): string {
 		.replace(/\\/g, '\\\\')
 		.replace(/;/g, '\\;')
 		.replace(/,/g, '\\,')
-		.replace(/\r?\n/g, '\\n');
+		.replace(/\r\n|\r|\n/g, '\\n');
 }
 
 /** UTC date-time in iCalendar basic format, e.g. 20261008T070000Z. */
@@ -65,8 +65,11 @@ export function buildIcs(jobs: Job[], from: Date, to: Date): string {
 	];
 	for (const job of jobs) {
 		if (!job.enabled || waitsForTrigger(job.schedule)) continue;
-		const stamp = icsDate(new Date(job.createdAt || 0));
-		const description = job.prompt.length > 1000 ? `${job.prompt.slice(0, 1000)}…` : job.prompt;
+		const created = new Date(job.createdAt || 0);
+		const stamp = icsDate(Number.isNaN(created.getTime()) ? new Date(0) : created);
+		// By characters, not UTF-16 units, so an emoji is never cut in half.
+		const characters = Array.from(job.prompt);
+		const description = characters.length > 1000 ? `${characters.slice(0, 1000).join('')}…` : job.prompt;
 		for (const start of getScheduleOccurrencesInRange(job.schedule, from, to, MAX_RUNS_PER_JOB)) {
 			const end = new Date(start.getTime() + EVENT_MINUTES * 60000);
 			lines.push(

@@ -2,7 +2,8 @@ import { App, Modal, Notice, TFile, normalizePath } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
 import { Job } from '../types';
 import { normalizeJob } from '../settings';
-import { describeBinding, formatDate, isNightlyReviewJob } from '../util';
+import { describeBinding, formatDate, isNightlyReviewJob, isPastTask } from '../util';
+import { RunAgainModal } from './RunAgainModal';
 import { describeSchedule, getScheduleOccurrencesInRange, waitsForTrigger, DAY_SHORT_NAMES, DAY_NAMES, MONTH_NAMES, MONTH_SHORT_NAMES } from '../schedule';
 import { closeExistingSchedulerModals, liveRefresh, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
 import { JobModal } from './JobModal';
@@ -129,8 +130,9 @@ export class CalendarModal extends Modal {
 				// Completed needs evidence of a run: a once job that ran, or a past slot
 				// of a recurring job that has run at or after that slot. Other past
 				// slots (missed, paused, failed) are not shown as completed.
+				// A once task scheduled to run again is not completed until it runs at the new time.
 				const isCompleted = job.schedule?.kind === 'once'
-					? job.status === 'completed' || Boolean(job.lastRunAt)
+					? (!job.enabled && job.status === 'completed') || (Boolean(job.lastRunAt) && lastRun >= d.getTime() - 60000)
 					: d < now && job.runCount > 0 && d.getTime() <= lastRun + 60000;
 
 				map.get(key)!.push({
@@ -547,7 +549,7 @@ export class CalendarModal extends Modal {
 			} else if (isRunning) {
 				badgesRow.createSpan({ cls: 'ai-scheduler-badge ai-scheduler-badge-running', text: '▶ Running now' });
 			} else if (!job.enabled || job.status === 'disabled') {
-				badgesRow.createSpan({ cls: 'ai-scheduler-badge ai-scheduler-badge-paused', text: '⏸ Paused' });
+				badgesRow.createSpan({ cls: 'ai-scheduler-badge ai-scheduler-badge-paused', text: isPastTask(job) ? 'Past' : '⏸ Paused' });
 			} else {
 				badgesRow.createSpan({ cls: 'ai-scheduler-badge ai-scheduler-badge-active', text: '⏳ Scheduled' });
 			}
@@ -583,7 +585,12 @@ export class CalendarModal extends Modal {
 
 			// Right column: Actions
 			const actions = card.createDiv({ cls: 'ai-scheduler-cal-day-actions' });
-			makeButton(actions, occ.isCompleted ? '▶ Run again' : '▶ Run now', () => {
+			makeButton(actions, isPastTask(job) ? '▶ Run again…' : '▶ Run now', () => {
+				// A past task picks "now" or a time, and stops repeating; see RunAgainModal.
+				if (isPastTask(job)) {
+					new RunAgainModal(this.app, this.plugin, job, () => this.render()).open();
+					return;
+				}
 				void (async () => {
 					new Notice(`Starting task #${job.taskNumber ?? ''} (${job.title})...`);
 					await this.plugin.runJobNow(job);
@@ -591,7 +598,8 @@ export class CalendarModal extends Modal {
 				})();
 			});
 
-			makeButton(actions, job.enabled ? '⏸ Pause' : '▶ Resume', () => {
+			// A past task is not paused: "Run again…" above is how it runs again.
+			if (!isPastTask(job)) makeButton(actions, job.enabled ? '⏸ Pause' : '▶ Resume', () => {
 				void (async () => {
 					// Through the plugin so the next run is recomputed (no stale past-due run
 					// firing on resume) and the change is logged.
@@ -809,7 +817,12 @@ export class CalendarModal extends Modal {
 
 			// Actions
 			const actions = card.createDiv({ cls: 'ai-scheduler-cal-timeline-actions' });
-			makeButton(actions, occ.isCompleted ? '▶ Run again' : '▶ Run now', () => {
+			makeButton(actions, isPastTask(job) ? '▶ Run again…' : '▶ Run now', () => {
+				// A past task picks "now" or a time, and stops repeating; see RunAgainModal.
+				if (isPastTask(job)) {
+					new RunAgainModal(this.app, this.plugin, job, () => this.render()).open();
+					return;
+				}
 				void (async () => {
 					new Notice(`Starting task #${job.taskNumber ?? ''} (${job.title})...`);
 					await this.plugin.runJobNow(job);

@@ -238,8 +238,8 @@ All commands are available from the command palette (`Ctrl/Cmd + P`):
 | `Enable periodic AI review` | Turns on recurring periodic reviews |
 | `Disable periodic AI review` | Turns off recurring periodic reviews |
 | `Toggle periodic AI review` | Toggles the periodic review on/off |
-| `Enable all scheduled tasks` | Resumes all paused tasks |
-| `Disable all scheduled tasks` | Pauses all tasks |
+| `Enable all scheduled tasks` | Turns all disabled tasks back on (one-time tasks whose time has passed stay off) |
+| `Disable all scheduled tasks` | Turns all tasks off |
 | `Restore last deleted task` | Restores the most recently deleted task |
 | `Sync schedule notes now` | Reconciles vault notes with active schedules |
 | `Export schedule to calendar file (.ics)` | Writes upcoming runs to the calendar file |
@@ -288,9 +288,15 @@ npm run build   # production bundle
 
 ---
 
+## Support
+
+AI Scheduler is free and developed in my spare time. If it saves you time and you'd like to support its continued development, you can [buy me a coffee](https://buymeacoffee.com/rachitasthana). Thank you!
+
+---
+
 ## Credits
 
-AI Scheduler runs your tasks through these plugins and would not exist without them. Thanks to their authors:
+Thanks to the authors of the AI plugins that AI Scheduler works with:
 
 - **[Claudian](https://github.com/YishenTu/claudian)** by [Yishen Tu](https://github.com/YishenTu)
 - **[Oh My Claudian](https://github.com/lee259/oh-my-claudian)** by [Lee](https://github.com/lee259)
