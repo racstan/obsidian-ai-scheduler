@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dueJobs, planStartupCatchUp, reconcileAfterRun, recoverInterruptedRuns, skipMissedJob } from '../src/engine';
+import { HISTORY_LIMIT, dueJobs, filesChangedSince, planRetry, planStartupCatchUp, reconcileAfterRun, recordRun, recoverInterruptedRuns, skipMissedJob } from '../src/engine';
 import { normalizeJob } from '../src/settings';
 import { Job } from '../src/types';
 
@@ -121,4 +121,57 @@ test('reconcileAfterRun with failed status does not prematurely retire maxIterat
 	reconcileAfterRun(job, { failed: true });
 	assert.equal(job.enabled, true);
 	assert.ok(job.nextRunAt);
+});
+
+test('planRetry schedules retries after the delay until they run out', () => {
+	const now = Date.now();
+	const job = makeJob({ retries: 2, retryDelayMinutes: 10 });
+	job.status = 'failed';
+	assert.equal(planRetry(job, now), 1);
+	assert.equal(job.status, 'scheduled');
+	assert.equal(new Date(job.nextRunAt as string).getTime(), now + 10 * 60000);
+	assert.equal(planRetry(job, now), 2);
+	assert.equal(planRetry(job, now), 0, 'no retries left');
+	assert.equal(job.retryCount, 0, 'count resets for the next failure');
+});
+
+test('planRetry does nothing without retries, for disabled jobs, and defaults the delay', () => {
+	const now = Date.now();
+	const none = makeJob({});
+	assert.equal(planRetry(none, now), 0);
+	const disabled = makeJob({ retries: 3, enabled: false });
+	assert.equal(planRetry(disabled, now), 0);
+	const defaults = makeJob({ retries: 1 });
+	assert.equal(planRetry(defaults, now), 1);
+	assert.equal(new Date(defaults.nextRunAt as string).getTime(), now + 5 * 60000);
+	const capped = makeJob({});
+	capped.retries = 99;
+	capped.retryCount = 5;
+	assert.equal(planRetry(capped, now), 0, 'at most five retries');
+});
+
+test('recordRun keeps the newest runs only', () => {
+	const job = makeJob({});
+	for (let index = 0; index < HISTORY_LIMIT + 5; index++) {
+		recordRun(job, { at: new Date(index * 1000).toISOString(), status: 'completed' });
+	}
+	assert.equal(job.history?.length, HISTORY_LIMIT);
+	assert.equal(job.history?.[0].at, new Date(5000).toISOString());
+});
+
+test("filesChangedSince filters by time, scope and the plugin's own files", () => {
+	const files = [
+		{ path: 'Projects/Alpha/notes.md', mtime: 300 },
+		{ path: 'Projects/Beta.md', mtime: 200 },
+		{ path: 'Inbox.md', mtime: 50 },
+		{ path: 'AI Scheduler/2026-10-17 Summary.md', mtime: 400 },
+		{ path: 'Projects Old/x.md', mtime: 500 },
+	];
+	assert.deepEqual(
+		filesChangedSince(files, 100, [], ['AI Scheduler']),
+		['Projects Old/x.md', 'Projects/Alpha/notes.md', 'Projects/Beta.md'],
+	);
+	assert.deepEqual(filesChangedSince(files, 100, ['Projects'], []), ['Projects/Alpha/notes.md', 'Projects/Beta.md']);
+	assert.deepEqual(filesChangedSince(files, 100, ['Projects/Beta.md'], []), ['Projects/Beta.md']);
+	assert.deepEqual(filesChangedSince(files, 1000, [], []), []);
 });

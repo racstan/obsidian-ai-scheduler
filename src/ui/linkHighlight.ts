@@ -6,11 +6,22 @@
  */
 const LINK_PATTERN = /\[\[[^\]\n]+\]\]/g;
 
+const WRAP_SPACING: [string, string][] = [
+	['ai-scheduler-textarea-tall', 'ai-scheduler-highlight-wrap-tall'],
+	['ai-scheduler-textarea-ai', 'ai-scheduler-highlight-wrap-gap'],
+	['ai-scheduler-form-gap', 'ai-scheduler-highlight-wrap-gap'],
+];
+
 export function attachLinkHighlight(textarea: HTMLTextAreaElement): () => void {
 	const parent = textarea.parentElement;
 	if (!parent) return () => undefined;
 
 	const wrap = createDiv({ cls: 'ai-scheduler-highlight-wrap' });
+	// The textarea's margin moves to the wrapper (set here rather than with a
+	// CSS :has() selector, which is slow to re-evaluate).
+	for (const [textareaClass, wrapClass] of WRAP_SPACING) {
+		if (textarea.hasClass(textareaClass)) wrap.addClass(wrapClass);
+	}
 	parent.insertBefore(wrap, textarea);
 	const backdrop = wrap.createDiv({ cls: `${textarea.className} ai-scheduler-highlight-backdrop`, attr: { 'aria-hidden': 'true' } });
 	wrap.appendChild(textarea);

@@ -8,7 +8,7 @@
  * the plugin works exactly as before when notes are disabled.
  */
 import { TAbstractFile, TFile, getFrontMatterInfo, normalizePath, parseYaml, stringifyYaml } from 'obsidian';
-import { Job, SCHEDULE_KINDS, TaskSchedule } from './types';
+import { Job, JobOutput, SCHEDULE_KINDS, TaskSchedule } from './types';
 import { cronFormFor, describeSchedule, getScheduleNextRun, previewSchedule } from './schedule';
 import { normalizeJob } from './settings';
 
@@ -36,11 +36,18 @@ export interface NoteDefinition {
 	enabled?: boolean;
 	notify?: boolean;
 	schedule?: Record<string, unknown>;
-	output?: { folder?: string; filename?: string } | null;
+	output?: JobOutput | null;
 	contextPaths?: string[];
 	routine?: string | null;
 	cooldownMinutes?: number;
+	retries?: number;
+	retryDelayMinutes?: number;
+	timeoutMinutes?: number;
+	onlyIfChanged?: boolean;
 }
+
+/** Per-task run options shared by data.json and schedule notes. */
+const RUN_OPTION_KEYS = ['retries', 'retryDelayMinutes', 'timeoutMinutes', 'onlyIfChanged'] as const;
 
 function slugify(title: string): string {
 	const slug = String(title || 'task')
@@ -136,6 +143,9 @@ export class ScheduleNotesSync {
 			routine: job.routine,
 		};
 		if (job.cooldownMinutes !== undefined) definition.cooldownMinutes = job.cooldownMinutes;
+		for (const key of RUN_OPTION_KEYS) {
+			if (job[key] !== undefined) (definition as Record<string, unknown>)[key] = job[key];
+		}
 		return definition;
 	}
 
@@ -223,6 +233,10 @@ export class ScheduleNotesSync {
 			output: definition.output || null,
 			routine: definition.routine || null,
 			cooldownMinutes: definition.cooldownMinutes,
+			retries: definition.retries,
+			retryDelayMinutes: definition.retryDelayMinutes,
+			timeoutMinutes: definition.timeoutMinutes,
+			onlyIfChanged: definition.onlyIfChanged,
 			notePath: file.path,
 		});
 		if (job.schedule.kind !== 'event' && !job.nextRunAt) return false;
@@ -238,7 +252,14 @@ export class ScheduleNotesSync {
 		if (typeof definition.enabled === 'boolean') job.enabled = definition.enabled;
 		if (typeof definition.notify === 'boolean') job.notify = definition.notify;
 		if (Array.isArray(definition.contextPaths)) job.contextPaths = definition.contextPaths.map(String);
-		if (definition.output === null || typeof definition.output === 'object') job.output = definition.output || null;
+		if (definition.output === null || typeof definition.output === 'object') {
+			job.output = definition.output ? normalizeJob({ output: definition.output }).output : null;
+		}
+		// Normalized like data.json, so a typo in the note can't store a bad value.
+		const options = normalizeJob(definition as Record<string, unknown>);
+		for (const key of RUN_OPTION_KEYS) {
+			(job as unknown as Record<string, unknown>)[key] = options[key];
+		}
 		if (definition.schedule && (SCHEDULE_KINDS as string[]).includes(String(definition.schedule.kind))) {
 			const normalized = normalizeJob({ id: job.id, createdAt: job.createdAt, schedule: definition.schedule }).schedule;
 			// Body-only edits must not push the next run out (or drop an overdue one).

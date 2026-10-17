@@ -9,3 +9,5 @@ import './backends.test';
 import './notes.test';
 import './prompts.test';
 import './ics.test';
+import './variables.test';
+import './output.test';

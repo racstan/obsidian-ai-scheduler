@@ -12,7 +12,7 @@
  * releases its lock in a finally block so a crashed run can never wedge a
  * schedule.
  */
-import { Notice, Plugin, TFile, normalizePath } from 'obsidian';
+import { Notice, Plugin, TFile, moment, normalizePath } from 'obsidian';
 import { ActivityEntry, AISettings, BACKEND_INFO, Job, JobOutput, ScheduleKind, TaskSchedule } from './types';
 import { DEFAULT_SETTINGS, normalizeJob, parseStoredData } from './settings';
 import {
@@ -27,7 +27,12 @@ import {
 	recoverInterruptedRuns,
 	rescheduleEnabledJob,
 	skipMissedJob,
+	filesChangedSince,
+	planRetry,
+	recordRun,
 } from './engine';
+import { DateFormatter, VariableContext, changedSince, expandVariables } from './variables';
+import { DailyNoteSettings, appendBlock, dailyNotePath, insertBlock, outputMode } from './output';
 import { executionPrompt, plannerPrompt, refinePrompt, reviewPrompt } from './prompts';
 import { getPathsContext, getVaultContextOptions, JobContext } from './context';
 import * as backends from './backends';
@@ -486,21 +491,52 @@ export class AISchedulerPlugin extends Plugin {
 	}
 
 	private async runJobBody(job: Job): Promise<void> {
+		const isReview = job.routine === 'daily-review' || job.routine === 'periodic-review';
+		const previousRunAt = job.lastRunAt;
+		// Tasks saved before lastSuccessAt existed: their last run counts if it succeeded.
+		const lastSuccess = job.lastSuccessAt || (job.lastStatus === 'completed' ? previousRunAt : null);
+		const lastRun = lastSuccess ? new Date(lastSuccess) : null;
+		const retryNumber = Number(job.retryCount || 0);
+		const startedAt = new Date();
+
+		if (!isReview && job.onlyIfChanged && lastRun && !this.notesChangedSince(lastRun.getTime(), job.contextPaths || []).length) {
+			const reason = job.contextPaths?.length ? 'No attached note changed since the last run.' : 'No note changed since the last run.';
+			recordRun(job, { at: startedAt.toISOString(), status: 'skipped', error: reason });
+			reconcileAfterRun(job);
+			job.status = job.enabled ? 'scheduled' : 'completed';
+			job.retryCount = 0;
+			this.logActivity('skipped', `Task #${job.taskNumber} skipped: ${job.title} (nothing changed)`, job.id);
+			await this.saveState();
+			return;
+		}
+
 		const run = new AbortController();
 		this.activeRuns.set(job.id, run);
 		const cancelled = () => this.activeRuns.get(job.id) !== run;
+		const timeoutMinutes = Number(job.timeoutMinutes || 0);
+		let timedOut = false;
+		const timer = timeoutMinutes > 0
+			? window.setTimeout(() => { timedOut = true; run.abort(); }, timeoutMinutes * 60000)
+			: null;
 		job.status = 'running';
-		const previousRunAt = job.lastRunAt;
 		const outputBeforeRun = job.lastOutputPath;
+		const appendedBeforeRun = job.lastOutputAppended;
 		job.lastOutputPath = null;
-		job.lastRunAt = new Date().toISOString();
+		job.lastOutputAppended = undefined;
+		job.lastRunAt = startedAt.toISOString();
 		job.attempts = Number(job.attempts || 0) + 1;
-		this.logActivity('running', `Task #${job.taskNumber} started: ${job.title}`, job.id);
+		const restoreOutput = () => {
+			if (job.lastOutputPath) return;
+			job.lastOutputPath = outputBeforeRun;
+			job.lastOutputAppended = appendedBeforeRun;
+		};
+		this.logActivity('running', `Task #${job.taskNumber} ${retryNumber ? `retry ${retryNumber}` : 'started'}: ${job.title}`, job.id);
 		if (job.notify !== false) {
 			new Notice(`AI Scheduler: Task #${job.taskNumber} started (${job.title})...`, 4000);
 		}
 		this.updateStatusBar();
 		await this.saveState();
+		const variables = this.variablesFor(job, startedAt, lastRun);
 		try {
 			const execution = await backends.resolveJobExecution(this, job);
 			Object.assign(job, {
@@ -512,14 +548,14 @@ export class AISchedulerPlugin extends Plugin {
 			});
 			await this.saveState();
 			const context = this.getJobContext(job);
-			const isReview = job.routine === 'daily-review' || job.routine === 'periodic-review';
+			const instructions = expandVariables(job.prompt, variables);
 			const prompt = isReview
 				? ''
 				// Follow-ups may not propose further follow-ups, which caps the chain at one level.
 				: executionPrompt(
 					job.schedule.kind === 'event' && job.lastEventPath
-						? `${job.prompt}\n\nThis run was triggered by a change to: ${job.lastEventPath}`
-						: job.prompt,
+						? `${instructions}\n\nThis run was triggered by a change to: ${job.lastEventPath}`
+						: instructions,
 					context.paths,
 					job.source !== 'self-talk',
 				);
@@ -528,6 +564,7 @@ export class AISchedulerPlugin extends Plugin {
 				: await backends.sendToAI(this, prompt, execution, context, run.signal);
 			// Reset by the user while waiting: don't record, write or follow up.
 			if (cancelled()) return;
+			if (timedOut) throw new Error(`Timed out after ${timeoutMinutes} minute(s).`);
 			const trimmedReply = (reply || '').trim();
 			if (!trimmedReply) {
 				throw new Error('The AI returned an empty response.');
@@ -538,13 +575,9 @@ export class AISchedulerPlugin extends Plugin {
 			job.status = 'completed';
 			job.runCount = Number(job.runCount || 0) + 1;
 			// Reviews write their own report in runDailyReview.
-			if (!isReview) {
-				const folder = job.output?.folder || this.getDefaultOutputFolder();
-				// Without a fixed filename every run gets its own note, so jobs sharing a
-				// folder (or a job running several times a day) don't replace each other.
-				const filename = job.output?.filename || `${localTimestampKey()} ${outputTitle(job.title)}`;
-				this.recordOutput(job, await this.writeOutput(folder, filename, reply));
-			}
+			if (!isReview) await this.saveRunOutput(job, reply, variables);
+			job.retryCount = 0;
+			job.lastSuccessAt = new Date().toISOString();
 			// After the output is safely written; follow-up problems are logged, not fatal.
 			if (job.source !== 'self-talk') await this.processFollowUps(reply, job);
 			reconcileAfterRun(job);
@@ -552,7 +585,14 @@ export class AISchedulerPlugin extends Plugin {
 			// Log only what this run wrote, not the job's whole output history.
 			// (lastOutputPath was cleared at the start of the run.)
 			const runOutputs = job.lastOutputPath ? [job.lastOutputPath] : [];
-			if (!job.lastOutputPath) job.lastOutputPath = outputBeforeRun;
+			recordRun(job, {
+				at: startedAt.toISOString(),
+				status: 'completed',
+				durationMs: Date.now() - startedAt.getTime(),
+				...(runOutputs.length ? { output: runOutputs[0] } : {}),
+				...(retryNumber ? { retry: retryNumber } : {}),
+			});
+			restoreOutput();
 			await this.appendTaskLogRow(job, 'completed', runOutputs);
 			if (this.settings.notifyOnCompletion && job.notify !== false) {
 				new Notice(`AI completed: ${job.title}`, 5000);
@@ -561,21 +601,149 @@ export class AISchedulerPlugin extends Plugin {
 				sendSystemNotification('AI Scheduler', `AI completed: ${job.title}`);
 			}
 		} catch (error) {
-			if (!job.lastOutputPath) job.lastOutputPath = outputBeforeRun;
+			restoreOutput();
 			if (cancelled()) return; // already marked cancelled by resetRunningJob
 			job.status = 'failed';
 			job.lastStatus = 'failed';
-			job.lastError = errorText(error);
-			reconcileAfterRun(job, { failed: true });
+			job.lastError = timedOut ? `Timed out after ${timeoutMinutes} minute(s).` : errorText(error);
+			recordRun(job, {
+				at: startedAt.toISOString(),
+				status: 'failed',
+				durationMs: Date.now() - startedAt.getTime(),
+				error: job.lastError,
+				...(retryNumber ? { retry: retryNumber } : {}),
+			});
+			const retry = planRetry(job, Date.now());
+			if (!retry) reconcileAfterRun(job, { failed: true });
 			this.lastTickError = job.lastError;
 			this.logActivity('failed', `Task #${job.taskNumber} failed: ${job.title} (${job.lastError})`, job.id);
 			await this.appendTaskLogRow(job, 'failed', []);
-			new Notice(`AI task failed: ${job.title}\n${job.lastError}`, 8000);
-			if (this.settings.systemNotifications) {
-				sendSystemNotification('AI Scheduler', `AI task failed: ${job.title}`);
+			if (retry) {
+				const when = job.nextRunAt ? formatDate(job.nextRunAt) : 'soon';
+				this.logActivity('retrying', `Task #${job.taskNumber} will retry at ${when} (retry ${retry} of ${job.retries})`, job.id);
+				new Notice(`AI task failed: ${job.title}\n${job.lastError}\nRetrying at ${when} (retry ${retry} of ${job.retries}).`, 8000);
+			} else {
+				new Notice(`AI task failed: ${job.title}\n${job.lastError}`, 8000);
+				if (this.settings.systemNotifications) {
+					sendSystemNotification('AI Scheduler', `AI task failed: ${job.title}`);
+				}
 			}
+		} finally {
+			if (timer !== null) window.clearTimeout(timer);
+			if (this.activeRuns.get(job.id) === run) this.activeRuns.delete(job.id);
 		}
 		await this.saveState();
+	}
+
+	/** Values for {{variables}} in a run's instructions, file name and heading. */
+	variablesFor(job: Job, now: Date, lastRun: Date | null): VariableContext {
+		return {
+			now,
+			format: this.formatDate,
+			taskTitle: job.title,
+			lastRun,
+			dailyNotePath: () => this.dailyNotePathFor(now),
+			changedNotes: () => this.notesChangedSince(changedSince(lastRun, now).getTime(), []),
+		};
+	}
+
+	// Obsidian's bundled moment; its typings describe the namespace, not the callable.
+	readonly formatDate: DateFormatter = (date, format) => (moment as unknown as (input: Date) => { format: (pattern: string) => string })(date).format(format);
+
+	/** The Daily notes core plugin's folder, file name format and template. */
+	getDailyNoteSettings(): DailyNoteSettings & { template?: string } {
+		const internal = (this.app as unknown as {
+			internalPlugins?: { getPluginById?: (id: string) => { instance?: { options?: DailyNoteSettings & { template?: string } } } | null };
+		}).internalPlugins;
+		return internal?.getPluginById?.('daily-notes')?.instance?.options ?? {};
+	}
+
+	dailyNotePathFor(date: Date): string {
+		return normalizePath(dailyNotePath(this.getDailyNoteSettings(), date, this.formatDate));
+	}
+
+	/**
+	 * Notes changed after `since` (ms), newest first. With `scope` (attached
+	 * notes and folders) only those count. Files the plugin wrote itself (task
+	 * results, reviews, schedule notes, the log and calendar file) never count.
+	 */
+	notesChangedSince(since: number, scope: string[]): string[] {
+		const exclude = [
+			this.getPeriodicReviewFolder(),
+			normalizePath(this.settings.scheduleFolder || 'AI Schedules'),
+			normalizePath(`${this.getTaskLogFolder()}/AI SCHEDULER LOGS.md`),
+			normalizePath(this.settings.icsExportPath || ''),
+		];
+		for (const job of [...this.jobs, ...this.deletedJobs]) {
+			job.lastOutputFiles?.forEach(path => exclude.push(path));
+		}
+		const files = this.app.vault.getMarkdownFiles().map(file => ({ path: file.path, mtime: file.stat.mtime }));
+		return filesChangedSince(files, since, scope.map(path => normalizePath(path)), exclude);
+	}
+
+	/** Writes a run's result where the task's output mode says. */
+	async saveRunOutput(job: Job, reply: string, variables: VariableContext): Promise<void> {
+		const mode = outputMode(job.output);
+		const folder = job.output?.folder || this.getDefaultOutputFolder();
+		const filename = job.output?.filename ? expandVariables(job.output.filename, variables, true).trim() : '';
+		if (mode === 'append' || mode === 'daily') {
+			const heading = job.output?.heading ? expandVariables(job.output.heading, variables).split('\n')[0] : undefined;
+			const path = mode === 'daily'
+				? this.dailyNotePathFor(variables.now)
+				: this.safeNotePath(folder, filename || outputTitle(job.title));
+			const stamp = this.formatDate(variables.now, 'YYYY-MM-DD HH:mm');
+			await this.appendToNote(path, appendBlock(job.title, stamp, reply), heading, mode === 'daily');
+			// Not recorded as the plugin's own file: it was the user's note, so a
+			// later "replace" must never overwrite it.
+			job.lastOutputPath = path;
+			job.lastOutputAppended = true;
+			return;
+		}
+		if (mode === 'replace') {
+			this.recordOutput(job, await this.writeOutput(folder, filename || outputTitle(job.title), reply));
+			return;
+		}
+		// A new note every run: a fixed name gets a number instead of replacing the last one.
+		this.recordOutput(job, filename
+			? await this.writeOutput(folder, filename, reply, true)
+			: await this.writeOutput(folder, `${localTimestampKey()} ${outputTitle(job.title)}`, reply));
+	}
+
+	/**
+	 * Adds `block` to the note at `path` (at the end, or under `heading`),
+	 * creating the note if needed. A new daily note starts from the Daily notes
+	 * template when one is set.
+	 */
+	async appendToNote(path: string, block: string, heading?: string, isDailyNote = false): Promise<void> {
+		const slash = path.lastIndexOf('/');
+		const folder = slash >= 0 ? path.slice(0, slash) : '';
+		this.checkSafeFolder(folder);
+		const existing = this.app.vault.getAbstractFileByPath(path);
+		if (existing && !(existing instanceof TFile)) throw new Error(`"${path}" is a folder, not a note.`);
+		await this.ensureFolder(folder);
+		this.markSelfWrite(path);
+		if (existing instanceof TFile) {
+			await this.app.vault.process(existing, content => insertBlock(content, block, heading));
+			return;
+		}
+		const initial = isDailyNote ? await this.dailyNoteTemplate(path) : '';
+		await this.app.vault.create(path, insertBlock(initial, block, heading));
+	}
+
+	/** The Daily notes template with its {{date}}, {{time}} and {{title}} filled in, or ''. */
+	private async dailyNoteTemplate(path: string): Promise<string> {
+		const template = String(this.getDailyNoteSettings().template || '').trim();
+		if (!template) return '';
+		const file = this.app.metadataCache.getFirstLinkpathDest(template, '');
+		if (!(file instanceof TFile)) return '';
+		const title = path.replace(/\.md$/i, '').split('/').pop() || '';
+		const raw = await this.app.vault.read(file);
+		return expandVariables(raw.replace(/\{\{\s*title\s*\}\}/gi, title), {
+			now: new Date(),
+			format: this.formatDate,
+			taskTitle: '',
+			lastRun: null,
+		});
 	}
 
 	async handleVaultChange(file: { path?: string }): Promise<void> {
@@ -816,12 +984,10 @@ export class AISchedulerPlugin extends Plugin {
 	}
 
 	/**
-	 * Writes task output as a Markdown note. Output locations can come from AI
-	 * replies or schedule notes, so the folder must stay inside the vault and out
-	 * of hidden/config folders, and existing notes the plugin did not write are
-	 * never overwritten (a numbered sibling is created instead).
+	 * Output locations can come from AI replies or schedule notes, so a folder
+	 * must stay inside the vault and out of hidden/config folders.
 	 */
-	async writeOutput(folder: string, filename: string | undefined, content: string): Promise<string> {
+	checkSafeFolder(folder: string): string {
 		const cleanFolder = normalizePath(String(folder || '').replace(/^\/+|\/+$/g, ''));
 		const segments = cleanFolder === '/' ? [] : cleanFolder.split('/').filter(Boolean);
 		const configDir = this.app.vault.configDir;
@@ -829,18 +995,38 @@ export class AISchedulerPlugin extends Plugin {
 			|| segments[0] === configDir) {
 			throw new Error(`Refusing to write output to unsafe folder "${folder}".`);
 		}
-		const folderPath = segments.join('/');
+		return segments.join('/');
+	}
+
+	/** A note path in `folder` named `filename` (made safe; .md added). */
+	safeNotePath(folder: string, filename: string | undefined): string {
+		const folderPath = this.checkSafeFolder(folder);
 		let baseName = String(filename || localDateKey()).replace(/[\\/:]/g, '-').replace(/^\.+/, '').trim();
 		baseName = baseName.replace(/\.md$/i, '') || localDateKey();
+		return normalizePath(folderPath ? `${folderPath}/${baseName}.md` : `${baseName}.md`);
+	}
+
+	/**
+	 * Writes task output as a Markdown note. Existing notes the plugin did not
+	 * write are never overwritten (a numbered sibling is created instead); with
+	 * `neverOverwrite`, the plugin's own notes aren't either.
+	 */
+	async writeOutput(folder: string, filename: string | undefined, content: string, neverOverwrite = false): Promise<string> {
+		const firstPath = this.safeNotePath(folder, filename);
+		const folderPath = firstPath.includes('/') ? firstPath.slice(0, firstPath.lastIndexOf('/')) : '';
+		const baseName = firstPath.slice(folderPath ? folderPath.length + 1 : 0).replace(/\.md$/i, '');
 		const pathFor = (name: string) => normalizePath(folderPath ? `${folderPath}/${name}.md` : `${name}.md`);
 
 		const ownOutputs = new Set<string>();
-		for (const job of [...this.jobs, ...this.deletedJobs]) {
-			if (job.lastOutputPath) ownOutputs.add(job.lastOutputPath);
-			job.lastOutputFiles?.forEach(path => ownOutputs.add(path));
+		if (!neverOverwrite) {
+			for (const job of [...this.jobs, ...this.deletedJobs]) {
+				// A note a run only added to belongs to the user.
+				if (job.lastOutputPath && !job.lastOutputAppended) ownOutputs.add(job.lastOutputPath);
+				job.lastOutputFiles?.forEach(path => ownOutputs.add(path));
+			}
 		}
 
-		let path = pathFor(baseName);
+		let path = firstPath;
 		let existing = this.app.vault.getAbstractFileByPath(path);
 		for (let suffix = 2; existing && !(existing instanceof TFile && ownOutputs.has(path)); suffix++) {
 			path = pathFor(`${baseName}-${suffix}`);
@@ -1332,6 +1518,7 @@ export class AISchedulerPlugin extends Plugin {
 		job.schedule.maxIterations = normalizeMaxIterations(job.schedule.maxIterations);
 		job.nextRunAt = job.schedule.kind === 'event' ? null : getScheduleNextRun(job.schedule, new Date(Date.now() - 1000));
 		job.lastError = null;
+		job.retryCount = 0;
 		if (this.jobs.includes(job) && job.status === 'disabled') {
 			// Editing a task the user paused keeps it paused.
 			job.enabled = false;
@@ -1359,6 +1546,7 @@ export class AISchedulerPlugin extends Plugin {
 		job.status = 'scheduled';
 		job.lastStatus = null;
 		job.lastError = null;
+		job.retryCount = 0;
 		job.nextRunAt = new Date(Date.now() - 1000).toISOString();
 		await this.saveState();
 		await this.tick();
@@ -1372,6 +1560,15 @@ export class AISchedulerPlugin extends Plugin {
 		job.status = 'failed';
 		job.lastStatus = 'cancelled';
 		job.lastError = 'Cancelled or reset by user';
+		job.retryCount = 0;
+		if (job.lastRunAt) {
+			recordRun(job, {
+				at: job.lastRunAt,
+				status: 'cancelled',
+				durationMs: Math.max(0, Date.now() - new Date(job.lastRunAt).getTime()),
+				error: job.lastError,
+			});
+		}
 		reconcileAfterRun(job, { failed: true });
 		this.logActivity('cancelled', `Task #${job.taskNumber} cancelled/reset by user: ${job.title}`, job.id);
 		this.updateStatusBar();

@@ -44,7 +44,9 @@ Open the dashboard with the ribbon icon or the command **AI Scheduler: Open assi
 - **Ask AI to plan a schedule**: describe what you want in plain English, for example *"Every weekday at 9 am, summarize the notes I changed yesterday"*. Type \`@\` to attach notes or folders, and optionally pick a **Result folder**.
 - **Create a task yourself**: write the instructions and choose a schedule (once, daily, weekly, every N minutes, cron, or when notes change).
 
-Results are saved as new notes in the result folder (**AI Scheduler** by default).
+Results are saved as new notes in the result folder (**AI Scheduler** by default). Under **Save results** you can instead keep one note up to date, add each run to one note, or add it to today's daily note.
+
+Instructions can use variables such as \`{{date}}\`, \`{{last_run}}\` and \`{{changed_notes}}\`, which are filled in when the task runs. Click *Variables you can use* in the task editor to see them all.
 
 ## 5. Optional extras
 
@@ -52,6 +54,8 @@ Results are saved as new notes in the result folder (**AI Scheduler** by default
 - **Schedule calendar**: all upcoming runs at a glance (**AI Scheduler: Open schedule calendar**).
 - **Calendar export**: an \`.ics\` file for Google Calendar, Outlook or Apple Calendar.
 - **Schedule notes**: keep each task as a note you can edit.
+- **Run options** (in the task editor): retry failed runs, set a time limit, or only run when something changed.
+- **Run history**: open a task to see its recent runs, results and errors.
 
 ## Good to know
 

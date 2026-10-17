@@ -36,3 +36,22 @@ test('isInside matches the folder and its children only', () => {
 	assert.ok(ScheduleNotesSync.isInside('AI Schedules', 'AI Schedules/a.md'));
 	assert.ok(!ScheduleNotesSync.isInside('AI Schedules', 'AI Schedules Old/a.md'));
 });
+
+test('a schedule note carries the output mode and run options', () => {
+	const job = normalizeJob({
+		title: 'Daily log',
+		prompt: 'Summarize {{date}}',
+		schedule: { kind: 'daily', time: '09:00' },
+		output: { mode: 'daily', heading: 'AI' },
+		retries: 2,
+		timeoutMinutes: 10,
+		onlyIfChanged: true,
+	});
+	const definition = definitionFromContent(notesSync().renderNote(job));
+	assert.ok(definition);
+	assert.deepEqual(definition.output, { mode: 'daily', heading: 'AI' });
+	assert.equal(definition.retries, 2);
+	assert.equal(definition.timeoutMinutes, 10);
+	assert.equal(definition.onlyIfChanged, true);
+	assert.equal(definition.retryDelayMinutes, undefined, 'unset options are left out');
+});

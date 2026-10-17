@@ -2,6 +2,7 @@
  * contract between the AI and the scheduler; cron is offered as an advanced
  * kind for patterns the simple kinds cannot express. */
 import { Job } from './types';
+import { VARIABLE_HELP } from './variables';
 
 export const FOLLOW_UP_INSTRUCTION = 'If this work reveals a concrete future action, you may append at most three follow-up jobs using <assistant-scheduler>[{"title":"...","prompt":"...","schedule":{"kind":"once","at":"ISO-8601"}}]</assistant-scheduler>. Do not create follow-ups unless they are genuinely useful.';
 
@@ -42,7 +43,8 @@ export function plannerPrompt(goal: string, contextPaths: string[]): string {
 		'- {"kind":"interval","everyHours":2,"maxIterations":null}',
 		'- {"kind":"event","event":"modify","cooldownMinutes":10}',
 		'- {"kind":"cron","expression":"*/15 * * * *"}',
-		'Use the user\'s local time. Add output {"folder":"...","filename":"..."} only when a note should be saved.',
+		'Use the user\'s local time. Add output only when the user says where results should go: {"folder":"...","filename":"...","mode":"new|replace|append|daily","heading":"..."}. mode "new" (default) saves a new note each run, "replace" keeps one note and replaces it, "append" adds each run to the note folder/filename (under "heading" if given), "daily" adds each run to today\'s daily note (under "heading" if given).',
+		`The prompt, filename and heading may use these variables, filled in at run time: ${VARIABLE_HELP.map(variable => `${variable.name} (${variable.description})`).join('; ')}. Use them instead of fixed dates, e.g. "Summarize the notes changed since {{last_run}}: {{changed_notes}}".`,
 		'For "cron", the expression must be a standard 5-field cron expression (minute hour day-of-month month day-of-week, 0 = Sunday) evaluated in the user\'s local time. Prefer the simpler kinds when they can express the pattern; use cron only for advanced cadences such as "every 15 minutes", "weekdays at 9 and 17", or "0 9 * * 1-5". Never invent 6-field expressions.',
 		'A prompt should tell the future agent exactly what to do and what vault context to inspect. Multiple requested schedules must become separate jobs or one multi schedule with rules.',
 		`Selected context paths:\n${contextPaths.length ? contextPaths.map(path => `- ${path}`).join('\n') : '- None selected'}`,

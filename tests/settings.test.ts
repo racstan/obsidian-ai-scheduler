@@ -38,3 +38,42 @@ test('normalizeJob rejects out-of-range recurrence fields', () => {
 	assert.equal(job.schedule.everyMonths, undefined);
 	assert.equal(job.schedule.startAt, undefined);
 });
+
+test('normalizeJob keeps valid output modes, run options and history, and drops bad values', () => {
+	const job = normalizeJob({
+		title: 't',
+		prompt: 'p',
+		schedule: { kind: 'daily', time: '09:00' },
+		output: { filename: 'Log', mode: 'append', heading: 'Runs' },
+		retries: 3,
+		retryDelayMinutes: 15,
+		timeoutMinutes: 30,
+		onlyIfChanged: true,
+		lastSuccessAt: '2026-10-17T09:00:00.000Z',
+		history: [
+			{ at: '2026-10-17T09:00:00.000Z', status: 'completed', durationMs: 1200, output: 'Log.md' },
+			{ at: '2026-10-17T10:00:00.000Z', status: 'failed', error: 'boom', retry: 1 },
+			{ at: 'x', status: 'exploded' },
+			null,
+		],
+	});
+	const reloaded = normalizeJob(JSON.parse(JSON.stringify(job)));
+	assert.deepEqual(reloaded.output, { folder: undefined, filename: 'Log', mode: 'append', heading: 'Runs' });
+	assert.equal(reloaded.retries, 3);
+	assert.equal(reloaded.retryDelayMinutes, 15);
+	assert.equal(reloaded.timeoutMinutes, 30);
+	assert.equal(reloaded.onlyIfChanged, true);
+	assert.equal(reloaded.lastSuccessAt, '2026-10-17T09:00:00.000Z');
+	assert.equal(reloaded.history?.length, 2);
+	assert.equal(reloaded.history?.[1].retry, 1);
+
+	const bad = normalizeJob({
+		title: 't', prompt: 'p', schedule: { kind: 'daily', time: '09:00' },
+		output: { mode: 'sideways' }, retries: 9, retryDelayMinutes: 0, timeoutMinutes: -1, onlyIfChanged: 'yes',
+	});
+	assert.equal(bad.output?.mode, undefined);
+	assert.equal(bad.retries, undefined);
+	assert.equal(bad.retryDelayMinutes, undefined);
+	assert.equal(bad.timeoutMinutes, undefined);
+	assert.equal(bad.onlyIfChanged, undefined);
+});

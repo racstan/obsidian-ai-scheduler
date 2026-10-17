@@ -5,6 +5,25 @@ All notable changes to **AI Scheduler** (`obsidian-ai-scheduler`) are documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.25] - 2026-10-17
+
+### Highlights
+- **Save results your way**: a new note each run, one note replaced each run, added to one note (at the end or under a heading), or added to today's daily note.
+- **Variables** in instructions, file names and headings, filled in at run time: `{{date}}`, `{{time}}`, `{{yesterday}}`, `{{tomorrow}}`, `{{weekday}}`, `{{week}}`, `{{month}}`, `{{date:FORMAT}}`, `{{last_run}}`, `{{changed_notes}}`, `{{daily_note}}` and `{{task}}`.
+- **Run history**: each task keeps its last 20 runs (result, duration, the note it wrote, and any error), shown in the task details.
+
+### Added
+- Run options: retry a failed run up to 5 times with a wait between tries, and a time limit that stops a run that hangs.
+- **Only run when something changed**: skips a run when none of the attached notes or folders (or, with nothing attached, no note in the vault) changed since the last successful run.
+- *Variables you can use* list in the task editor; click one to insert it.
+- A new daily note is created from your Daily notes template.
+- The AI planner can use the new result options and variables.
+
+### Changed
+- For a failed task, the task details button reads **Retry now**.
+- A note a task only added to is never overwritten by a later "replace"; a numbered copy is made instead.
+- The link highlight in text boxes no longer uses the CSS `:has()` selector (flagged by the plugin review as slow).
+
 ## [2.1.24] - 2026-10-08
 
 ### Fixed

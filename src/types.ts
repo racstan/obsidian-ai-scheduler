@@ -48,9 +48,38 @@ export interface TaskSchedule {
 	expression?: string;
 }
 
+/**
+ * Where a run's result goes:
+ * - new: a new note every run (the default);
+ * - replace: one note, replaced on each run;
+ * - append: added to the end of one note, or under `heading`;
+ * - daily: added to today's daily note, at the end or under `heading`.
+ */
+export type OutputMode = 'new' | 'replace' | 'append' | 'daily';
+
+export const OUTPUT_MODES: OutputMode[] = ['new', 'replace', 'append', 'daily'];
+
 export interface JobOutput {
 	folder?: string;
 	filename?: string;
+	mode?: OutputMode;
+	heading?: string;
+}
+
+export type RunOutcome = 'completed' | 'failed' | 'skipped' | 'cancelled';
+
+/** One entry of a task's run history (the newest few are kept). */
+export interface RunRecord {
+	/** ISO start time. */
+	at: string;
+	status: RunOutcome;
+	durationMs?: number;
+	/** Note the run wrote to. */
+	output?: string;
+	/** Error, or why the run was skipped. */
+	error?: string;
+	/** Set on a run that was an automatic retry (1 = first retry). */
+	retry?: number;
 }
 
 export interface Job {
@@ -87,10 +116,26 @@ export interface Job {
 	noteMovedByUser?: boolean;
 	/** Path of the primary output file created or modified by this task. */
 	lastOutputPath?: string | null;
+	/** lastOutputPath is a note the last run added to, not one the plugin created. */
+	lastOutputAppended?: boolean;
 	/** List of files created or modified during the task execution. */
 	lastOutputFiles?: string[];
 	/** Optional clarification or doubt note generated during AI planning. */
 	doubt?: string | null;
+	/** Automatic retries after a failed run (0 = none). */
+	retries?: number;
+	/** Minutes between a failure and its retry. */
+	retryDelayMinutes?: number;
+	/** Stop a run that takes longer than this many minutes (0 or unset = no limit). */
+	timeoutMinutes?: number;
+	/** Skip a run when nothing it reads has changed since the last successful run. */
+	onlyIfChanged?: boolean;
+	/** Retries used for the current failure; reset by a successful run. */
+	retryCount?: number;
+	/** End time of the last successful run. */
+	lastSuccessAt?: string | null;
+	/** Most recent runs, oldest first. */
+	history?: RunRecord[];
 }
 
 export interface AISettings {

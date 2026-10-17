@@ -66,10 +66,20 @@ class FuzzySuggestModal extends Modal {
 	onChooseItem() {}
 }
 const normalizePath = (p) => String(p || '').replace(/\\\\/g, '/');
+// Enough of moment's formatting for the date patterns the plugin uses.
+const moment = (date) => ({
+	format: (pattern) => {
+		const d = new Date(date);
+		const pad = (n) => String(n).padStart(2, '0');
+		return String(pattern).replace('YYYY', String(d.getFullYear())).replace('MM', pad(d.getMonth() + 1))
+			.replace('DD', pad(d.getDate())).replace('HH', pad(d.getHours())).replace('mm', pad(d.getMinutes()));
+	},
+});
 module.exports = {
 	Plugin, Modal, PluginSettingTab, Notice, TFile, TFolder, TAbstractFile, AbstractInputSuggest,
 	FuzzySuggestModal,
 	normalizePath,
+	moment,
 	parseYaml: (text) => {
 		try { return JSON.parse(text); } catch { return {}; }
 	},
@@ -113,6 +123,7 @@ function makeClaudian() {
 		controllers: {
 			inputController: {
 				sendMessage: async (payload) => {
+					tab.lastPrompt = payload && payload.content || '';
 					// Simulates Claudian's "Message was not sent": nothing is added.
 					if (tab.rejectSends > 0) { tab.rejectSends--; return; }
 					// Simulates a provider/model failure, which Claudian writes into the reply.
@@ -159,6 +170,9 @@ function fakeApp() {
 			getLeaf() { return { openFile: async (file) => { app.workspace._opened.push(file.path); } }; },
 		},
 		plugins: { plugins: {} },
+		internalPlugins: {
+			getPluginById: (id) => id === 'daily-notes' ? { instance: { options: { folder: 'Daily', format: 'YYYY-MM-DD' } } } : null,
+		},
 		commands: { commands: {}, executeCommand() {} },
 		fileManager: {
 			trashFile: async (file) => {
@@ -461,6 +475,71 @@ async function main() {
 	assert.notEqual(review.nextRunAt, overdue, 'changed review cadence reschedules');
 
 	assert.equal(app.workspace._opened.length, 1, 'the guide is not reopened when the plugin reloads');
+
+	// Output modes: add to one note under a heading, with {{variables}} filled in.
+	const appender = await second.addJob({
+		title: 'Appender', prompt: 'Summarize {{date}}', schedule: { kind: 'daily', time: '09:00' },
+		output: { folder: 'Logs', filename: 'Run log {{date}}', mode: 'append', heading: 'Runs' },
+	});
+	await second.runJobNow(appender);
+	await second.runJobNow(appender);
+	const today = second.formatDate(new Date(), 'YYYY-MM-DD');
+	assert.ok(claudianTab.lastPrompt.includes('Summarize ' + today), 'prompt variables are filled in');
+	const logNote = app.vault.getAbstractFileByPath('Logs/Run log ' + today + '.md');
+	assert.ok(logNote, 'append mode creates the note named with the date variable');
+	assert.ok(logNote._content.startsWith('## Runs'), 'a missing heading is created');
+	assert.equal(logNote._content.split(GENERIC_REPLY).length - 1, 2, 'each run is added');
+	assert.equal(appender.lastOutputAppended, true);
+	assert.equal(appender.history.length, 2, 'both runs are in the history');
+	assert.equal(appender.history[1].output, logNote.path);
+	// A later "replace" never overwrites a note the task only added to.
+	appender.output = { folder: 'Logs', filename: 'Run log ' + today, mode: 'replace' };
+	await second.runJobNow(appender);
+	assert.ok(logNote._content.includes('## Runs'), 'appended-to note is not replaced');
+	assert.equal(appender.lastOutputPath, 'Logs/Run log ' + today + '-2.md');
+	// Daily note mode uses the Daily notes folder and date format.
+	appender.output = { mode: 'daily', heading: 'AI' };
+	await second.runJobNow(appender);
+	const dailyNote = app.vault.getAbstractFileByPath('Daily/' + today + '.md');
+	assert.ok(dailyNote && dailyNote._content.includes('## AI') && dailyNote._content.includes(GENERIC_REPLY), 'daily note gets the result under the heading');
+
+	// A failed run is retried after the delay, and the count resets on success.
+	const flaky = await second.addJob({ title: 'Flaky', prompt: 'p', schedule: { kind: 'daily', time: '09:00' }, retries: 1, retryDelayMinutes: 2 });
+	claudianTab.errorReply = '\\n\\n❌ **Error:** temporary';
+	await second.runJobNow(flaky);
+	assert.equal(flaky.status, 'scheduled', 'a failed run waits for its retry');
+	assert.equal(flaky.retryCount, 1);
+	const retryIn = new Date(flaky.nextRunAt).getTime() - Date.now();
+	assert.ok(retryIn > 60_000 && retryIn <= 120_000, 'the retry is scheduled after the delay');
+	claudianTab.errorReply = null;
+	flaky.nextRunAt = iso(1000);
+	await second.tick();
+	assert.equal(flaky.status, 'completed');
+	assert.equal(flaky.retryCount, 0);
+	assert.deepEqual(flaky.history.map(r => r.status + ':' + (r.retry || 0)), ['failed:0', 'completed:1']);
+
+	// "Only run when something changed" skips a run while the attached note is unchanged.
+	await app.vault.create('Notes/watched.md', 'v1');
+	const watched = app.vault.getAbstractFileByPath('Notes/watched.md');
+	watched.stat = { mtime: Date.now() - 60_000 };
+	const watcher = await second.addJob({ title: 'Watcher', prompt: 'p', schedule: { kind: 'daily', time: '09:00' }, contextPaths: ['Notes/watched.md'], onlyIfChanged: true });
+	await second.runJobNow(watcher);
+	assert.equal(watcher.runCount, 1, 'the first run always runs');
+	await second.runJobNow(watcher);
+	assert.equal(watcher.runCount, 1, 'unchanged note: the run is skipped');
+	assert.equal(watcher.history[watcher.history.length - 1].status, 'skipped');
+	assert.ok(watcher.nextRunAt && new Date(watcher.nextRunAt).getTime() > Date.now(), 'a skipped run moves to the next slot');
+	watched.stat = { mtime: Date.now() + 1000 };
+	await second.runJobNow(watcher);
+	assert.equal(watcher.runCount, 2, 'changed note: the task runs');
+
+	// Run history and run options are saved (reload normalization is unit-tested).
+	await second.saveState();
+	const savedFlaky = app._pluginData.jobs.find(j => j.id === flaky.id);
+	assert.equal(savedFlaky.history.length, 2, 'history is saved');
+	assert.equal(savedFlaky.retries, 1);
+	assert.equal(savedFlaky.retryDelayMinutes, 2);
+	assert.equal(app._pluginData.jobs.find(j => j.id === watcher.id).onlyIfChanged, true);
 
 	await second.deleteAllJobs();
 	assert.equal(second.jobs.length, 1, 'nightly review job survives delete-all');

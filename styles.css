@@ -365,7 +365,14 @@
 	border: 1px solid rgba(var(--color-red-rgb), 0.3);
 }
 
+.ai-scheduler-act-retrying {
+	background: rgba(var(--color-orange-rgb), 0.15);
+	color: var(--color-orange);
+	border: 1px solid rgba(var(--color-orange-rgb), 0.3);
+}
+
 .ai-scheduler-act-info,
+.ai-scheduler-act-skipped,
 .ai-scheduler-act-status {
 	background: var(--background-modifier-hover);
 	color: var(--text-muted);
@@ -2734,15 +2741,11 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	position: relative;
 }
 
-.ai-scheduler-highlight-wrap:has(> .ai-scheduler-textarea-tall) {
+.ai-scheduler-highlight-wrap-tall {
 	margin: 10px 0 8px;
 }
 
-.ai-scheduler-highlight-wrap:has(> .ai-scheduler-textarea-ai) {
-	margin-bottom: 12px;
-}
-
-.ai-scheduler-highlight-wrap:has(> .ai-scheduler-form-gap) {
+.ai-scheduler-highlight-wrap-gap {
 	margin-bottom: 12px;
 }
 
@@ -2827,4 +2830,103 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	display: flex;
 	flex-wrap: wrap;
 	gap: var(--size-4-2);
+}
+
+/* Task editor: result and run options */
+.ai-scheduler-hidden {
+	display: none;
+}
+
+.ai-scheduler-details > summary {
+	cursor: pointer;
+}
+
+.ai-scheduler-details[open] > summary {
+	margin-bottom: 8px;
+}
+
+.ai-scheduler-option-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+	gap: 0 12px;
+}
+
+.ai-scheduler-check-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 4px;
+	cursor: pointer;
+}
+
+.ai-scheduler-variable-list {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	gap: 4px 12px;
+	margin-top: 6px;
+}
+
+.ai-scheduler-variable-item {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	min-width: 0;
+}
+
+.ai-scheduler-variable-chip {
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	padding: 1px 6px;
+	height: auto;
+	flex-shrink: 0;
+}
+
+.ai-scheduler-variable-desc {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+/* Task details: run history */
+.ai-scheduler-history-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-bottom: 16px;
+}
+
+.ai-scheduler-history-row {
+	padding: 8px 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+}
+
+.ai-scheduler-history-main {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	font-size: var(--font-ui-small);
+}
+
+.ai-scheduler-history-meta {
+	color: var(--text-muted);
+}
+
+.ai-scheduler-history-output {
+	color: var(--text-accent);
+	cursor: pointer;
+	word-break: break-all;
+}
+
+.ai-scheduler-history-output:hover {
+	text-decoration: underline;
+}
+
+.ai-scheduler-history-error {
+	margin-top: 4px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-error);
+	white-space: pre-wrap;
+	word-break: break-word;
 }

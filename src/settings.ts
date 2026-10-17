@@ -1,6 +1,6 @@
 /* Settings, job normalization, and stored-data parsing (faithful port of the
  * original onload migration logic), plus the two new opt-in note settings. */
-import { ActivityEntry, AISettings, Job, JobOutput, SCHEDULE_KINDS, TaskSchedule } from './types';
+import { ActivityEntry, AISettings, Job, JobOutput, OUTPUT_MODES, OutputMode, RunRecord, SCHEDULE_KINDS, TaskSchedule } from './types';
 import { getScheduleNextRun, normalizeMaxIterations } from './schedule';
 import { id, localDateKey } from './util';
 
@@ -41,10 +41,33 @@ const VALID_STATUSES = new Set(['scheduled', 'running', 'completed', 'failed', '
 function normalizeOutput(output: unknown): JobOutput | null {
 	if (!output || typeof output !== 'object') return null;
 	const record = output as Record<string, unknown>;
-	return {
+	const normalized: JobOutput = {
 		folder: typeof record.folder === 'string' ? record.folder : undefined,
 		filename: typeof record.filename === 'string' ? record.filename : undefined,
 	};
+	if ((OUTPUT_MODES as string[]).includes(String(record.mode))) normalized.mode = record.mode as OutputMode;
+	if (typeof record.heading === 'string' && record.heading.trim()) normalized.heading = record.heading;
+	return normalized;
+}
+
+const RUN_OUTCOMES = new Set(['completed', 'failed', 'skipped', 'cancelled']);
+
+function normalizeHistory(raw: unknown): RunRecord[] | undefined {
+	if (!Array.isArray(raw)) return undefined;
+	const records = raw
+		.filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
+		.filter(entry => typeof entry.at === 'string' && RUN_OUTCOMES.has(String(entry.status)))
+		.map(entry => {
+			const record: RunRecord = { at: entry.at as string, status: entry.status as RunRecord['status'] };
+			const duration = Number(entry.durationMs);
+			if (Number.isFinite(duration) && duration >= 0) record.durationMs = duration;
+			if (typeof entry.output === 'string') record.output = entry.output;
+			if (typeof entry.error === 'string') record.error = entry.error;
+			const retry = Number(entry.retry);
+			if (Number.isInteger(retry) && retry > 0) record.retry = retry;
+			return record;
+		});
+	return records.length ? records.slice(-20) : undefined;
 }
 
 export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date()): Job {
@@ -142,11 +165,19 @@ export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date(
 		notePath: typeof raw.notePath === 'string' ? raw.notePath : null,
 		noteMovedByUser: raw.noteMovedByUser === true ? true : undefined,
 		lastOutputPath: typeof raw.lastOutputPath === 'string' ? raw.lastOutputPath : null,
+		lastOutputAppended: raw.lastOutputAppended === true ? true : undefined,
 		lastOutputFiles: Array.isArray(raw.lastOutputFiles) ? raw.lastOutputFiles.map(String) : undefined,
 		cooldownMinutes: Number.isFinite(cooldownMinutes) && cooldownMinutes >= 0 ? cooldownMinutes : undefined,
 		lastEventPath: typeof raw.lastEventPath === 'string' ? raw.lastEventPath : undefined,
 		source: typeof raw.source === 'string' ? raw.source : undefined,
 		doubt: typeof raw.doubt === 'string' ? raw.doubt : undefined,
+		retries: intInRange(raw.retries, 0, 5),
+		retryDelayMinutes: intInRange(raw.retryDelayMinutes, 1, 1440),
+		timeoutMinutes: intInRange(raw.timeoutMinutes, 0, 1440),
+		onlyIfChanged: raw.onlyIfChanged === true ? true : undefined,
+		retryCount: intInRange(raw.retryCount, 0, 5),
+		lastSuccessAt: typeof raw.lastSuccessAt === 'string' ? raw.lastSuccessAt : undefined,
+		history: normalizeHistory(raw.history),
 		schedule: normalizedSchedule,
 		nextRunAt,
 	};

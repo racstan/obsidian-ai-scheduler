@@ -32,6 +32,14 @@ AI Scheduler does not call AI providers directly. It drives Claudian or Copilot 
 
 **Scheduled tasks** — Create jobs that run on any cadence: every morning at 9 AM, every 30 minutes, on specific weekdays, or with a full 5-field cron expression. Set a prompt once and let it run repeatedly.
 
+**Choose where results go** — Each task can save a new note every run, keep one note and replace it, add each run to one note (at the end or under a heading), or add each run to today's daily note.
+
+**Variables in instructions** — Write `{{date}}`, `{{yesterday}}`, `{{last_run}}`, `{{changed_notes}}` (links to the notes changed since the last run), `{{daily_note}}` and more. They are filled in each time the task runs, and also work in result file names and headings.
+
+**Retries, time limits and "only if changed"** — A failed run can be retried automatically after a delay, a run that hangs can be stopped after a time limit, and a task can skip its run when none of the notes it reads changed since its last successful run.
+
+**Run history** — Each task keeps its last 20 runs (time, result, duration, the note it wrote, and any error), shown in the task's details.
+
 **Periodic review** — Daily, weekly, every N days or every N hours, the plugin gathers the notes you changed since the previous review, sends them to your AI backend for analysis, and saves a structured report (key progress, open loops, recommendations) as a Markdown file in your vault.
 
 **Event-driven triggers** — Run a job when a note in your vault is modified or created (the plugin's own output, review and schedule folders are ignored). The job fires at most once per cooldown period you choose, and the AI is told which file changed.
@@ -137,6 +145,36 @@ The dashboard shows:
 - Recent activity log
 
 From here you can create tasks, edit them, run them on demand, pause, restore from trash, or open the AI Planner.
+
+### Task options
+
+In the task editor:
+
+- **Save results**:
+  - *A new note each run*: the default. A file name is optional.
+  - *Replace one note each run*: the note always holds the latest result.
+  - *Add to one note*: each run is added at the end of the note, or under a heading you name. A missing heading is created.
+  - *Add to today's daily note*: uses the folder, date format and template of the Daily notes core plugin.
+- **Variables**: click *Variables you can use* under the instructions to insert one.
+
+  | Variable | Filled in with |
+  | --- | --- |
+  | `{{date}}`, `{{time}}` | today's date and the current time |
+  | `{{yesterday}}`, `{{tomorrow}}` | those dates |
+  | `{{weekday}}`, `{{week}}`, `{{month}}` | e.g. Monday, 2026-W42, 2026-10 |
+  | `{{date:DD MMM YYYY}}` | today in your own format |
+  | `{{last_run}}` | when the task last ran successfully |
+  | `{{changed_notes}}` | links to the notes changed since the last run (up to 50) |
+  | `{{daily_note}}` | a link to today's daily note |
+  | `{{task}}` | the task title |
+
+  Any other `{{...}}` (for example Templater syntax) is left untouched.
+- **Run options**:
+  - *Retries*: up to 5, with the minutes to wait between them.
+  - *Time limit*: stops a run that takes longer than this.
+  - *Only run when something changed*: skips the run when none of the attached notes or folders changed since the last successful run. With nothing attached, any note in the vault counts. Results the plugin wrote itself never count.
+
+A task's details show its **run history**: completed, failed, skipped and cancelled runs, with links to the notes they wrote. For a failed task the button reads **Retry now**.
 
 ## Schedule calendar
 

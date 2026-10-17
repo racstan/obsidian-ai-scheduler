@@ -6,7 +6,7 @@
  */
 import { App, Modal, Notice, TFile, TFolder, normalizePath } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
-import { Job } from '../types';
+import { Job, RunRecord } from '../types';
 import { describeBinding, formatDate } from '../util';
 import { describeSchedule } from '../schedule';
 import { closeExistingSchedulerModals, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
@@ -220,7 +220,15 @@ export class TaskViewModal extends Modal {
 			const errText = errContent.createDiv();
 			errText.createDiv({ cls: 'ai-scheduler-alert-title', text: 'Task execution failed' });
 			errText.createDiv({ cls: 'ai-scheduler-alert-desc', text: this.job.lastError });
+			if (this.job.retryCount && this.job.nextRunAt && this.job.enabled) {
+				errText.createDiv({
+					cls: 'ai-scheduler-alert-desc',
+					text: `Retrying ${formatDate(this.job.nextRunAt)} (retry ${this.job.retryCount} of ${this.job.retries ?? this.job.retryCount}).`,
+				});
+			}
 		}
+
+		this.renderHistory(shell);
 
 		// Files Created or Modified Section
 		const relatedFiles = this.getRelatedFiles();
@@ -326,7 +334,7 @@ export class TaskViewModal extends Modal {
 				).open();
 			}, false, true);
 		} else {
-			makeButton(footer, 'Run again', () => {
+			makeButton(footer, this.job.lastStatus === 'failed' ? 'Retry now' : 'Run again', () => {
 				new ConfirmModal(
 					this.app,
 					`Run task #${this.job.taskNumber} (${this.job.title}) immediately? It will execute in the background now.`,
@@ -357,8 +365,48 @@ export class TaskViewModal extends Modal {
 		}
 	}
 
+	private renderHistory(shell: HTMLElement): void {
+		const history = [...(this.job.history ?? [])].reverse();
+		const heading = shell.createDiv('ai-scheduler-section-heading');
+		heading.createEl('h2', { text: 'Run history', cls: 'ai-scheduler-section-title' });
+		heading.createSpan({
+			text: history.length ? `Last ${history.length} run(s), newest first` : 'Runs appear here after the task runs',
+			cls: 'ai-scheduler-section-desc',
+		});
+		if (!history.length) return;
+		const list = shell.createDiv({ cls: 'ai-scheduler-history-list' });
+		for (const record of history) this.renderHistoryRow(list, record);
+	}
+
+	private renderHistoryRow(list: HTMLElement, record: RunRecord): void {
+		const row = list.createDiv({ cls: 'ai-scheduler-history-row' });
+		const main = row.createDiv({ cls: 'ai-scheduler-history-main' });
+		const badgeClass = record.status === 'skipped' ? 'info' : record.status;
+		main.createSpan({ cls: `ai-scheduler-act-badge ai-scheduler-act-${badgeClass}`, text: record.status });
+		main.createSpan({ cls: 'ai-scheduler-history-time', text: formatDate(record.at) });
+		const details: string[] = [];
+		if (record.durationMs !== undefined) details.push(runDuration(record.durationMs));
+		if (record.retry) details.push(`retry ${record.retry}`);
+		if (details.length) main.createSpan({ cls: 'ai-scheduler-history-meta', text: details.join(' · ') });
+		if (record.output) {
+			const link = main.createSpan({ cls: 'ai-scheduler-history-output', text: record.output });
+			makeClickable(link, `Open ${record.output}`, () => this.openFile(record.output as string));
+		}
+		if (record.error) row.createDiv({ cls: 'ai-scheduler-history-error', text: record.error });
+	}
+
 	onClose(): void {
 		releaseSchedulerModal(this);
 		this.contentEl.empty();
 	}
+}
+
+/** "45 s", "3 min 20 s" or "1 h 5 min". */
+export function runDuration(ms: number): string {
+	const seconds = Math.max(0, Math.round(ms / 1000));
+	if (seconds < 60) return `${seconds} s`;
+	const minutes = Math.floor(seconds / 60);
+	if (minutes < 60) return seconds % 60 ? `${minutes} min ${seconds % 60} s` : `${minutes} min`;
+	const hours = Math.floor(minutes / 60);
+	return minutes % 60 ? `${hours} h ${minutes % 60} min` : `${hours} h`;
 }

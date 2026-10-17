@@ -23,6 +23,28 @@ export interface ReleaseChangelog {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.1.25',
+		date: '2026-10-17',
+		title: 'Result Options, Variables, Retries & Run History',
+		highlights: [
+			'Save results your way: a new note each run, one note replaced each run, added to one note (at the end or under a heading), or added to today\'s daily note.',
+			'Variables in instructions, file names and headings, filled in at run time: {{date}}, {{time}}, {{yesterday}}, {{tomorrow}}, {{weekday}}, {{week}}, {{month}}, {{date:FORMAT}}, {{last_run}}, {{changed_notes}}, {{daily_note}} and {{task}}.',
+			'Run history: each task keeps its last 20 runs (result, duration, the note it wrote, and any error), shown in the task details.',
+		],
+		added: [
+			'Run options: retry a failed run up to 5 times with a wait between tries, and a time limit that stops a run that hangs.',
+			'"Only run when something changed": skips a run when none of the attached notes or folders (or, with nothing attached, no note in the vault) changed since the last successful run.',
+			'"Variables you can use" list in the task editor; click one to insert it.',
+			'A new daily note is created from your Daily notes template.',
+			'The AI planner can use the new result options and variables.',
+		],
+		changed: [
+			'For a failed task, the task details button reads "Retry now".',
+			'A note a task only added to is never overwritten by a later "replace"; a numbered copy is made instead.',
+			'The link highlight in text boxes no longer uses the CSS :has() selector (flagged by the plugin review as slow).',
+		],
+	},
+	{
 		version: '2.1.24',
 		date: '2026-10-08',
 		title: 'Small Polish',

@@ -11,6 +11,7 @@ import { FolderSuggest } from './folderSuggest';
 import { attachLinkHighlight } from './linkHighlight';
 import { AssistantModal } from './AssistantModal';
 import { attachMentionSuggest } from './mentionSuggest';
+import { renderResultSection, renderRunOptions, renderVariableHelp, validateOutput } from './taskOptions';
 
 let fieldLabelCounter = 0;
 
@@ -197,11 +198,13 @@ export class JobModal extends Modal {
 				new Notice(`Attached to context: ${item.path}`);
 			},
 		});
+		renderVariableHelp(detailsCard, promptInput);
 
 		this.renderScheduleEditor(shell);
 
 		const contextPicker = createContextPicker(shell, this.plugin.getVaultContextOptions(), this.job.contextPaths || [], this.app);
-		const resultFolder = this.createResultFolderInput(shell);
+		const readOutput = renderResultSection(shell, this.app, this.job.output);
+		const readRunOptions = renderRunOptions(shell, this.job);
 
 		const footer = shell.createDiv({ cls: 'ai-scheduler-footer-wrap' });
 		makeButton(footer, 'Cancel', () => this.close());
@@ -210,8 +213,9 @@ export class JobModal extends Modal {
 				const state = this.readEditorState();
 				const validation = this.validateState(state);
 				if (validation) { new Notice(validation, 8000); return; }
-				const folder = resultFolder.value.trim();
-				const output = folder ? Object.assign({}, this.job.output || {}, { folder }) : null;
+				const output = readOutput();
+				const outputProblem = validateOutput(output);
+				if (outputProblem) { new Notice(outputProblem, 8000); return; }
 				const newTitle = titleInput.value.trim() || this.job.title;
 				const newPrompt = promptInput.value.trim() || this.job.prompt;
 				if (this.isNew && (!titleInput.value.trim() || !newPrompt)) {
@@ -226,6 +230,7 @@ export class JobModal extends Modal {
 					contextPaths: contextPicker.getPaths(),
 					output,
 					cooldownMinutes: state.cooldownMinutes,
+					...readRunOptions(),
 				});
 				new Notice(wasNew ? `Task #${this.job.taskNumber} created.` : 'Schedule updated and saved.', 6000);
 				this.onSaved();
@@ -284,13 +289,13 @@ export class JobModal extends Modal {
 					throw new Error('AI returned an invalid schedule. Ask for a concrete time or cadence.');
 				}
 				const folder = resultFolder.value.trim();
-				const output = folder ? Object.assign({}, this.job.output || {}, { folder }) : null;
+				const output = Object.assign({}, this.job.output || {}, { folder: folder || undefined });
 				await this.plugin.updateJob(this.job, {
 					title: String(plan.title).trim(),
 					prompt: String(plan.prompt).trim(),
 					schedule,
 					contextPaths,
-					output
+					output: Object.values(output).some(value => value !== undefined) ? output : null,
 				});
 				new Notice('AI updated and saved the scheduled task.', 6000);
 				this.onSaved();
