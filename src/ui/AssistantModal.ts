@@ -384,7 +384,7 @@ export class AssistantModal extends Modal {
 	private renderNextRunStat(stats: HTMLElement): void {
 		const userJobs = this.plugin.jobs.filter(job => !isNightlyReviewJob(job));
 		const summary = summarizeNextRun(userJobs, this.plugin.runningJobs, this.plugin.settings);
-		const card = makeCard(stats, 'ai-scheduler-card-stat ai-scheduler-stat-next');
+		const card = makeCard(stats, 'ai-scheduler-card-stat', 'ai-scheduler-stat-next');
 		if (summary.running.length) card.addClass('ai-scheduler-stat-running');
 
 		const when = summary.nextAt ? (summary.overdue ? 'Due now' : formatDate(summary.nextAt)) : '';

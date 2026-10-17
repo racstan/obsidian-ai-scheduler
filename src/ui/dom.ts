@@ -11,7 +11,8 @@ export function makeButton(parent: HTMLElement, label: string, onClick: (button:
 export function makeCard(parent: HTMLElement, ...extraClasses: string[]): HTMLDivElement {
 	const card = parent.createDiv();
 	card.addClass('ai-scheduler-card');
-	for (const extra of extraClasses) card.addClass(extra);
+	// addClass throws on a name with spaces, which would stop the whole window rendering.
+	for (const extra of extraClasses) for (const name of extra.split(/\s+/).filter(Boolean)) card.addClass(name);
 	return card;
 }
 
