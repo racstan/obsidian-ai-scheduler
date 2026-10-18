@@ -11,6 +11,8 @@ import { CalendarModal } from './CalendarModal';
 import { TemplateModal } from './TemplateModal';
 import { ImportTasksModal } from './ImportTasksModal';
 import { RunAgainModal } from './RunAgainModal';
+import { ApprovalModal } from './ApprovalModal';
+import { PENDING_KIND_LABELS, PendingChange } from '../approval';
 import { Job } from '../types';
 import { quietHoursEnd, startBlockReason } from '../engine';
 import { errorText } from '../util';
@@ -149,6 +151,7 @@ export class AssistantModal extends Modal {
 		// Filled once the action buttons exist: a ready backend is just a button there.
 		const backendSlot = shell.createDiv();
 		this.renderPauseBanner(shell);
+		this.renderApprovals(shell);
 
 		if (this.plugin.isPlanning) {
 			const livePlan = makeCard(shell, 'ai-scheduler-planning-live-card');
@@ -669,6 +672,36 @@ export class AssistantModal extends Modal {
 				this.render();
 			});
 		}
+	}
+
+	/** Approval mode: changes to existing notes waiting for the user, newest first. */
+	private renderApprovals(shell: HTMLElement): void {
+		const waiting = this.plugin.pendingChanges;
+		if (!waiting.length) return;
+		const card = makeCard(shell, 'ai-scheduler-approval-card');
+		const head = card.createDiv({ cls: 'ai-scheduler-approval-head' });
+		head.createDiv({ cls: 'ai-scheduler-alert-title', text: `Awaiting approval (${waiting.length})` });
+		const review = (change: PendingChange) => {
+			this.close();
+			window.setTimeout(() => {
+				new ApprovalModal(this.app, this.plugin, change, () => new AssistantModal(this.app, this.plugin).open()).open();
+			}, 50);
+		};
+		makeButton(head, waiting.length > 1 ? 'Review all' : 'Review', () => review(waiting[0]), true);
+		for (const change of waiting.slice(0, 5)) {
+			const row = card.createDiv({ cls: 'ai-scheduler-approval-row' });
+			const text = row.createDiv({ cls: 'ai-scheduler-approval-text' });
+			text.createDiv({ cls: 'ai-scheduler-task-title', text: change.path });
+			text.createDiv({ cls: 'ai-scheduler-task-meta', text: `${PENDING_KIND_LABELS[change.kind]} · task #${change.taskNumber} (${change.taskTitle}) · ${formatDate(change.createdAt)}` });
+			const actions = row.createDiv({ cls: 'ai-scheduler-task-actions' });
+			makeButton(actions, 'Review', () => review(change));
+			makeButton(actions, 'Reject', async () => {
+				await this.plugin.rejectChange(change);
+				new Notice(`Rejected the change to ${change.path}.`);
+				this.render();
+			}, false, true);
+		}
+		if (waiting.length > 5) card.createDiv({ cls: 'ai-scheduler-hint', text: `And ${waiting.length - 5} more. Review all to go through them one by one.` });
 	}
 
 	private renderPauseBanner(shell: HTMLElement): void {

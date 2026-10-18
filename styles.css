@@ -3096,3 +3096,103 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 	font-size: var(--font-ui-small);
 	min-height: 1.2em;
 }
+
+/* ---- Approval mode ------------------------------------------------------ */
+
+.ai-scheduler-approval-card {
+	border-left: 4px solid var(--interactive-accent);
+	margin-bottom: 18px;
+}
+
+.ai-scheduler-approval-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 8px;
+}
+
+.ai-scheduler-approval-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 8px 0;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.ai-scheduler-approval-text {
+	flex: 1 1 240px;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.ai-scheduler-diff {
+	margin: 14px 0;
+	padding: 8px 0;
+	max-height: 55vh;
+	overflow: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m, 8px);
+	background: var(--background-primary-alt);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.5;
+}
+
+.ai-scheduler-diff-line {
+	display: flex;
+	gap: 8px;
+	padding: 0 12px;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.ai-scheduler-diff-sign {
+	flex: 0 0 1ch;
+	user-select: none;
+	color: var(--text-faint);
+}
+
+.ai-scheduler-diff-add {
+	background: rgba(var(--color-green-rgb), 0.15);
+}
+
+.ai-scheduler-diff-remove {
+	background: rgba(var(--color-red-rgb), 0.15);
+	text-decoration: line-through;
+	text-decoration-color: var(--text-faint);
+}
+
+.ai-scheduler-diff-fold {
+	padding: 2px 12px;
+	color: var(--text-faint);
+	font-style: italic;
+}
+
+/* ---- Phones and tablets ------------------------------------------------- */
+
+body.is-phone .ai-scheduler-stats {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+body.is-phone .ai-scheduler-stat-next {
+	grid-column: 1 / -1;
+}
+
+body.is-phone .ai-scheduler-task-actions,
+body.is-phone .ai-scheduler-footer,
+body.is-phone .ai-scheduler-footer-wrap {
+	flex-wrap: wrap;
+}
+
+body.is-phone .ai-scheduler-task-actions button,
+body.is-phone .ai-scheduler-footer button,
+body.is-phone .ai-scheduler-footer-wrap button {
+	flex: 1 1 auto;
+}
+
+body.is-phone .ai-scheduler-option-grid {
+	grid-template-columns: minmax(0, 1fr);
+}

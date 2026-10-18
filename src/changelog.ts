@@ -31,6 +31,30 @@ export const MAINTAINER: Contributor = {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.2.0',
+		date: '2026-10-18',
+		title: 'Approval Mode, Plugin Integrations & Mobile',
+		highlights: [
+			'Approval mode: with "Ask before changing existing notes", changes a task would make to existing notes wait under "Awaiting approval" on the dashboard, shown as a diff to approve or reject.',
+			'Works with other plugins: Dataview queries in a task\'s instructions, action items as Tasks-plugin checkboxes, and result notes started from a template (with Templater commands).',
+			'Mobile: view, edit and plan tasks on phones and tablets, and choose per device which one runs scheduled tasks.',
+		],
+		added: [
+			'Approval mode for a task: adding its result to an existing note, replacing its result note, and edits the AI proposes in <ai-scheduler-edit> blocks wait for approval. The run history and a notice say when a note was changed directly while the task ran.',
+			'"Awaiting approval" on the dashboard, a review window with a line-by-line diff, a status bar count, and the command "Review changes awaiting approval".',
+			'{{dataview: QUERY}} in a task\'s instructions is replaced by the query\'s result when the task runs (needs the Dataview plugin).',
+			'"Write action items as task checkboxes": "- [ ] …" lines with dates in the Tasks plugin format, and an optional tag on each task.',
+			'"Template note" for new result notes: {{result}} marks where the result goes, {{variables}} work, and Templater commands run when Templater is installed.',
+			'Phones and tablets: the plugin is no longer desktop-only. The calendar opens in the agenda view on phones.',
+			'"Run scheduled tasks on this device", kept per device and not synced, so a vault shared between devices runs each task once.',
+		],
+		changed: [
+			'Claudian and Oh My Claudian say clearly that they work only on desktop when used on a phone or tablet.',
+		],
+		fixed: [],
+		contributors: [MAINTAINER],
+	},
+	{
 		version: '2.1.26',
 		date: '2026-10-17',
 		title: 'Templates, Chained Tasks, Pause & Newer Backends',

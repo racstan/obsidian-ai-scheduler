@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If AI Scheduler is useful to you, you can support its continued development at [buymeacoffee.com/rachitasthana](https://buymeacoffee.com/rachitasthana).
 
+## [2.2.0] - 2026-10-18
+
+### Highlights
+- **Approval mode**: with *Ask before changing existing notes*, changes a task would make to existing notes wait under **Awaiting approval** on the dashboard, shown as a diff to approve or reject.
+- **Works with other plugins**: Dataview queries in a task's instructions, action items as Tasks-plugin checkboxes, and result notes started from a template (with Templater commands).
+- **Mobile**: view, edit and plan tasks on phones and tablets, and choose per device which one runs scheduled tasks.
+
+### Added
+- Approval mode for a task: adding its result to an existing note, replacing its result note, and edits the AI proposes in `<ai-scheduler-edit>` blocks wait for approval. The run history and a notice say when a note was changed directly while the task ran.
+- **Awaiting approval** on the dashboard, a review window with a line-by-line diff, a status bar count, and the command **Review changes awaiting approval**.
+- `{{dataview: QUERY}}` in a task's instructions is replaced by the query's result when the task runs (needs the Dataview plugin).
+- **Write action items as task checkboxes**: `- [ ] …` lines with dates in the Tasks plugin format, and an optional tag on each task.
+- **Template note** for new result notes: `{{result}}` marks where the result goes, `{{variables}}` work, and Templater commands run when Templater is installed.
+- Phones and tablets: the plugin is no longer desktop-only. The calendar opens in the agenda view on phones.
+- **Run scheduled tasks on this device**, kept per device and not synced, so a vault shared between devices runs each task once.
+
+### Changed
+- Claudian and Oh My Claudian say clearly that they work only on desktop when used on a phone or tablet.
+
+### Contributors
+- [@racstan](https://github.com/racstan)
+
 ## [2.1.26] - 2026-10-17
 
 ### Highlights

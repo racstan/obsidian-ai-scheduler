@@ -12,7 +12,7 @@
  * releases its lock in a finally block so a crashed run can never wedge a
  * schedule.
  */
-import { Notice, Plugin, TFile, moment, normalizePath } from 'obsidian';
+import { Platform, Notice, Plugin, TFile, moment, normalizePath } from 'obsidian';
 import { ActivityEntry, AISettings, BACKEND_INFO, Job, JobOutput, ScheduleKind, TaskSchedule } from './types';
 import { DEFAULT_SETTINGS, normalizeJob, parseStoredData } from './settings';
 import {
@@ -52,6 +52,9 @@ import { CalendarModal } from './ui/CalendarModal';
 import { AssistantSettingTab } from './ui/SettingsTab';
 import { ChangelogModal } from './ui/ChangelogModal';
 import { closeExistingSchedulerModals } from './ui/dom';
+import { ApprovalModal } from './ui/ApprovalModal';
+import { APPROVAL_INSTRUCTION, MAX_PENDING, PENDING_KIND_LABELS, PendingChange, editTargetPath, extractEdits } from './approval';
+import { TASKS_INSTRUCTION, expandDataviewQueries, fillTemplate, formatAsTasks, runTemplater } from './integrations';
 import { ScheduleNotesSync } from './notes';
 import { buildIcs } from './ics';
 import { GETTING_STARTED_PATH, gettingStartedNote } from './gettingStarted';
@@ -66,6 +69,49 @@ export class AISchedulerPlugin extends Plugin {
 	settings: AISettings = DEFAULT_SETTINGS;
 	jobs: Job[] = [];
 	deletedJobs: Job[] = [];
+	/**
+	 * Whether this device starts scheduled tasks. Kept on the device, not in the
+	 * synced plugin data, so a vault shared between devices runs each task once.
+	 * Phones and tablets default to no.
+	 */
+	get runsTasksHere(): boolean {
+		const stored = this.loadDeviceSetting('run-tasks-here');
+		return typeof stored === 'boolean' ? stored : !Platform.isMobile;
+	}
+
+	setRunsTasksHere(value: boolean): void {
+		this.saveDeviceSetting('run-tasks-here', value);
+		this.updateStatusBar();
+	}
+
+	private loadDeviceSetting(key: string): unknown {
+		const app = this.app as unknown as { loadLocalStorage?: (key: string) => unknown };
+		if (typeof app.loadLocalStorage === 'function') return app.loadLocalStorage(`ai-scheduler-${key}`);
+		try {
+			const raw = window.localStorage.getItem(`ai-scheduler-${this.app.vault.getName()}-${key}`);
+			return raw === null ? null : JSON.parse(raw);
+		} catch {
+			return null;
+		}
+	}
+
+	private saveDeviceSetting(key: string, value: unknown): void {
+		const app = this.app as unknown as { saveLocalStorage?: (key: string, value: unknown) => void };
+		if (typeof app.saveLocalStorage === 'function') {
+			app.saveLocalStorage(`ai-scheduler-${key}`, value);
+			return;
+		}
+		try {
+			window.localStorage.setItem(`ai-scheduler-${this.app.vault.getName()}-${key}`, JSON.stringify(value));
+		} catch {
+			// Storage unavailable: the default applies.
+		}
+	}
+
+	/** Approval mode: changes to existing notes waiting for the user. */
+	pendingChanges: PendingChange[] = [];
+	/** Approval-mode runs in progress collect the notes changed meanwhile (not by the plugin). */
+	private runWatches = new Set<Set<string>>();
 	activity: ActivityEntry[] = [];
 	running = false;
 	reviewRunning = false;
@@ -105,7 +151,9 @@ export class AISchedulerPlugin extends Plugin {
 		this.jobs = parsed.jobs;
 		this.deletedJobs = parsed.deletedJobs;
 		this.activity = parsed.activity;
-		recoverInterruptedRuns(this.jobs);
+		this.pendingChanges = parsed.pendingChanges;
+		// A "running" task may be running on another device that shares this vault.
+		if (this.runsTasksHere) recoverInterruptedRuns(this.jobs);
 		setTaskTitleLookup(id => this.jobs.find(job => job.id === id)?.title);
 
 		this.assignTaskNumbers();
@@ -277,6 +325,17 @@ export class AISchedulerPlugin extends Plugin {
 			callback: () => new TemplateModal(this.app, this).open(),
 		});
 		this.addCommand({
+			id: 'review-pending-changes',
+			name: 'Review changes awaiting approval',
+			callback: () => {
+				if (!this.pendingChanges.length) {
+					new Notice('No changes are waiting for approval.');
+					return;
+				}
+				new ApprovalModal(this.app, this, this.pendingChanges[0]).open();
+			},
+		});
+		this.addCommand({
 			id: 'export-tasks',
 			name: 'Export tasks to a file',
 			callback: () => {
@@ -389,6 +448,7 @@ export class AISchedulerPlugin extends Plugin {
 				jobs: this.jobs,
 				deletedJobs: this.deletedJobs.slice(0, 100),
 				activity: this.activity.slice(-50),
+				pendingChanges: this.pendingChanges.slice(0, MAX_PENDING),
 			});
 		} catch (error) {
 			console.error('[ai-scheduler] Failed to save state:', error);
@@ -473,6 +533,11 @@ export class AISchedulerPlugin extends Plugin {
 	}
 
 	async catchUpOnStart(): Promise<void> {
+		// Another device runs the tasks: leave missed runs for it to sort out.
+		if (!this.runsTasksHere) {
+			this.startupDone = true;
+			return;
+		}
 		const now = Date.now();
 		const plan = planStartupCatchUp(this.jobs, this.settings, now);
 		for (const job of plan.stale) skipMissedJob(job);
@@ -500,11 +565,11 @@ export class AISchedulerPlugin extends Plugin {
 		const previousTick = this.lastTickAt;
 		this.lastTickAt = nowMs;
 		// The exported window moves with time (past runs drop off, new days join).
-		if (this.settings.icsExportEnabled && nowMs - this.lastIcsExportAt > 3600000) this.requestIcsExport();
+		if (this.settings.icsExportEnabled && this.runsTasksHere && nowMs - this.lastIcsExportAt > 3600000) this.requestIcsExport();
 		// A long gap between ticks means the computer slept with Obsidian open.
 		// Jobs that fell due during the gap follow the same catch-up policy as a
 		// restart instead of all firing at once on wake.
-		if (nowMs - previousTick > TICK_MS * 8) {
+		if (nowMs - previousTick > TICK_MS * 8 && this.runsTasksHere) {
 			const dueDuringGap = this.jobs.filter(job => job.nextRunAt && new Date(job.nextRunAt).getTime() < previousTick);
 			const plan = planStartupCatchUp(dueDuringGap, this.settings, nowMs);
 			if (plan.stale.length) {
@@ -522,7 +587,7 @@ export class AISchedulerPlugin extends Plugin {
 		const blocked = startBlockReason(this.settings, new Date());
 		// Before the startup catch-up rules ran, a stale missed task must not slip through.
 		const due = dueJobs(this.jobs, Date.now())
-			.filter(job => this.manualRuns.has(job.id) || (this.startupDone && !blocked));
+			.filter(job => this.manualRuns.has(job.id) || (this.startupDone && !blocked && this.runsTasksHere));
 		if (!due.length) {
 			if (this.pendingVaultEvents.length) {
 				const events = this.pendingVaultEvents.splice(0);
@@ -609,6 +674,8 @@ export class AISchedulerPlugin extends Plugin {
 		this.updateStatusBar();
 		await this.saveState();
 		const variables = this.variablesFor(job, startedAt, lastRun);
+		const watched = job.approval && !isReview ? new Set<string>() : null;
+		const pendingBefore = this.pendingChanges.length;
 		try {
 			const execution = await backends.resolveJobExecution(this, job);
 			Object.assign(job, {
@@ -620,7 +687,7 @@ export class AISchedulerPlugin extends Plugin {
 			});
 			await this.saveState();
 			const context = this.getJobContext(job);
-			const instructions = expandVariables(job.prompt, variables);
+			const instructions = await this.taskInstructions(job, variables);
 			const prompt = isReview
 				? ''
 				// Follow-ups may not propose further follow-ups, which caps the chain at one level.
@@ -631,9 +698,11 @@ export class AISchedulerPlugin extends Plugin {
 					context.paths,
 					job.source !== 'self-talk',
 				);
+			if (watched) this.runWatches.add(watched);
 			const reply = isReview
 				? await this.runDailyReview(false, execution, 'periodic', previousRunAt, run.signal)
 				: await backends.sendToAI(this, prompt, execution, context, run.signal);
+			if (watched) this.runWatches.delete(watched);
 			// Reset by the user while waiting: don't record, write or follow up.
 			if (cancelled()) return;
 			if (timedOut) throw new Error(`Timed out after ${timeoutMinutes} minute(s).`);
@@ -646,7 +715,13 @@ export class AISchedulerPlugin extends Plugin {
 			job.lastError = null;
 			job.status = 'completed';
 			// Reviews write their own report in runDailyReview.
-			if (!isReview) await this.saveRunOutput(job, reply, variables);
+			if (!isReview) {
+				// Approval mode: edits the AI proposes wait for approval; the rest is the result.
+				const { edits, rest } = job.approval ? extractEdits(reply) : { edits: [], rest: reply };
+				for (const proposed of edits) this.stageEdit(job, proposed.path, proposed.content);
+				const result = rest || (edits.length ? `The AI proposed ${edits.length} change(s) to existing notes; they are waiting for your approval.` : reply);
+				await this.saveRunOutput(job, result, variables);
+			}
 			// Counted only once the output is saved: a failed save is a failed run.
 			job.runCount = Number(job.runCount || 0) + 1;
 			job.retryCount = 0;
@@ -659,7 +734,20 @@ export class AISchedulerPlugin extends Plugin {
 			// Log only what this run wrote, not the job's whole output history.
 			// (lastOutputPath was cleared at the start of the run.)
 			const runOutputs = job.lastOutputPath ? [job.lastOutputPath] : [];
+			const pendingCount = this.pendingChanges.length - pendingBefore;
+			const changedDirectly = watched ? [...watched].slice(0, 20) : [];
+			if (pendingCount > 0) {
+				new Notice(`${job.title}: ${pendingCount} change${pendingCount === 1 ? ' is' : 's are'} waiting for your approval.`, 8000);
+				this.logActivity('approval', `Task #${job.taskNumber}: ${pendingCount} change(s) waiting for approval`, job.id);
+			}
+			if (changedDirectly.length) {
+				// The backend's own tools can still edit notes; say so instead of hiding it.
+				this.logActivity('approval', `Task #${job.taskNumber}: notes changed directly while it ran: ${changedDirectly.join(', ')}`, job.id);
+				new Notice(`${job.title}: ${changedDirectly.length} note(s) changed directly while it ran, not through approval. See the run history.`, 9000);
+			}
 			recordRun(job, {
+				...(pendingCount > 0 ? { pending: pendingCount } : {}),
+				...(changedDirectly.length ? { changed: changedDirectly } : {}),
 				at: startedAt.toISOString(),
 				status: 'completed',
 				durationMs: Date.now() - startedAt.getTime(),
@@ -703,6 +791,7 @@ export class AISchedulerPlugin extends Plugin {
 				}
 			}
 		} finally {
+			if (watched) this.runWatches.delete(watched);
 			if (timer !== null) window.clearTimeout(timer);
 			if (this.activeRuns.get(job.id) === run) this.activeRuns.delete(job.id);
 		}
@@ -735,10 +824,23 @@ export class AISchedulerPlugin extends Plugin {
 	}
 
 	/** The full prompt a run would send now, with variables filled in. Nothing is sent. */
-	previewPrompt(job: Job): string {
+	async previewPrompt(job: Job): Promise<string> {
 		const variables = this.variablesFor(job, new Date(), this.lastSuccessDate(job));
 		const context = getPathsContext(this.app, job.contextPaths || []);
-		return executionPrompt(expandVariables(job.prompt, variables), context.paths, job.source !== 'self-talk');
+		return executionPrompt(await this.taskInstructions(job, variables), context.paths, job.source !== 'self-talk');
+	}
+
+	/**
+	 * A task's instructions as sent: Dataview queries run, {{variables}} filled
+	 * in, plus what its result options ask of the AI (Tasks-plugin task lines,
+	 * proposing edits for approval).
+	 */
+	async taskInstructions(job: Job, variables: VariableContext): Promise<string> {
+		const withQueries = await expandDataviewQueries(this.app, job.prompt, job.notePath || '');
+		const parts = [expandVariables(withQueries, variables)];
+		if (job.output?.tasks) parts.push(TASKS_INSTRUCTION);
+		if (job.approval) parts.push(APPROVAL_INSTRUCTION);
+		return parts.join('\n\n');
 	}
 
 	/** Queues the tasks that run after `finished`, which just completed. */
@@ -854,31 +956,141 @@ export class AISchedulerPlugin extends Plugin {
 	}
 
 	/** Writes a run's result where the task's output mode says. */
-	async saveRunOutput(job: Job, reply: string, variables: VariableContext): Promise<void> {
+	async saveRunOutput(job: Job, rawReply: string, variables: VariableContext): Promise<void> {
 		const mode = outputMode(job.output);
 		const folder = job.output?.folder || this.getDefaultOutputFolder();
 		const filename = job.output?.filename ? expandVariables(job.output.filename, variables, true).trim() : '';
+		const reply = job.output?.tasks ? formatAsTasks(rawReply, job.output.taskTag) : rawReply;
 		if (mode === 'append' || mode === 'daily') {
 			const heading = job.output?.heading ? expandVariables(job.output.heading, variables).split('\n')[0] : undefined;
 			const path = mode === 'daily'
 				? this.dailyNotePathFor(variables.now)
 				: this.safeNotePath(folder, filename || outputTitle(job.title));
 			const stamp = this.formatDate(variables.now, 'YYYY-MM-DD HH:mm');
-			await this.appendToNote(path, appendBlock(job.title, stamp, reply), heading, mode === 'daily');
+			const block = appendBlock(job.title, stamp, reply);
+			// Approval mode: adding to a note that already exists waits for approval.
+			if (job.approval && this.app.vault.getAbstractFileByPath(path) instanceof TFile) {
+				this.stageChange(job, { kind: 'append', path, content: block, heading, dailyNote: mode === 'daily' });
+				return;
+			}
+			await this.appendToNote(path, block, heading, mode === 'daily');
 			// Not recorded as the plugin's own file: it was the user's note, so a
 			// later "replace" must never overwrite it.
 			job.lastOutputPath = path;
 			job.lastOutputAppended = true;
 			return;
 		}
+		const content = await this.resultNoteContent(job, reply, variables);
 		if (mode === 'replace') {
-			this.recordOutput(job, await this.writeOutput(folder, filename || outputTitle(job.title), reply));
+			const name = filename || outputTitle(job.title);
+			const target = this.safeNotePath(folder, name);
+			// Approval mode: replacing the existing result note waits for approval.
+			if (job.approval && this.app.vault.getAbstractFileByPath(target) instanceof TFile && this.isOwnOutput(target)) {
+				this.stageChange(job, { kind: 'replace', path: target, content });
+				return;
+			}
+			await this.finishResultNote(job, await this.writeOutput(folder, name, content));
 			return;
 		}
 		// A new note every run: a fixed name gets a number instead of replacing the last one.
-		this.recordOutput(job, filename
-			? await this.writeOutput(folder, filename, reply, true)
-			: await this.writeOutput(folder, `${localTimestampKey()} ${outputTitle(job.title)}`, reply));
+		await this.finishResultNote(job, filename
+			? await this.writeOutput(folder, filename, content, true)
+			: await this.writeOutput(folder, `${localTimestampKey()} ${outputTitle(job.title)}`, content));
+	}
+
+	/** A new or replaced result note's text: the reply, or the task's template with the reply in it. */
+	private async resultNoteContent(job: Job, reply: string, variables: VariableContext): Promise<string> {
+		const templatePath = job.output?.template;
+		if (!templatePath) return reply;
+		// An exact vault path first, then a link-style name such as "Result template".
+		const exact = normalizePath(/\.md$/i.test(templatePath) ? templatePath : `${templatePath}.md`);
+		const file = this.app.vault.getAbstractFileByPath(exact)
+			?? this.app.metadataCache.getFirstLinkpathDest(templatePath.replace(/\.md$/i, ''), '');
+		if (!(file instanceof TFile)) {
+			this.logActivity('failed', `Task #${job.taskNumber}: template "${templatePath}" not found; saved the result without it`, job.id);
+			return reply;
+		}
+		const template = expandVariables(await this.app.vault.read(file), variables);
+		return fillTemplate(template, reply);
+	}
+
+	/** Records a result note and, for a templated task, lets Templater fill in its commands. */
+	private async finishResultNote(job: Job, path: string): Promise<void> {
+		this.recordOutput(job, path);
+		if (!job.output?.template) return;
+		const file = this.app.vault.getAbstractFileByPath(path);
+		if (!(file instanceof TFile)) return;
+		try {
+			this.markSelfWrite(path);
+			await runTemplater(this.app, file);
+		} catch (error) {
+			this.logActivity('failed', `Task #${job.taskNumber}: Templater could not process ${path} (${errorText(error)})`, job.id);
+		}
+	}
+
+	/** True when `path` is a note one of the tasks created (not one it only added to). */
+	isOwnOutput(path: string): boolean {
+		for (const job of [...this.jobs, ...this.deletedJobs]) {
+			if (job.lastOutputPath === path && !job.lastOutputAppended) return true;
+			if (job.lastOutputFiles?.includes(path)) return true;
+		}
+		return false;
+	}
+
+	/** Queues a change to an existing note for approval. */
+	private stageChange(job: Job, change: Pick<PendingChange, 'kind' | 'path' | 'content' | 'heading' | 'dailyNote'>): void {
+		this.pendingChanges = [{
+			id: `change-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+			jobId: job.id,
+			taskNumber: job.taskNumber,
+			taskTitle: job.title,
+			createdAt: new Date().toISOString(),
+			...change,
+		}, ...this.pendingChanges].slice(0, MAX_PENDING);
+		this.updateStatusBar();
+	}
+
+	/** An edit the AI proposed: queued when its path is a safe vault path, otherwise logged and dropped. */
+	private stageEdit(job: Job, rawPath: string, content: string): void {
+		const path = editTargetPath(rawPath);
+		if (!path) {
+			this.logActivity('failed', `Task #${job.taskNumber}: ignored a proposed edit to "${rawPath}" (not a note path inside the vault)`, job.id);
+			return;
+		}
+		this.stageChange(job, { kind: 'edit', path, content });
+	}
+
+	/** Applies an approved change. */
+	async approveChange(change: PendingChange): Promise<void> {
+		const slash = change.path.lastIndexOf('/');
+		const folder = slash >= 0 ? change.path.slice(0, slash) : '';
+		this.checkSafeFolder(folder);
+		if (change.kind === 'append') {
+			await this.appendToNote(change.path, change.content, change.heading, change.dailyNote === true);
+		} else {
+			const existing = this.app.vault.getAbstractFileByPath(change.path);
+			if (existing && !(existing instanceof TFile)) throw new Error(`"${change.path}" is a folder, not a note.`);
+			await this.ensureFolder(folder);
+			this.markSelfWrite(change.path);
+			if (existing instanceof TFile) await this.app.vault.process(existing, () => change.content);
+			else await this.app.vault.create(change.path, change.content);
+		}
+		const job = this.jobs.find(candidate => candidate.id === change.jobId);
+		if (job && change.kind !== 'edit') {
+			job.lastOutputPath = change.path;
+			job.lastOutputAppended = change.kind === 'append';
+		}
+		this.pendingChanges = this.pendingChanges.filter(candidate => candidate.id !== change.id);
+		this.logActivity('approval', `Approved: ${PENDING_KIND_LABELS[change.kind].toLowerCase()} ${change.path} (task #${change.taskNumber})`, change.jobId);
+		this.updateStatusBar();
+		await this.saveState();
+	}
+
+	async rejectChange(change: PendingChange): Promise<void> {
+		this.pendingChanges = this.pendingChanges.filter(candidate => candidate.id !== change.id);
+		this.logActivity('approval', `Rejected: ${PENDING_KIND_LABELS[change.kind].toLowerCase()} ${change.path} (task #${change.taskNumber})`, change.jobId);
+		this.updateStatusBar();
+		await this.saveState();
 	}
 
 	/**
@@ -922,6 +1134,7 @@ export class AISchedulerPlugin extends Plugin {
 		if (!file || !file.path) return;
 		const normPath = normalizePath(file.path);
 		if (this.selfWrites.has(normPath)) return;
+		for (const watch of this.runWatches) watch.add(normPath);
 		const normReport = this.getPeriodicReviewFolder();
 		const normSchedule = normalizePath(this.settings.scheduleFolder || 'AI Schedules');
 		if (ScheduleNotesSync.isInside(normReport, normPath) || ScheduleNotesSync.isInside(normSchedule, normPath)) {
@@ -1841,6 +2054,7 @@ export class AISchedulerPlugin extends Plugin {
 		return JSON.stringify([
 			this.jobs.map(job => [job.id, job.title, job.status, job.enabled, job.nextRunAt, job.lastRunAt, job.lastStatus, job.runCount, job.taskNumber]),
 			this.deletedJobs.length,
+			this.pendingChanges.length,
 			this.activity[0]?.id,
 			this.isPlanning,
 			this.reviewRunning,
@@ -1852,6 +2066,10 @@ export class AISchedulerPlugin extends Plugin {
 	/** Status bar text when nothing runs: paused, quiet hours, or the next run. */
 	private idleStatusText(): { text: string; tooltip: string } | null {
 		const now = new Date();
+		if (this.pendingChanges.length) {
+			const count = this.pendingChanges.length;
+			return { text: `AI: ${count} to approve`, tooltip: `${count} change${count === 1 ? '' : 's'} to existing notes waiting for your approval. Click to open the dashboard.` };
+		}
 		const block = startBlockReason(this.settings, now);
 		if (block === 'paused') {
 			const until = this.settings.pausedUntil ? ` until ${shortTime(new Date(this.settings.pausedUntil), now)}` : '';

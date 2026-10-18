@@ -43,6 +43,7 @@ export const VARIABLE_HELP: VariableHelp[] = [
 	{ name: '{{task}}', description: 'the task title' },
 	{ name: '{{previous_result}}', description: "for a task that runs after another: that task's reply" },
 	{ name: '{{previous_output}}', description: 'for a task that runs after another: a link to its result note' },
+	{ name: '{{dataview: LIST FROM #tag}}', description: 'the result of a Dataview query (needs the Dataview plugin); instructions only' },
 ];
 
 const MAX_CHANGED_NOTES = 50;

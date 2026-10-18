@@ -455,6 +455,13 @@ export class AssistantSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Background execution & notifications').setHeading();
 
 		new Setting(containerEl)
+			.setName('Run scheduled tasks on this device')
+			.setDesc('Applies to this device only and is not synced. If several devices share this vault through sync, turn it on for one of them so each task runs once. Phones and tablets start with it off. Running a task by hand works on any device where your AI backend is available.')
+			.addToggle(toggle => toggle.setValue(this.plugin.runsTasksHere).onChange(value => {
+				this.plugin.setRunsTasksHere(value);
+			}));
+
+		new Setting(containerEl)
 			.setName('In-app completion notices')
 			.setDesc('Show an Obsidian notice when an AI job or review finishes.')
 			.addToggle(toggle => toggle.setValue(this.plugin.settings.notifyOnCompletion).onChange(value => {

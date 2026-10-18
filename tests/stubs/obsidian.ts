@@ -17,6 +17,8 @@ export class Notice {
 }
 export type App = Record<string, unknown>;
 
+export const Platform = { isMobile: false, isDesktop: true, isPhone: false };
+
 export function normalizePath(path: string): string {
 	return String(path || '').replace(/\\/g, '/').replace(/\/+/g, '/').replace(/^\/|\/$/g, '') || '/';
 }

@@ -3,7 +3,7 @@
  * AbstractInputSuggest so the dropdown matches the user's theme. The user can
  * type any path or pick an existing folder (subfolders included).
  */
-import { AbstractInputSuggest, App, TFolder } from 'obsidian';
+import { AbstractInputSuggest, App, TFile, TFolder } from 'obsidian';
 
 export class FolderSuggest extends AbstractInputSuggest<TFolder> {
 	private readonly vaultApp: App;
@@ -45,6 +45,41 @@ export class FolderSuggest extends AbstractInputSuggest<TFolder> {
 	selectSuggestion(folder: TFolder): void {
 		this.setValue(folder.path);
 		// Let listeners (e.g. settings that save on input) see the new value.
+		this.input.dispatchEvent(new Event('input', { bubbles: true }));
+		this.close();
+	}
+}
+
+/** Type-ahead note picker (Markdown notes outside hidden folders), e.g. for a template. */
+export class NoteSuggest extends AbstractInputSuggest<TFile> {
+	private readonly vaultApp: App;
+	private readonly input: HTMLInputElement;
+
+	constructor(app: App, input: HTMLInputElement) {
+		super(app, input);
+		this.vaultApp = app;
+		this.input = input;
+	}
+
+	protected getSuggestions(query: string): TFile[] {
+		const q = query.trim().toLowerCase();
+		return this.vaultApp.vault.getMarkdownFiles()
+			.filter(file => !file.path.split('/').some(part => part.startsWith('.')))
+			.filter(file => !q || file.path.toLowerCase().includes(q))
+			.sort((a, b) => Number(!a.basename.toLowerCase().startsWith(q)) - Number(!b.basename.toLowerCase().startsWith(q)) || a.path.localeCompare(b.path))
+			.slice(0, 50);
+	}
+
+	renderSuggestion(file: TFile, el: HTMLElement): void {
+		el.addClass('ai-scheduler-folder-suggestion');
+		el.createDiv({ cls: 'ai-scheduler-folder-suggestion-name', text: file.basename });
+		if (file.parent && !file.parent.isRoot()) {
+			el.createDiv({ cls: 'ai-scheduler-folder-suggestion-path', text: file.parent.path });
+		}
+	}
+
+	selectSuggestion(file: TFile): void {
+		this.setValue(file.path);
 		this.input.dispatchEvent(new Event('input', { bubbles: true }));
 		this.close();
 	}

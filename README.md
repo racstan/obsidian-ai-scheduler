@@ -63,6 +63,12 @@ Supported versions: Claudian 2.x (including the 2.3.2x releases), Oh My Claudian
 
 **Prompt preview** — See exactly what a task would send, with variables filled in, before it runs.
 
+**Approval mode** — Turn on *Ask before changing existing notes* for a task, and every change it would make to a note that already exists waits in an **Awaiting approval** list on the dashboard: adding its result to a note, replacing its result note, and edits the AI proposes. Each change shows as a diff that you approve or reject. New notes are still created right away. The AI is asked to propose edits instead of making them; if your AI backend edits a note itself anyway, the run history says so.
+
+**Works with other plugins** — Use a [Dataview](https://github.com/blacksmithgu/obsidian-dataview) query in a task's instructions, e.g. `{{dataview: LIST FROM #project WHERE !completed}}`, and its result is filled in when the task runs. Have action items written as task checkboxes (`- [ ] …`, with dates in the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin format and an optional tag). Start result notes from a template note: put `{{result}}` where the result goes, and [Templater](https://github.com/SilentVoid13/Templater) commands in it run when Templater is installed. All three are optional; nothing is needed unless you use them.
+
+**Mobile** — On phones and tablets you can view, edit and plan tasks. Claudian and Oh My Claudian work only on desktop, so tasks run on your computer; with Copilot you can also run tasks by hand on mobile. A per-device setting, *Run scheduled tasks on this device*, decides which device starts scheduled tasks, so a vault synced between devices runs each task once (phones and tablets start with it off).
+
 **Trash & restore** — Deleted tasks go to a trash section. You can restore them individually, restore all at once, or permanently delete them.
 
 ---

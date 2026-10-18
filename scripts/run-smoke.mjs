@@ -78,6 +78,7 @@ const moment = (date) => ({
 module.exports = {
 	Plugin, Modal, PluginSettingTab, Notice, TFile, TFolder, TAbstractFile, AbstractInputSuggest,
 	FuzzySuggestModal,
+	Platform: { isMobile: false, isDesktop: true, isPhone: false },
 	normalizePath,
 	moment,
 	parseYaml: (text) => {
@@ -131,7 +132,7 @@ function makeClaudian() {
 					const content = payload && payload.content || '';
 					tab.state.messages.push({
 						role: 'assistant',
-						content: content.includes('planning brain') ? (tab.plannerReply ?? PLANNER_REPLY) : GENERIC_REPLY,
+						content: content.includes('planning brain') ? (tab.plannerReply ?? PLANNER_REPLY) : (tab.taskReply ?? GENERIC_REPLY),
 					});
 				},
 			},
@@ -161,6 +162,9 @@ function fakeApp() {
 	const eventListeners = { modify: [], create: [], delete: [], rename: [] };
 	const app = {
 		_pluginData: null,
+		_localStorage: {},
+		loadLocalStorage(key) { return key in this._localStorage ? this._localStorage[key] : null; },
+		saveLocalStorage(key, value) { this._localStorage[key] = value; },
 		_savedCount: 0,
 		workspace: {
 			getActiveFile: () => null,
@@ -538,6 +542,62 @@ async function main() {
 	await second.runJobNow(appender);
 	const dailyNote = app.vault.getAbstractFileByPath('Daily/' + today + '.md');
 	assert.ok(dailyNote && dailyNote._content.includes('## AI') && dailyNote._content.includes(GENERIC_REPLY), 'daily note gets the result under the heading');
+
+	// Approval mode: adding to an existing note waits; approving applies it.
+	appender.approval = true;
+	const dailyBefore = dailyNote._content;
+	await second.runJobNow(appender);
+	assert.equal(dailyNote._content, dailyBefore, 'an existing note is not changed before approval');
+	assert.equal(second.pendingChanges.length, 1);
+	assert.equal(second.pendingChanges[0].kind, 'append');
+	assert.ok(claudianTab.lastPrompt.includes('ai-scheduler-edit'), 'the AI is told to propose edits');
+	assert.equal(appender.history[appender.history.length - 1].pending, 1);
+	await second.approveChange(second.pendingChanges[0]);
+	assert.equal(dailyNote._content.split(GENERIC_REPLY).length - 1, 2, 'approved: the result is added');
+	assert.equal(second.pendingChanges.length, 0);
+	// An edit the AI proposes is held, and rejecting drops it.
+	claudianTab.taskReply = 'Summary.\\n<ai-scheduler-edit path="Journal/today.md">\\nrewritten\\n</ai-scheduler-edit>';
+	await second.runJobNow(appender);
+	const proposed = second.pendingChanges.find(change => change.kind === 'edit');
+	assert.ok(proposed && proposed.path === 'Journal/today.md' && proposed.content === 'rewritten', 'proposed edit is staged');
+	assert.equal(app.vault.getAbstractFileByPath('Journal/today.md')._content, 'my own note', 'not applied before approval');
+	assert.ok(!app._pluginData.pendingChanges.some(change => change.content.includes('ai-scheduler-edit')), 'the edit block is not part of the saved result');
+	for (const change of [...second.pendingChanges]) await second.rejectChange(change);
+	assert.equal(app.vault.getAbstractFileByPath('Journal/today.md')._content, 'my own note', 'rejected edit leaves the note alone');
+	delete claudianTab.taskReply;
+	appender.approval = undefined;
+
+	// Tasks format and a template for new result notes.
+	await app.vault.create('Templates/Result.md', '# {{task}} {{date}}\\n\\n{{result}}\\n\\nEnd');
+	claudianTab.taskReply = 'Plan:\\n* [ ] Call Sam\\n- [x] Old';
+	appender.output = { folder: 'Results', mode: 'new', tasks: true, taskTag: 'ai', template: 'Templates/Result.md' };
+	await second.runJobNow(appender);
+	const templated = app.vault.getAbstractFileByPath(appender.lastOutputPath);
+	assert.ok(templated._content.startsWith('# Appender ' + today), 'template with variables');
+	assert.ok(templated._content.includes('- [ ] Call Sam #ai\\n- [x] Old'), 'task lines for the Tasks plugin');
+	assert.ok(templated._content.trimEnd().endsWith('End'), 'result placed at {{result}}');
+	assert.ok(claudianTab.lastPrompt.includes('Tasks plugin format'), 'the AI is asked for task lines');
+	delete claudianTab.taskReply;
+
+	// Dataview queries in the instructions are run before sending.
+	app.plugins.plugins.dataview = { api: { queryMarkdown: async query => ({ successful: true, value: 'RESULT OF ' + query }) } };
+	appender.prompt = 'Look at {{dataview: LIST FROM #todo}}';
+	appender.output = null;
+	await second.runJobNow(appender);
+	assert.ok(claudianTab.lastPrompt.includes('RESULT OF LIST FROM #todo'), 'Dataview result in the prompt');
+	delete app.plugins.plugins.dataview;
+
+	// A device set not to run tasks leaves due tasks alone; "Run now" still works there.
+	second.setRunsTasksHere(false);
+	assert.equal(second.runsTasksHere, false);
+	const elsewhere = await second.addJob({ title: 'Runs elsewhere', prompt: 'p', schedule: { kind: 'daily', time: '09:00' } });
+	elsewhere.nextRunAt = new Date(Date.now() - 1000).toISOString();
+	await second.tick();
+	assert.equal(elsewhere.runCount, 0, 'not started on this device');
+	await second.runJobNow(elsewhere);
+	assert.equal(elsewhere.runCount, 1, 'Run now works on any device');
+	second.setRunsTasksHere(true);
+	await second.deleteJob(elsewhere);
 
 	// A failed run is retried after the delay, and the count resets on success.
 	const flaky = await second.addJob({ title: 'Flaky', prompt: 'p', schedule: { kind: 'daily', time: '09:00' }, retries: 1, retryDelayMinutes: 2 });

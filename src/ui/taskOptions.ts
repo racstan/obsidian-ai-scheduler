@@ -9,7 +9,7 @@ import { DEFAULT_RETRY_DELAY_MINUTES, MAX_RETRIES } from '../engine';
 import { VARIABLE_HELP } from '../variables';
 import { normalizeTags } from '../settings';
 import { linkLabel, makeCard } from './dom';
-import { FolderSuggest } from './folderSuggest';
+import { FolderSuggest, NoteSuggest } from './folderSuggest';
 
 const MODE_HINTS: Record<OutputMode, string> = {
 	new: 'Every run saves a new note. A file name is optional; without one the note is named after the date, time and task.',
@@ -59,6 +59,24 @@ export function renderResultSection(shell: HTMLElement, app: App, output: JobOut
 	const headingInput = textInput('e.g. AI summary (leave empty to add at the end)', output?.heading || '');
 	const headingField = field(card, 'Under heading (optional)', headingInput);
 	const nameLabel = nameField.querySelector('.ai-scheduler-form-label');
+	const templateInput = textInput('e.g. Templates/AI result', output?.template || '');
+	new NoteSuggest(app, templateInput);
+	const templateField = field(card, 'Template note (optional)', templateInput);
+	templateField.createDiv({
+		cls: 'ai-scheduler-hint',
+		text: 'New result notes start from this note. Put {{result}} where the result goes (otherwise it goes at the end). Variables such as {{date}} work, and Templater commands run when Templater is installed.',
+	});
+
+	const tasksRow = card.createEl('label', { cls: 'ai-scheduler-check-row' });
+	const tasksCheck = tasksRow.createEl('input', { type: 'checkbox' });
+	tasksCheck.checked = output?.tasks === true;
+	tasksRow.createSpan({ text: 'Write action items as task checkboxes' });
+	const tagInput = textInput('e.g. ai (optional)', output?.taskTag || '');
+	const tagField = field(card, 'Tag for each task', tagInput);
+	card.createDiv({
+		cls: 'ai-scheduler-hint',
+		text: 'Action items come out as "- [ ] …" lines, with dates in the Tasks plugin format, so they show up in your task lists and Tasks queries.',
+	});
 
 	const update = () => {
 		const mode = modeSelect.value as OutputMode;
@@ -67,9 +85,12 @@ export function renderResultSection(shell: HTMLElement, app: App, output: JobOut
 		nameField.toggleClass('ai-scheduler-hidden', mode === 'daily');
 		headingField.toggleClass('ai-scheduler-hidden', mode !== 'append' && mode !== 'daily');
 		nameLabel?.setText(mode === 'new' ? 'File name (optional)' : 'File name');
+		templateField.toggleClass('ai-scheduler-hidden', mode === 'append' || mode === 'daily');
+		tagField.toggleClass('ai-scheduler-hidden', !tasksCheck.checked);
 		folderInput.placeholder = mode === 'new' || mode === 'replace' ? 'Default result folder' : 'Default result folder, or type a folder';
 	};
 	modeSelect.onchange = update;
+	tasksCheck.onchange = update;
 	update();
 
 	return () => {
@@ -80,6 +101,12 @@ export function renderResultSection(shell: HTMLElement, app: App, output: JobOut
 			if (nameInput.value.trim()) result.filename = nameInput.value.trim();
 		}
 		if ((mode === 'append' || mode === 'daily') && headingInput.value.trim()) result.heading = headingInput.value.trim();
+		if ((mode === 'new' || mode === 'replace') && templateInput.value.trim()) result.template = templateInput.value.trim();
+		if (tasksCheck.checked) {
+			result.tasks = true;
+			const tag = tagInput.value.trim().replace(/^#+/, '');
+			if (tag) result.taskTag = tag;
+		}
 		if (mode !== 'new') result.mode = mode;
 		return Object.keys(result).length ? result : null;
 	};
@@ -99,6 +126,7 @@ export interface RunOptions {
 	retryDelayMinutes?: number;
 	timeoutMinutes?: number;
 	onlyIfChanged?: boolean;
+	approval?: boolean;
 }
 
 function readInt(input: HTMLInputElement, min: number, max: number): number | undefined {
@@ -112,7 +140,7 @@ function readInt(input: HTMLInputElement, min: number, max: number): number | un
 export function renderRunOptions(shell: HTMLElement, job: Job): () => RunOptions {
 	const card = makeCard(shell, 'ai-scheduler-card-tight', 'ai-scheduler-card-flush');
 	const details = card.createEl('details', { cls: 'ai-scheduler-details' });
-	const configured = !!(job.retries || job.timeoutMinutes || job.onlyIfChanged);
+	const configured = !!(job.retries || job.timeoutMinutes || job.onlyIfChanged || job.approval);
 	details.open = configured;
 	details.createEl('summary', { cls: 'ai-scheduler-lead', text: 'Run options' });
 
@@ -133,7 +161,17 @@ export function renderRunOptions(shell: HTMLElement, job: Job): () => RunOptions
 		text: 'Skips a run when none of the attached notes or folders changed since the last successful run. With nothing attached, any note in the vault counts. Results the plugin wrote itself never count.',
 	});
 
+	const approvalRow = details.createEl('label', { cls: 'ai-scheduler-check-row' });
+	const approvalCheck = approvalRow.createEl('input', { type: 'checkbox' });
+	approvalCheck.checked = job.approval === true;
+	approvalRow.createSpan({ text: 'Ask before changing existing notes' });
+	details.createDiv({
+		cls: 'ai-scheduler-hint',
+		text: 'Adding the result to an existing note, replacing the result note, and edits the AI proposes wait under "Awaiting approval" until you approve them. New notes are still created right away. The AI is asked to propose edits instead of making them; if your AI backend still edits a note itself, the run history says so.',
+	});
+
 	return () => ({
+		approval: approvalCheck.checked ? true : undefined,
 		retries: readInt(retries, 0, MAX_RETRIES),
 		retryDelayMinutes: readInt(delay, 1, 1440),
 		timeoutMinutes: readInt(timeout, 0, 1440) || undefined,

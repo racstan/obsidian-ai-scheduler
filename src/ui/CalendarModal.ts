@@ -1,4 +1,4 @@
-import { App, Modal, Notice, TFile, normalizePath } from 'obsidian';
+import { Platform, App, Modal, Notice, TFile, normalizePath } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
 import { Job } from '../types';
 import { normalizeJob } from '../settings';
@@ -82,7 +82,8 @@ export class CalendarModal extends Modal {
 		this.currentYear = initialDate.getFullYear();
 		this.currentMonth = initialDate.getMonth();
 		this.selectedDate = new Date(initialDate);
-		this.viewMode = initialViewMode;
+		// A month grid is too cramped on a phone; the agenda list fits.
+		this.viewMode = initialViewMode === 'month' && Platform.isPhone ? 'agenda' : initialViewMode;
 	}
 
 	onOpen(): void {

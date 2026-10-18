@@ -410,6 +410,12 @@ export class TaskViewModal extends Modal {
 			makeClickable(link, `Open ${record.output}`, () => this.openFile(record.output as string));
 		}
 		if (record.error) row.createDiv({ cls: 'ai-scheduler-history-error', text: record.error });
+		if (record.pending) {
+			row.createDiv({ cls: 'ai-scheduler-history-meta', text: `${record.pending} change${record.pending === 1 ? '' : 's'} sent for approval` });
+		}
+		if (record.changed?.length) {
+			row.createDiv({ cls: 'ai-scheduler-history-error', text: `Changed directly while it ran (not through approval): ${record.changed.join(', ')}` });
+		}
 	}
 
 	onClose(): void {

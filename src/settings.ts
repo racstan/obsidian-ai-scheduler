@@ -4,6 +4,7 @@ import { ActivityEntry, AISettings, Job, JobOutput, OUTPUT_MODES, OutputMode, Ru
 import { getScheduleNextRun, normalizeMaxIterations } from './schedule';
 import { id, localDateKey } from './util';
 import { normalizeDrafts } from './drafts';
+import { PendingChange, normalizePendingChanges } from './approval';
 
 export const DEFAULT_SETTINGS: AISettings = {
 	assistantTab: 1,
@@ -64,6 +65,9 @@ function normalizeOutput(output: unknown): JobOutput | null {
 	};
 	if ((OUTPUT_MODES as string[]).includes(String(record.mode))) normalized.mode = record.mode as OutputMode;
 	if (typeof record.heading === 'string' && record.heading.trim()) normalized.heading = record.heading;
+	if (record.tasks === true) normalized.tasks = true;
+	if (typeof record.taskTag === 'string' && record.taskTag.trim()) normalized.taskTag = record.taskTag.trim().replace(/^#+/, '');
+	if (typeof record.template === 'string' && record.template.trim()) normalized.template = record.template.trim();
 	return normalized;
 }
 
@@ -191,6 +195,7 @@ export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date(
 		retryDelayMinutes: intInRange(raw.retryDelayMinutes, 1, 1440),
 		timeoutMinutes: intInRange(raw.timeoutMinutes, 0, 1440),
 		onlyIfChanged: raw.onlyIfChanged === true ? true : undefined,
+		approval: raw.approval === true ? true : undefined,
 		retryCount: intInRange(raw.retryCount, 0, 5),
 		lastSuccessAt: typeof raw.lastSuccessAt === 'string' ? raw.lastSuccessAt : undefined,
 		history: normalizeHistory(raw.history),
@@ -226,6 +231,7 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 	jobs: Job[];
 	deletedJobs: Job[];
 	activity: ActivityEntry[];
+	pendingChanges: PendingChange[];
 } {
 	const stored = data || {};
 	const oldSettings = (stored.settings || {}) as Record<string, unknown>;
@@ -304,5 +310,6 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 	const activity = Array.isArray(stored.activity)
 		? (stored.activity as unknown[]).filter((entry): entry is ActivityEntry => isRecord(entry) && typeof entry.message === 'string').slice(-50)
 		: [];
-	return { settings, jobs, deletedJobs, activity };
+	const pendingChanges = normalizePendingChanges(stored.pendingChanges);
+	return { settings, jobs, deletedJobs, activity, pendingChanges };
 }

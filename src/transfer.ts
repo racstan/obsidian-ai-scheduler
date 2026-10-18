@@ -12,7 +12,7 @@ const MAX_IMPORT = 200;
 
 const DEFINITION_KEYS = [
 	'id', 'title', 'prompt', 'schedule', 'output', 'contextPaths', 'notify', 'cooldownMinutes',
-	'retries', 'retryDelayMinutes', 'timeoutMinutes', 'onlyIfChanged', 'tags',
+	'retries', 'retryDelayMinutes', 'timeoutMinutes', 'onlyIfChanged', 'approval', 'tags',
 ] as const;
 
 /** The portable part of a task. */

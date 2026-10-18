@@ -74,6 +74,12 @@ export interface JobOutput {
 	filename?: string;
 	mode?: OutputMode;
 	heading?: string;
+	/** Write action items as Tasks-plugin task lines ("- [ ] …"). */
+	tasks?: boolean;
+	/** Tag added to each open task line, e.g. "ai". */
+	taskTag?: string;
+	/** Vault path of a template note for new result notes ({{result}} marks where the result goes). */
+	template?: string;
 }
 
 export type RunOutcome = 'completed' | 'failed' | 'skipped' | 'cancelled';
@@ -90,6 +96,10 @@ export interface RunRecord {
 	error?: string;
 	/** Set on a run that was an automatic retry (1 = first retry). */
 	retry?: number;
+	/** Approval mode: changes this run left waiting for approval. */
+	pending?: number;
+	/** Approval mode: notes changed directly while the run was going (not through approval). */
+	changed?: string[];
 }
 
 export interface Job {
@@ -140,6 +150,8 @@ export interface Job {
 	timeoutMinutes?: number;
 	/** Skip a run when nothing it reads has changed since the last successful run. */
 	onlyIfChanged?: boolean;
+	/** Approval mode: changes to notes that already exist wait for the user's approval. */
+	approval?: boolean;
 	/** Retries used for the current failure; reset by a successful run. */
 	retryCount?: number;
 	/** End time of the last successful run. */

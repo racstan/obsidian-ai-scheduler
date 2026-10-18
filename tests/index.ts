@@ -12,3 +12,4 @@ import './ics.test';
 import './variables.test';
 import './output.test';
 import './organize.test';
+import './integrations.test';

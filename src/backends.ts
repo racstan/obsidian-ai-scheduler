@@ -7,7 +7,7 @@
  * never calls an AI provider and holds no API keys. Functions take the plugin
  * instance so the orchestration stays in main.ts.
  */
-import { App, TFile, TFolder } from 'obsidian';
+import { App, Platform, TFile, TFolder } from 'obsidian';
 import { AISettings, BACKEND_INFO, ClaudianBackend, Job, isClaudianBackend } from './types';
 import { JobContext } from './context';
 import { contentFromMessage, errorText, isPeriodicReviewJob, sleep, withTimeout } from './util';
@@ -694,8 +694,15 @@ export function checkCopilotSetup(host: BackendHost): { ok: boolean; needsInstal
 	return { ok: true, needsInstall: false, message: `${info.name} is ready. Its active Copilot model will be used.`, githubUrl: info.githubUrl };
 }
 
+/** Claudian and Oh My Claudian run their agents through desktop programs, so not on phones and tablets. */
+export function claudianDesktopOnlyMessage(host: BackendHost): string {
+	const name = BACKEND_INFO[claudianBackend(host)].name;
+	return `${name} works only on desktop. On this device you can view and edit tasks; they run on your computer. Copilot also works on mobile.`;
+}
+
 export async function checkClaudianSetup(host: BackendHost): Promise<{ ok: boolean; needsInstall: boolean; message: string; githubUrl: string }> {
 	const info = BACKEND_INFO[claudianBackend(host)];
+	if (Platform.isMobile) return { ok: false, needsInstall: false, message: claudianDesktopOnlyMessage(host), githubUrl: info.githubUrl };
 	const claudian = getClaudianPlugin(host);
 	if (!claudian) return { ok: false, needsInstall: true, message: `${info.name} is not installed or enabled.`, githubUrl: info.githubUrl };
 	const view = await getClaudianView(host);
@@ -725,6 +732,7 @@ export async function resolveModel(host: BackendHost, value: string | null | und
 		}
 		return { modelRef: 'copilot', tab: null, conversationId: null, providerId: 'copilot', model: null };
 	}
+	if (Platform.isMobile) throw new Error(claudianDesktopOnlyMessage(host));
 	const selected = (typeof value === 'string' && value.trim()) ? value.trim() : (host.settings.executionModel || '').trim();
 	if (!selected) {
 		throw new Error(`No model selected for ${action}. Choose a model in AI Scheduler settings first.`);

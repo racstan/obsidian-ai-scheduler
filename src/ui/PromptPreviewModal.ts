@@ -19,13 +19,15 @@ export class PromptPreviewModal extends Modal {
 			cls: 'ai-scheduler-subtitle',
 			text: 'This is what the task would send to the AI if it ran now, with variables filled in. Nothing is sent.',
 		});
-		let prompt: string;
-		try {
-			prompt = this.plugin.previewPrompt(this.job);
-		} catch (error) {
-			prompt = `Could not build the prompt: ${errorText(error)}`;
-		}
-		this.contentEl.createEl('pre', { cls: 'ai-scheduler-prompt-preview-full', text: prompt });
+		let prompt = '';
+		const pre = this.contentEl.createEl('pre', { cls: 'ai-scheduler-prompt-preview-full', text: 'Building the prompt…' });
+		// Dataview queries in the instructions run here, so this can take a moment.
+		void this.plugin.previewPrompt(this.job)
+			.catch(error => `Could not build the prompt: ${errorText(error)}`)
+			.then(text => {
+				prompt = text;
+				pre.setText(text);
+			});
 		const footer = this.contentEl.createDiv({ cls: 'ai-scheduler-footer' });
 		makeButton(footer, 'Copy', () => {
 			void navigator.clipboard?.writeText(prompt).then(() => new Notice('Copied the prompt.'));
