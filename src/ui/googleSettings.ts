@@ -1,6 +1,7 @@
 import { Notice, Platform, Setting } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
 import { errorText } from '../util';
+import { GOOGLE_SCOPES, SETUP_GUIDE_URL } from '../google/config';
 
 /** The "Google Calendar (early access)" settings section. */
 export function renderGoogleSettings(containerEl: HTMLElement, plugin: AISchedulerPlugin, rerender: () => void): void {
@@ -9,8 +10,53 @@ export function renderGoogleSettings(containerEl: HTMLElement, plugin: AISchedul
 	new Setting(containerEl).setName('Google Calendar (early access)').setHeading();
 	containerEl.createDiv({
 		cls: 'ai-scheduler-hint ai-scheduler-settings-note',
-		text: 'Optional. Connecting your Google account lets tasks read your events ({{today_events}}, {{tomorrow_events}}, {{week_events}}), run before calendar events, and show upcoming runs in an "AI Scheduler" calendar in Google. The plugin talks to Google directly from this device; nothing goes through any other server. The sign-in stays on this device and is not synced. While this feature is in early access, Google may show a warning that the app is not verified yet.',
+		text: 'Optional. Connecting your Google account lets tasks read your events ({{today_events}}, {{tomorrow_events}}, {{week_events}}), run before calendar events, and show upcoming runs in an "AI Scheduler" calendar in Google. You use your own Google Cloud project, so your calendar data only goes between this device and your own Google project; nothing goes through any other server. The sign-in stays on this device and is not synced.',
 	});
+
+	// Setting up the user's own OAuth client: open until they entered one.
+	const setup = containerEl.createEl('details', { cls: 'ai-scheduler-settings-advanced' });
+	setup.open = !google.available && !google.connected;
+	setup.createEl('summary', { text: google.available ? 'Your Google client' : 'Set up your Google client (one time, about 5 minutes)' });
+	const steps = setup.createEl('ol', { cls: 'ai-scheduler-google-steps' });
+	const step = (parts: Array<string | { text: string; href: string } | { code: string }>) => {
+		const item = steps.createEl('li');
+		for (const part of parts) {
+			if (typeof part === 'string') item.appendText(part);
+			else if ('href' in part) item.createEl('a', { text: part.text, href: part.href });
+			else item.createEl('code', { text: part.code });
+		}
+	};
+	step(['Open ', { text: 'Google Cloud Console', href: 'https://console.cloud.google.com/projectcreate' }, ' and create a project (any name).']);
+	step(['Enable the ', { text: 'Google Calendar API', href: 'https://console.cloud.google.com/apis/library/calendar-json.googleapis.com' }, ' for it.']);
+	step(['Under ', { text: 'Google Auth Platform', href: 'https://console.cloud.google.com/auth/overview' }, ', set up the consent screen: audience External, your email as contact. Under Audience, add your Google account as a test user, or click Publish app (then Google shows an "unverified app" screen for your own app; continue with Advanced).']);
+	step(['Under Data access, add these scopes: ', { code: GOOGLE_SCOPES.filter(scope => scope.startsWith('https://')).map(scope => scope.replace('https://www.googleapis.com/auth/', '')).join(', ') }, '.']);
+	step(['Under Clients, create a client of type ', { code: 'Desktop app' }, ' and copy its client ID and client secret here.']);
+	setup.createDiv({
+		cls: 'ai-scheduler-hint',
+		text: 'While the app is in testing mode, Google ends the sign-in after 7 days and you connect again; publishing it avoids that. The client ID and secret are saved with the plugin settings, so synced devices share them; each device still connects on its own.',
+	});
+	const guide = setup.createDiv({ cls: 'ai-scheduler-hint' });
+	guide.appendText('The same steps with more detail: ');
+	guide.createEl('a', { text: 'README', href: SETUP_GUIDE_URL });
+	new Setting(setup)
+		.setName('Client ID')
+		.addText(text => text.setPlaceholder('…apps.googleusercontent.com').setValue(settings.googleClientId).onChange(value => {
+			void (async () => {
+				settings.googleClientId = value.trim();
+				await plugin.saveState();
+			})();
+		}));
+	new Setting(setup)
+		.setName('Client secret')
+		.addText(text => {
+			text.inputEl.type = 'password';
+			text.setValue(settings.googleClientSecret).onChange(value => {
+				void (async () => {
+					settings.googleClientSecret = value.trim();
+					await plugin.saveState();
+				})();
+			});
+		});
 
 	const account = new Setting(containerEl).setName('Google account');
 	if (google.connected) {
@@ -30,10 +76,8 @@ export function renderGoogleSettings(containerEl: HTMLElement, plugin: AISchedul
 		}));
 	} else if (Platform.isMobile) {
 		account.setDesc('Connect Google Calendar from Obsidian on a computer. The sign-in needs a desktop browser.');
-	} else if (!google.available) {
-		account.setDesc('Google Calendar is not available in this build yet. To use your own Google Cloud OAuth client, enter it under the advanced options below.');
 	} else {
-		account.setDesc('Opens Google in your browser. Allow access, then come back to Obsidian.');
+		account.setDesc('Enter your client ID and secret above, then connect. Google opens in your browser; allow access, then come back to Obsidian.');
 		let cancel: AbortController | null = null;
 		account.addButton(button => button.setButtonText('Connect').setCta().onClick(() => {
 			if (cancel) {
@@ -116,30 +160,4 @@ export function renderGoogleSettings(containerEl: HTMLElement, plugin: AISchedul
 			calendars.setDesc(`Could not load your calendars: ${errorText(error)}`);
 		});
 	}
-
-	const advanced = containerEl.createEl('details', { cls: 'ai-scheduler-settings-advanced' });
-	advanced.createEl('summary', { text: 'Your own Google client (advanced)' });
-	advanced.createDiv({
-		cls: 'ai-scheduler-hint',
-		text: 'Leave empty to use the plugin\'s. To use your own: in Google Cloud, enable the Google Calendar API and create an OAuth client of type "Desktop app", then paste its ID and secret here and connect again.',
-	});
-	new Setting(advanced)
-		.setName('Client ID')
-		.addText(text => text.setPlaceholder('…apps.googleusercontent.com').setValue(settings.googleClientId).onChange(value => {
-			void (async () => {
-				settings.googleClientId = value.trim();
-				await plugin.saveState();
-			})();
-		}));
-	new Setting(advanced)
-		.setName('Client secret')
-		.addText(text => {
-			text.inputEl.type = 'password';
-			text.setValue(settings.googleClientSecret).onChange(value => {
-				void (async () => {
-					settings.googleClientSecret = value.trim();
-					await plugin.saveState();
-				})();
-			});
-		});
 }

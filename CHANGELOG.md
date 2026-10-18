@@ -23,7 +23,7 @@ If AI Scheduler is useful to you, you can support its continued development at [
 - **Template note** for new result notes: `{{result}}` marks where the result goes, `{{variables}}` work, and Templater commands run when Templater is installed.
 - Phones and tablets: the plugin is no longer desktop-only. The calendar opens in the agenda view on phones.
 - **Run scheduled tasks on this device**, kept per device and not synced, so a vault shared between devices runs each task once.
-- **Google Calendar (early access)** in the settings: connect with Google sign-in on desktop; the sign-in stays on the device.
+- **Google Calendar (early access)** in the settings: connect with your own Google Cloud project (free, set up once with the steps in the settings) and Google sign-in on desktop; the sign-in stays on the device.
 - `{{today_events}}`, `{{tomorrow_events}}` and `{{week_events}}` list your Google Calendar events from the calendars you choose.
 - **Before Google Calendar events** schedule: runs a task a set number of minutes before each event, or events with chosen words in the title, once per event; `{{event}}` holds its details.
 - **Show runs in Google Calendar**: an *AI Scheduler* calendar in your Google account with the upcoming runs, kept up to date.

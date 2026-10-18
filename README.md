@@ -69,7 +69,7 @@ Supported versions: Claudian 2.x (including the 2.3.2x releases), Oh My Claudian
 
 **Mobile** — On phones and tablets you can view, edit and plan tasks. Claudian and Oh My Claudian work only on desktop, so tasks run on your computer; with Copilot you can also run tasks by hand on mobile. A per-device setting, *Run scheduled tasks on this device*, decides which device starts scheduled tasks, so a vault synced between devices runs each task once (phones and tablets start with it off).
 
-**Google Calendar (early access)** — Connect your Google account in the settings, and tasks can read your events (`{{today_events}}`, `{{tomorrow_events}}`, `{{week_events}}`), run a set number of minutes before calendar events (e.g. "15 minutes before every event with *interview* in the title: prepare a briefing"), and show their upcoming runs in an **AI Scheduler** calendar in your Google account. Optional and off until you connect. See [Google Calendar](#google-calendar-early-access) below.
+**Google Calendar (early access)** — Connect your Google account in the settings (with your own free Google Cloud project, set up once), and tasks can read your events (`{{today_events}}`, `{{tomorrow_events}}`, `{{week_events}}`), run a set number of minutes before calendar events (e.g. "15 minutes before every event with *interview* in the title: prepare a briefing"), and show their upcoming runs in an **AI Scheduler** calendar in your Google account. Optional and off until you connect. See [Google Calendar](#google-calendar-early-access) below.
 
 **Trash & restore** — Deleted tasks go to a trash section. You can restore them individually, restore all at once, or permanently delete them.
 
@@ -235,13 +235,27 @@ Good to know:
 
 ### Google Calendar (early access)
 
-Instead of an `.ics` file, you can connect Google Calendar directly: **Settings → AI Scheduler → Google Calendar (early access) → Connect**. Your browser opens Google's sign-in; allow access and go back to Obsidian. Connecting works on desktop; the sign-in is kept on that device and is not synced with your vault.
+Instead of an `.ics` file, you can connect Google Calendar directly. You use your own Google Cloud project for this, so your calendar data only goes between your computer and your own project; the plugin's author never sees it. Setting it up takes about five minutes, once (see [Connect Google Calendar](#connect-google-calendar) below). Connecting works on desktop; the sign-in is kept on that device and is not synced with your vault.
 
 - **Show runs in Google Calendar**: the plugin creates a calendar named **AI Scheduler** in your account and keeps it up to date with the next runs (14 days ahead by default), without reminders. Only the device that runs scheduled tasks updates it. Turning it off deletes that calendar. The plugin can change only the calendar it created, never your other calendars.
 - **Events in prompts**: `{{today_events}}`, `{{tomorrow_events}}` and `{{week_events}}` list your events (time, title, place, attendees, video link). Choose which calendars are read in the settings; by default your main calendar.
 - **Before calendar events**: a schedule type that runs a task a set number of minutes before each event, or only before events with chosen words in the title. Each event runs the task once; all-day and declined events are skipped. The event's details are added to the instructions, and `{{event}}` puts them where you want.
 
-While this feature is in early access, Google may show a screen saying the app isn't verified yet; choose *Advanced → Go to AI Scheduler* to continue. Advanced: you can use your own Google Cloud OAuth client (type *Desktop app*) instead of the plugin's.
+#### Connect Google Calendar
+
+Google Cloud is free for this; you don't need to add a payment method.
+
+1. Open [Google Cloud Console](https://console.cloud.google.com/projectcreate) and create a project. Any name works, e.g. *Obsidian*.
+2. Enable the [Google Calendar API](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com) for that project.
+3. Open [Google Auth Platform](https://console.cloud.google.com/auth/overview) and click *Get started*: give the app a name, your email as support and contact email, and choose **External** as the audience.
+4. Under **Audience**, either add your own Google account as a **test user**, or click **Publish app**.
+   - As a test user, Google ends the sign-in every 7 days and you click Connect again.
+   - Published, the sign-in lasts. Because only you use your app, Google never needs to review it, but it shows a "Google hasn't verified this app" screen when you connect: choose *Advanced → Go to (your app name)*.
+5. Under **Data access → Add or remove scopes**, add `calendar.app.created`, `calendar.calendarlist.readonly` and `calendar.events.readonly`.
+6. Under **Clients → Create client**, choose **Desktop app**, then copy the **client ID** and **client secret**.
+7. In Obsidian: **Settings → AI Scheduler → Google Calendar → Set up your Google client**, paste both, and click **Connect**. Your browser opens Google's sign-in; allow access and go back to Obsidian.
+
+The client ID and secret are saved with the plugin settings, so devices that sync your vault share them; each computer clicks Connect once.
 
 ---
 
@@ -278,7 +292,7 @@ All commands are available from the command palette (`Ctrl/Cmd + P`):
 
 - No third-party servers, no telemetry, no analytics.
 - Prompts and vault files go only to your configured backend (Claudian, Oh My Claudian or Copilot) and then to whatever AI provider you have set up there.
-- **Network use (only if you connect Google Calendar):** the plugin then talks directly to Google (`accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`) to sign in, read events from the calendars you choose, and, if you turn it on, write your upcoming task runs (titles and the start of their instructions) to the **AI Scheduler** calendar it creates. This needs a Google account. Nothing goes through any other server. The sign-in is stored on your device, outside your vault, and **Disconnect** removes it and revokes access at Google.
+- **Network use (only if you connect Google Calendar):** the plugin then talks directly to Google (`accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`) to sign in, read events from the calendars you choose, and, if you turn it on, write your upcoming task runs (titles and the start of their instructions) to the **AI Scheduler** calendar it creates. This needs a Google account and your own Google Cloud project (free). Nothing goes through any other server. The sign-in is stored on your device, outside your vault, and **Disconnect** removes it and revokes access at Google.
 - Periodic reviews and automated note reading are opt-in.
 - Follow-up tasks that the AI proposes in its replies are created **disabled** — you review and enable them yourself.
 - Task output is written as Markdown notes. The plugin never replaces a note it did not create; it only adds to an existing note when you choose **Add to one note** or **Add to today's daily note** for that task. It never writes into hidden or `.obsidian` folders.

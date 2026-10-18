@@ -3228,3 +3228,14 @@ body.is-phone .ai-scheduler-option-grid {
 	font-size: var(--font-ui-small);
 	margin-bottom: 6px;
 }
+
+.ai-scheduler-google-steps {
+	margin: 4px 0 8px;
+	padding-left: 20px;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+.ai-scheduler-google-steps li {
+	margin-bottom: 4px;
+}

@@ -8,7 +8,7 @@ import { Platform, moment, requestUrl } from 'obsidian';
 import type { AISchedulerPlugin } from '../main';
 import { Job } from '../types';
 import { errorText } from '../util';
-import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, CALENDAR_API } from './config';
+import { CALENDAR_API } from './config';
 import { GoogleClient, GoogleSignInExpired, GoogleTokens, refreshTokens, revokeTokens, signIn } from './auth';
 import {
 	CalendarEvent,
@@ -63,15 +63,12 @@ export class GoogleCalendarService {
 
 	constructor(private plugin: AISchedulerPlugin) {}
 
-	/** The OAuth client: the user's own from the settings, or the plugin's. */
+	/** The user's own OAuth client, from the settings. */
 	get client(): GoogleClient {
-		const own = this.plugin.settings.googleClientId;
-		return own
-			? { id: own, secret: this.plugin.settings.googleClientSecret }
-			: { id: GOOGLE_CLIENT_ID, secret: GOOGLE_CLIENT_SECRET };
+		return { id: this.plugin.settings.googleClientId, secret: this.plugin.settings.googleClientSecret };
 	}
 
-	/** An OAuth client is available (the plugin's, or one entered in the settings). */
+	/** The user entered their OAuth client. */
 	get available(): boolean {
 		return !!this.client.id;
 	}
@@ -98,7 +95,7 @@ export class GoogleCalendarService {
 	/** Opens Google's sign-in in the browser and keeps the account on this device. */
 	async connect(cancel?: AbortSignal): Promise<void> {
 		if (Platform.isMobile) throw new Error('Connect Google Calendar on a computer. Phones and tablets cannot run the sign-in.');
-		if (!this.available) throw new Error('No Google client is set up. Enter your own client ID under Advanced.');
+		if (!this.available) throw new Error('Enter your Google client ID and secret in the settings first.');
 		this.tokens = await signIn(this.client, cancel);
 		this.lastError = null;
 		this.cache = null;

@@ -1,14 +1,14 @@
 /*
- * The plugin's Google OAuth client (a "Desktop app" client in Google Cloud).
- *
- * For an installed app Google treats the client secret as public: it cannot be
- * kept secret in code that runs on the user's computer, and sign-in is
- * protected by PKCE and the loopback redirect instead. Users can still use
- * their own client from the advanced settings.
+ * Google Calendar uses the user's own OAuth client (a "Desktop app" client
+ * they create in Google Cloud and enter in the settings), so their data only
+ * ever goes between their computer and their own Google project. Sign-in is
+ * protected by PKCE and the loopback redirect.
  */
-export const GOOGLE_CLIENT_ID = '';
-export const GOOGLE_CLIENT_SECRET = '';
 
+/** Step-by-step guide for creating the OAuth client, linked from the settings. */
+export const SETUP_GUIDE_URL = 'https://github.com/racstan/obsidian-ai-scheduler#connect-google-calendar';
+
+/** The permissions to add on the OAuth consent screen (shown in the settings). */
 export const GOOGLE_SCOPES = [
 	'openid',
 	'email',
