@@ -96,7 +96,7 @@ module.exports = {
 		const end = lines[0] === '---' ? lines.indexOf('---', 1) : -1;
 		return end < 0 ? { exists: false, frontmatter: '' } : { exists: true, frontmatter: lines.slice(1, end).join(nl) };
 	},
-	requestUrl: () => { throw new Error('unused'); },
+	requestUrl: (request) => { if (globalThis.fakeRequestUrl) return globalThis.fakeRequestUrl(request); throw new Error('unused'); },
 	Setting: class {},
 };
 `;
@@ -596,17 +596,31 @@ async function main() {
 	assert.ok(claudianTab.lastPrompt.includes('RESULT OF LIST FROM #todo'), 'Dataview result in the prompt');
 	delete app.plugins.plugins.dataview;
 
-	// Google Calendar: without a connection the event variables say so.
+	// Calendar add-ons: without a calendar the event variables say so.
 	appender.prompt = 'Plan around {{today_events}}';
-	assert.ok((await second.previewPrompt(appender)).includes('(Google Calendar is not connected.)'));
+	assert.ok((await second.previewPrompt(appender)).includes('(No calendar is connected.)'));
+	// A calendar link (.ics) is checked, added, and its events fill the variables.
+	const stamp = (date) => date.toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
+	const inAnHour = new Date(Date.now() + 3600000);
+	const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'BEGIN:VEVENT', 'UID:linked@test', 'DTSTART:' + stamp(inAnHour), 'DTEND:' + stamp(new Date(inAnHour.getTime() + 1800000)), 'SUMMARY:Dentist', 'END:VEVENT', 'END:VCALENDAR'].join(String.fromCharCode(13, 10));
+	globalThis.fakeRequestUrl = async (request) => request.url.includes('broken') ? { status: 404, text: '' } : { status: 200, text: ics };
+	await assert.rejects(second.calendars.addLink('Broken', 'https://example.com/broken.ics'), /refused/);
+	const link = await second.calendars.addLink('Personal', 'webcal://example.com/personal.ics');
+	assert.equal(link.url, 'https://example.com/personal.ics');
+	assert.equal(second.calendars.hasSources, true);
+	assert.ok((await second.previewPrompt(appender)).includes('Dentist'), 'linked events in the prompt');
+	second.calendars.removeLink(link.id);
+	assert.equal(second.calendars.links.length, 0);
+	delete globalThis.fakeRequestUrl;
 	// Connected (fake API): events fill the variables, and a meeting task runs before its event.
 	second.saveDeviceSetting('google-tokens', { access: 'a', refresh: 'r', expires: Date.now() + 3600000, email: 'me@example.com' });
-	assert.equal(second.google.connected, true);
-	assert.equal(second.google.email, 'me@example.com');
+	const google = second.calendars.google;
+	assert.equal(google.connected, true);
+	assert.equal(google.email, 'me@example.com');
 	const soon = new Date(Date.now() + 20 * 60000);
 	const apiCalls = [];
 	const appEvents = new Map();
-	second.google.api = async (method, apiPath, query, body) => {
+	google.request = async (method, apiPath, query, body) => {
 		apiCalls.push(method + ' ' + apiPath);
 		if (method === 'GET' && apiPath === '/calendars/primary/events') {
 			return { items: [
@@ -629,30 +643,30 @@ async function main() {
 	assert.ok((await second.previewPrompt(appender)).includes('Weekly standup'), 'today\\'s events in the prompt');
 	const prep = await second.addJob({ title: 'Standup prep', prompt: 'Prepare notes for {{event}}', schedule: { kind: 'meeting', minutesBefore: 30, eventMatch: 'standup' } });
 	assert.equal(prep.nextRunAt, null);
-	assert.equal(await second.google.pollMeetings(() => false, true), true);
+	assert.equal(await second.calendars.pollMeetings(() => false, true), true);
 	assert.equal(prep.triggerEvent.title, 'Weekly standup');
 	assert.ok(new Date(prep.nextRunAt).getTime() <= Date.now() + 1000, 'within 30 minutes of the event: due now');
 	await second.tick();
 	assert.equal(prep.runCount, 1, 'the meeting task ran');
 	assert.ok(claudianTab.lastPrompt.includes('Title: Weekly standup'), 'the event is in the prompt');
 	assert.equal(prep.nextRunAt, null, 'waits for the next event');
-	await second.google.pollMeetings(() => false, true);
+	await second.calendars.pollMeetings(() => false, true);
 	assert.equal(prep.nextRunAt, null, 'the same event does not run it again');
 	assert.equal(prep.triggerEvent, undefined);
 	await second.deleteJob(prep);
 	// Show runs in Google: the calendar is made and holds the upcoming runs.
 	second.settings.googleShowRuns = true;
 	const digest = await second.addJob({ title: 'Digest', prompt: 'p', schedule: { kind: 'daily', time: '09:00' } });
-	await second.google.syncRuns(true);
+	await second.calendars.syncRuns(true);
 	assert.ok(apiCalls.includes('POST /calendars'), 'calendar created');
 	assert.ok([...appEvents.values()].some(entry => entry.summary === 'AI: Digest'), 'runs added');
 	await second.deleteJob(digest);
-	await second.google.syncRuns(true);
+	await second.calendars.syncRuns(true);
 	assert.ok(![...appEvents.values()].some(entry => entry.summary === 'AI: Digest'), 'runs of a deleted task removed');
 	second.settings.googleShowRuns = false;
 	second.saveDeviceSetting('google-tokens', null);
 	second.saveDeviceSetting('google-app-calendar', null);
-	assert.equal(second.google.connected, false);
+	assert.equal(google.connected, false);
 
 	// A device set not to run tasks leaves due tasks alone; "Run now" still works there.
 	second.setRunsTasksHere(false);

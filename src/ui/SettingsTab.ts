@@ -5,7 +5,7 @@ import { errorText } from '../util';
 import { validClock } from '../schedule';
 import { ChangelogModal } from './ChangelogModal';
 import { FolderSuggest } from './folderSuggest';
-import { renderGoogleSettings } from './googleSettings';
+import { renderCalendarSettings } from './calendarSettings';
 
 /** Adds the type-or-pick folder dropdown to a settings text field. */
 function withFolderSuggest(app: App, text: TextComponent): TextComponent {
@@ -13,8 +13,20 @@ function withFolderSuggest(app: App, text: TextComponent): TextComponent {
 	return text;
 }
 
+type SettingsTabId = 'general' | 'tasks' | 'reviews' | 'calendars' | 'about';
+
+const TABS: Array<{ id: SettingsTabId; label: string }> = [
+	{ id: 'general', label: 'General' },
+	{ id: 'tasks', label: 'Tasks & results' },
+	{ id: 'reviews', label: 'Reviews' },
+	{ id: 'calendars', label: 'Calendars' },
+	{ id: 'about', label: 'About' },
+];
+
 export class AssistantSettingTab extends PluginSettingTab {
 	plugin: AISchedulerPlugin;
+	/** The open tab; kept while the settings window is open. */
+	private tab: SettingsTabId = 'general';
 
 	constructor(app: App, plugin: AISchedulerPlugin) {
 		super(app, plugin);
@@ -68,9 +80,26 @@ export class AssistantSettingTab extends PluginSettingTab {
 		containerEl.empty();
 		window.requestAnimationFrame(() => { containerEl.scrollTop = scrollTop; });
 
-		// -------------------------------------------------------------------------
-		// Section 1: AI Backend & Models
-		// -------------------------------------------------------------------------
+		const nav = containerEl.createDiv({ cls: 'ai-scheduler-settings-tabs', attr: { role: 'tablist' } });
+		for (const tab of TABS) {
+			const button = nav.createEl('button', { cls: 'ai-scheduler-settings-tab', text: tab.label, attr: { role: 'tab', 'aria-selected': String(tab.id === this.tab) } });
+			if (tab.id === this.tab) button.addClass('is-active');
+			button.onclick = () => {
+				this.tab = tab.id;
+				containerEl.scrollTop = 0;
+				this.renderSettings();
+			};
+		}
+		const panel = containerEl.createDiv({ cls: 'ai-scheduler-settings-panel', attr: { role: 'tabpanel' } });
+		if (this.tab === 'general') this.renderGeneral(panel);
+		else if (this.tab === 'tasks') this.renderTasks(panel);
+		else if (this.tab === 'reviews') this.renderReviews(panel);
+		else if (this.tab === 'calendars') renderCalendarSettings(panel, this.plugin, () => this.renderSettings());
+		else this.renderAbout(panel);
+	}
+
+	/** AI backend, when tasks run, and notifications. */
+	private renderGeneral(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName('AI backend & models').setHeading();
 		containerEl.createEl('p', {
 			text: 'Choose which AI plugin AI Scheduler uses to execute tasks, plan schedules, and generate reviews.',
@@ -159,10 +188,223 @@ export class AssistantSettingTab extends PluginSettingTab {
 			}
 		}
 
-		// -------------------------------------------------------------------------
-		// Section 2: Periodic Vault Reviews (Only visible when an AI backend is active)
-		// -------------------------------------------------------------------------
-		if (mode && mode !== 'none') {
+		new Setting(containerEl).setName('Running tasks').setHeading();
+		new Setting(containerEl)
+			.setName('Run scheduled tasks on this device')
+			.setDesc('Applies to this device only and is not synced. If several devices share this vault through sync, turn it on for one of them so each task runs once. Phones and tablets start with it off. Running a task by hand works on any device where your AI backend is available.')
+			.addToggle(toggle => toggle.setValue(this.plugin.runsTasksHere).onChange(value => {
+				this.plugin.setRunsTasksHere(value);
+			}));
+
+		new Setting(containerEl)
+			.setName('Pause all tasks')
+			.setDesc(this.plugin.settings.paused
+				? 'Paused: no task starts on its own. On resume, runs missed while paused follow the catch-up setting below.'
+				: 'Stops every task from starting on its own until you resume. The dashboard also offers timed pauses.')
+			.addButton(button => button
+				.setButtonText(this.plugin.settings.paused ? 'Resume' : 'Pause')
+				.onClick(async () => {
+					if (this.plugin.settings.paused) await this.plugin.resumeAll();
+					else await this.plugin.pauseAll(null);
+					this.renderSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Quiet hours')
+			.setDesc('Tasks that fall due during these hours wait and run when they end. Starting a task by hand still works.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.quietHoursEnabled).onChange(value => {
+				void (async () => {
+					this.plugin.settings.quietHoursEnabled = value;
+					await this.plugin.saveState();
+					this.renderSettings();
+				})();
+			}));
+
+		if (this.plugin.settings.quietHoursEnabled) {
+			const clock = (key: 'quietStart' | 'quietEnd', name: string, desc: string) => new Setting(containerEl)
+				.setName(name)
+				.setDesc(desc)
+				.addText(text => {
+					text.inputEl.type = 'time';
+					text.setValue(this.plugin.settings[key]).onChange(value => {
+						if (!validClock(value)) return;
+						void (async () => {
+							this.plugin.settings[key] = value;
+							await this.plugin.saveState();
+						})();
+					});
+				});
+			clock('quietStart', 'Quiet hours start', 'For example 23:00.');
+			clock('quietEnd', 'Quiet hours end', 'For example 07:00. An end earlier than the start means the next morning.');
+		}
+
+		new Setting(containerEl)
+			.setName('Run missed jobs after startup')
+			.setDesc('Off by default. Enable only if you explicitly want AI work to run after Obsidian was closed.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.catchUpOnStart).onChange(value => {
+				void (async () => {
+					this.plugin.settings.catchUpOnStart = value;
+					await this.plugin.saveState();
+					this.renderSettings();
+				})();
+			}));
+
+		if (this.plugin.settings.catchUpOnStart) {
+			new Setting(containerEl)
+				.setName('Startup catch-up window (hours)')
+				.setDesc('Only jobs missed within this window will run after startup.')
+				.addText(text => text.setValue(String(this.plugin.settings.catchUpHours)).onChange(value => {
+					void (async () => {
+						this.plugin.settings.catchUpHours = Math.max(1, Number.parseInt(value, 10) || 24);
+						await this.plugin.saveState();
+					})();
+				}));
+		}
+
+		new Setting(containerEl).setName('Notifications').setHeading();
+		new Setting(containerEl)
+			.setName('In-app completion notices')
+			.setDesc('Show an Obsidian notice when an AI job or review finishes.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.notifyOnCompletion).onChange(value => {
+				void (async () => {
+					this.plugin.settings.notifyOnCompletion = value;
+					await this.plugin.saveState();
+				})();
+			}));
+
+		new Setting(containerEl)
+			.setName('System desktop notifications')
+			.setDesc('Send native OS desktop notifications (Windows / macOS / Linux) when tasks finish or fail.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.systemNotifications).onChange(value => {
+				void (async () => {
+					this.plugin.settings.systemNotifications = value;
+					await this.plugin.saveState();
+				})();
+			}));
+
+		new Setting(containerEl)
+			.setName('Show the next run in the status bar')
+			.setDesc('When nothing is running, the status bar shows when the next task runs (or that AI Scheduler is paused or in quiet hours). Click it to open the dashboard.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.statusBarNextRun).onChange(value => {
+				void (async () => {
+					this.plugin.settings.statusBarNextRun = value;
+					await this.plugin.saveState();
+				})();
+			}));
+	}
+
+	/** Where results go, approval, the activity log and schedule notes. */
+	private renderTasks(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName('Results').setHeading();
+		new Setting(containerEl)
+			.setName('Default output folder')
+			.setDesc('Vault folder where AI task results are saved when a prompt does not specify a save location. If empty, defaults to "AI Scheduler".')
+			.addText(text => withFolderSuggest(this.app, text)
+				.setPlaceholder('AI Scheduler')
+				.setValue(this.plugin.settings.defaultOutputFolder)
+				.onChange(value => {
+					void (async () => {
+						this.plugin.settings.defaultOutputFolder = value.trim();
+						await this.plugin.saveState();
+					})();
+				}));
+
+		new Setting(containerEl)
+			.setName('Ask before changing existing notes')
+			.setDesc('On by default. Changes a task would make to a note that already exists (adding its result, replacing its result note, or an edit the AI proposes) wait on the dashboard until you approve them. New notes are still created right away. If your AI backend edits a note itself anyway, the run history says so.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.approvalMode).onChange(value => {
+				void (async () => {
+					this.plugin.settings.approvalMode = value;
+					await this.plugin.saveState();
+				})();
+			}));
+
+		new Setting(containerEl).setName('Activity log').setHeading();
+		new Setting(containerEl)
+			.setName('Enable task activity logging')
+			.setDesc('Record every task execution in a centralized Markdown log table with serial number, timestamp, execution status, and links to modified/created files.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.taskLoggingEnabled)
+				.onChange(value => {
+					void (async () => {
+						this.plugin.settings.taskLoggingEnabled = value;
+						await this.plugin.saveState();
+						this.renderSettings();
+					})();
+				}));
+
+		if (this.plugin.settings.taskLoggingEnabled) {
+			new Setting(containerEl)
+				.setName('Task log folder')
+				.setDesc('Vault folder where "AI SCHEDULER LOGS.md" is stored. Leave blank to use the default output folder.')
+				.addText(text => withFolderSuggest(this.app, text)
+					.setPlaceholder(this.plugin.getDefaultOutputFolder())
+					.setValue(this.plugin.settings.taskLogFolder)
+					.onChange(value => {
+						void (async () => {
+							this.plugin.settings.taskLogFolder = value.trim();
+							await this.plugin.saveState();
+						})();
+					}));
+		}
+
+		new Setting(containerEl).setName('Vault schedule notes (optional)').setHeading();
+		new Setting(containerEl)
+			.setName('Keep schedule notes in my vault')
+			.setDesc('Off by default. When enabled, every task gets a Markdown note whose frontmatter holds its schedule and prompt — edit the note or the dashboard, both stay in sync. Note: deleting a task note in Obsidian permanently removes that task.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.scheduleNotesEnabled).onChange(value => {
+				void (async () => {
+					this.plugin.settings.scheduleNotesEnabled = value;
+					await this.plugin.saveState();
+					if (value) {
+						try {
+							const written = await this.plugin.notesSync.syncAll();
+							new Notice(written ? `Schedule notes created or updated in ${this.plugin.settings.scheduleFolder}.` : 'Schedule notes are up to date.');
+						} catch (error) {
+							new Notice(`Could not write schedule notes: ${errorText(error)}`, 8000);
+						}
+					}
+					this.renderSettings();
+				})();
+			}));
+
+		if (this.plugin.settings.scheduleNotesEnabled) {
+			new Setting(containerEl)
+				.setName('Schedule notes folder')
+				.setDesc('Existing notes keep working after a rename of this folder; new notes are created here.')
+				.addText(text => withFolderSuggest(this.app, text).setValue(this.plugin.settings.scheduleFolder).onChange(value => {
+					void (async () => {
+						this.plugin.settings.scheduleFolder = value.trim() || 'AI Schedules';
+						await this.plugin.saveState();
+					})();
+				}));
+			new Setting(containerEl)
+				.setName('Sync notes now')
+				.setDesc('Reconcile all task notes with the current schedule, including notes created by hand.')
+				.addButton(button => button.setButtonText('Sync now').onClick(() => {
+					void (async () => {
+						button.setDisabled(true);
+						try {
+							const written = await this.plugin.notesSync.syncAll();
+							new Notice(written ? `${written} note(s) reconciled.` : 'All schedule notes are up to date.');
+						} catch (error) {
+							new Notice(`Could not sync schedule notes: ${errorText(error)}`, 8000);
+						}
+						button.setDisabled(false);
+					})();
+				}));
+		}
+
+	}
+
+	/** Periodic vault reviews. */
+	private renderReviews(containerEl: HTMLElement): void {
+		const mode = this.plugin.settings.backendMode;
+		if (!mode || mode === 'none') {
+			containerEl.createDiv({ cls: 'ai-scheduler-hint ai-scheduler-settings-note', text: 'Choose an AI backend on the General tab first.' });
+			return;
+		}
+		{
 			new Setting(containerEl).setName('Periodic vault reviews').setHeading();
 			containerEl.createEl('p', {
 				text: 'Autonomous vault intelligence: Periodically synthesizes notes created or modified across your vault and saves timestamped Markdown reports in your periodic review folder.',
@@ -177,7 +419,7 @@ export class AssistantSettingTab extends PluginSettingTab {
 				text: 'Important note on computer sleep and scheduled tasks',
 			});
 			warningBody.createEl('p', {
-				text: 'Periodic reviews and scheduled AI tasks execute locally inside Obsidian on your computer. If your computer is turned off or in sleep mode at the scheduled time, the review will not trigger. To automatically run missed reviews when you reopen Obsidian, turn on the setting to run missed jobs after startup below.',
+				text: 'Periodic reviews and scheduled AI tasks execute locally inside Obsidian on your computer. If your computer is turned off or in sleep mode at the scheduled time, the review will not trigger. To automatically run missed reviews when you reopen Obsidian, turn on the setting to run missed jobs after startup on the general tab.',
 			});
 
 			new Setting(containerEl)
@@ -349,282 +591,10 @@ export class AssistantSettingTab extends PluginSettingTab {
 			}
 		}
 
-		// -------------------------------------------------------------------------
-		// Section 3: Default Output & Task Logging
-		// -------------------------------------------------------------------------
-		new Setting(containerEl).setName('Task outputs & activity logging').setHeading();
+	}
 
-		new Setting(containerEl)
-			.setName('Default output folder')
-			.setDesc('Vault folder where AI task results are saved when a prompt does not specify a save location. If empty, defaults to "AI Scheduler".')
-			.addText(text => withFolderSuggest(this.app, text)
-				.setPlaceholder('AI Scheduler')
-				.setValue(this.plugin.settings.defaultOutputFolder)
-				.onChange(value => {
-					void (async () => {
-						this.plugin.settings.defaultOutputFolder = value.trim();
-						await this.plugin.saveState();
-					})();
-				}));
-
-		new Setting(containerEl)
-			.setName('Enable task activity logging')
-			.setDesc('Record every task execution in a centralized Markdown log table with serial number, timestamp, execution status, and links to modified/created files.')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.taskLoggingEnabled)
-				.onChange(value => {
-					void (async () => {
-						this.plugin.settings.taskLoggingEnabled = value;
-						await this.plugin.saveState();
-						this.renderSettings();
-					})();
-				}));
-
-		if (this.plugin.settings.taskLoggingEnabled) {
-			new Setting(containerEl)
-				.setName('Task log folder')
-				.setDesc('Vault folder where "AI SCHEDULER LOGS.md" is stored. Leave blank to use the default output folder.')
-				.addText(text => withFolderSuggest(this.app, text)
-					.setPlaceholder(this.plugin.getDefaultOutputFolder())
-					.setValue(this.plugin.settings.taskLogFolder)
-					.onChange(value => {
-						void (async () => {
-							this.plugin.settings.taskLogFolder = value.trim();
-							await this.plugin.saveState();
-						})();
-					}));
-		}
-
-		// -------------------------------------------------------------------------
-		// Google Calendar (early access)
-		// -------------------------------------------------------------------------
-		renderGoogleSettings(containerEl, this.plugin, () => this.renderSettings());
-
-		// -------------------------------------------------------------------------
-		// Calendar export (.ics)
-		// -------------------------------------------------------------------------
-		new Setting(containerEl).setName('Calendar export').setHeading();
-		new Setting(containerEl)
-			.setName('Keep a calendar file of upcoming runs')
-			.setDesc('Writes an .ics file listing every scheduled run and keeps it up to date. Import it into Google Calendar, Outlook or Apple Calendar for a one-time copy. To stay in sync, sync the file with a service that gives it a public direct-download link (e.g. Dropbox) and subscribe to that link from your calendar app; the plugin itself never uploads anything. Anyone with the link can read your task titles and prompts. One-way: changes made in your calendar app are not read back.')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.icsExportEnabled)
-				.onChange(value => {
-					void (async () => {
-						this.plugin.settings.icsExportEnabled = value;
-						await this.plugin.saveState();
-						this.renderSettings();
-					})();
-				}));
-		if (this.plugin.settings.icsExportEnabled) {
-			new Setting(containerEl)
-				.setName('Calendar file')
-				.setDesc('Vault path of the .ics file.')
-				.addText(text => text
-					.setPlaceholder('AI Scheduler/AI Scheduler.ics')
-					.setValue(this.plugin.settings.icsExportPath)
-					.onChange(value => {
-						void (async () => {
-							this.plugin.settings.icsExportPath = value.trim() || 'AI Scheduler/AI Scheduler.ics';
-							await this.plugin.saveState();
-						})();
-					}));
-			new Setting(containerEl)
-				.setName('Days ahead')
-				.setDesc('How far into the future the calendar file lists runs (1–366).')
-				.addText(text => text
-					.setPlaceholder('30')
-					.setValue(String(this.plugin.settings.icsExportDays))
-					.onChange(value => {
-						void (async () => {
-							const days = Number(value);
-							if (!Number.isInteger(days) || days < 1 || days > 366) return;
-							this.plugin.settings.icsExportDays = days;
-							await this.plugin.saveState();
-						})();
-					}));
-		}
-		new Setting(containerEl)
-			.setName('Export calendar file now')
-			.setDesc('Writes the .ics file immediately (also available as a command).')
-			.addButton(button => button
-				.setButtonText('Export')
-				.onClick(() => {
-					void this.plugin.exportIcs()
-						.then(path => new Notice(`Calendar file written to ${path}.`, 6000))
-						.catch(error => new Notice(`Could not export calendar: ${errorText(error)}`, 8000));
-				}));
-
-		// -------------------------------------------------------------------------
-		// Section 4: Background Execution & Notifications
-		// -------------------------------------------------------------------------
-		new Setting(containerEl).setName('Background execution & notifications').setHeading();
-
-		new Setting(containerEl)
-			.setName('Ask before changing existing notes')
-			.setDesc('On by default. Changes a task would make to a note that already exists (adding its result, replacing its result note, or an edit the AI proposes) wait on the dashboard until you approve them. New notes are still created right away. If your AI backend edits a note itself anyway, the run history says so.')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.approvalMode).onChange(value => {
-				void (async () => {
-					this.plugin.settings.approvalMode = value;
-					await this.plugin.saveState();
-				})();
-			}));
-
-		new Setting(containerEl)
-			.setName('Run scheduled tasks on this device')
-			.setDesc('Applies to this device only and is not synced. If several devices share this vault through sync, turn it on for one of them so each task runs once. Phones and tablets start with it off. Running a task by hand works on any device where your AI backend is available.')
-			.addToggle(toggle => toggle.setValue(this.plugin.runsTasksHere).onChange(value => {
-				this.plugin.setRunsTasksHere(value);
-			}));
-
-		new Setting(containerEl)
-			.setName('In-app completion notices')
-			.setDesc('Show an Obsidian notice when an AI job or review finishes.')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.notifyOnCompletion).onChange(value => {
-				void (async () => {
-					this.plugin.settings.notifyOnCompletion = value;
-					await this.plugin.saveState();
-				})();
-			}));
-
-		new Setting(containerEl)
-			.setName('System desktop notifications')
-			.setDesc('Send native OS desktop notifications (Windows / macOS / Linux) when tasks finish or fail.')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.systemNotifications).onChange(value => {
-				void (async () => {
-					this.plugin.settings.systemNotifications = value;
-					await this.plugin.saveState();
-				})();
-			}));
-
-		new Setting(containerEl)
-			.setName('Run missed jobs after startup')
-			.setDesc('Off by default. Enable only if you explicitly want AI work to run after Obsidian was closed.')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.catchUpOnStart).onChange(value => {
-				void (async () => {
-					this.plugin.settings.catchUpOnStart = value;
-					await this.plugin.saveState();
-					this.renderSettings();
-				})();
-			}));
-
-		new Setting(containerEl)
-			.setName('Show the next run in the status bar')
-			.setDesc('When nothing is running, the status bar shows when the next task runs (or that AI Scheduler is paused or in quiet hours). Click it to open the dashboard.')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.statusBarNextRun).onChange(value => {
-				void (async () => {
-					this.plugin.settings.statusBarNextRun = value;
-					await this.plugin.saveState();
-				})();
-			}));
-
-		new Setting(containerEl)
-			.setName('Quiet hours')
-			.setDesc('Tasks that fall due during these hours wait and run when they end. Starting a task by hand still works.')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.quietHoursEnabled).onChange(value => {
-				void (async () => {
-					this.plugin.settings.quietHoursEnabled = value;
-					await this.plugin.saveState();
-					this.renderSettings();
-				})();
-			}));
-
-		if (this.plugin.settings.quietHoursEnabled) {
-			const clock = (key: 'quietStart' | 'quietEnd', name: string, desc: string) => new Setting(containerEl)
-				.setName(name)
-				.setDesc(desc)
-				.addText(text => {
-					text.inputEl.type = 'time';
-					text.setValue(this.plugin.settings[key]).onChange(value => {
-						if (!validClock(value)) return;
-						void (async () => {
-							this.plugin.settings[key] = value;
-							await this.plugin.saveState();
-						})();
-					});
-				});
-			clock('quietStart', 'Quiet hours start', 'For example 23:00.');
-			clock('quietEnd', 'Quiet hours end', 'For example 07:00. An end earlier than the start means the next morning.');
-		}
-
-		new Setting(containerEl)
-			.setName('Pause all tasks')
-			.setDesc(this.plugin.settings.paused
-				? 'Paused: no task starts on its own. On resume, runs missed while paused follow the catch-up setting below.'
-				: 'Stops every task from starting on its own until you resume. The dashboard also offers timed pauses.')
-			.addButton(button => button
-				.setButtonText(this.plugin.settings.paused ? 'Resume' : 'Pause')
-				.onClick(async () => {
-					if (this.plugin.settings.paused) await this.plugin.resumeAll();
-					else await this.plugin.pauseAll(null);
-					this.renderSettings();
-				}));
-
-		if (this.plugin.settings.catchUpOnStart) {
-			new Setting(containerEl)
-				.setName('Startup catch-up window (hours)')
-				.setDesc('Only jobs missed within this window will run after startup.')
-				.addText(text => text.setValue(String(this.plugin.settings.catchUpHours)).onChange(value => {
-					void (async () => {
-						this.plugin.settings.catchUpHours = Math.max(1, Number.parseInt(value, 10) || 24);
-						await this.plugin.saveState();
-					})();
-				}));
-		}
-
-		// -------------------------------------------------------------------------
-		// Section 4: Vault Schedule Notes Sync
-		// -------------------------------------------------------------------------
-		new Setting(containerEl).setName('Vault schedule notes (optional)').setHeading();
-		new Setting(containerEl)
-			.setName('Keep schedule notes in my vault')
-			.setDesc('Off by default. When enabled, every task gets a Markdown note whose frontmatter holds its schedule and prompt — edit the note or the dashboard, both stay in sync. Note: deleting a task note in Obsidian permanently removes that task.')
-			.addToggle(toggle => toggle.setValue(this.plugin.settings.scheduleNotesEnabled).onChange(value => {
-				void (async () => {
-					this.plugin.settings.scheduleNotesEnabled = value;
-					await this.plugin.saveState();
-					if (value) {
-						try {
-							const written = await this.plugin.notesSync.syncAll();
-							new Notice(written ? `Schedule notes created or updated in ${this.plugin.settings.scheduleFolder}.` : 'Schedule notes are up to date.');
-						} catch (error) {
-							new Notice(`Could not write schedule notes: ${errorText(error)}`, 8000);
-						}
-					}
-					this.renderSettings();
-				})();
-			}));
-
-		if (this.plugin.settings.scheduleNotesEnabled) {
-			new Setting(containerEl)
-				.setName('Schedule notes folder')
-				.setDesc('Existing notes keep working after a rename of this folder; new notes are created here.')
-				.addText(text => withFolderSuggest(this.app, text).setValue(this.plugin.settings.scheduleFolder).onChange(value => {
-					void (async () => {
-						this.plugin.settings.scheduleFolder = value.trim() || 'AI Schedules';
-						await this.plugin.saveState();
-					})();
-				}));
-			new Setting(containerEl)
-				.setName('Sync notes now')
-				.setDesc('Reconcile all task notes with the current schedule, including notes created by hand.')
-				.addButton(button => button.setButtonText('Sync now').onClick(() => {
-					void (async () => {
-						button.setDisabled(true);
-						try {
-							const written = await this.plugin.notesSync.syncAll();
-							new Notice(written ? `${written} note(s) reconciled.` : 'All schedule notes are up to date.');
-						} catch (error) {
-							new Notice(`Could not sync schedule notes: ${errorText(error)}`, 8000);
-						}
-						button.setDisabled(false);
-					})();
-				}));
-		}
-
-		// -------------------------------------------------------------------------
-		// Section 5: Updates & Changelog
-		// -------------------------------------------------------------------------
+	/** Updates, help and about. */
+	private renderAbout(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName('Updates & release notes').setHeading();
 		new Setting(containerEl)
 			.setName('Show changelog after updates')

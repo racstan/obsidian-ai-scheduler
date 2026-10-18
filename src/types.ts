@@ -6,7 +6,7 @@
  * owns when the agent should wake up and what should happen after it replies.
  */
 import { AIDraft } from './drafts';
-import type { CalendarEvent } from './google/calendar';
+import type { CalendarEvent } from './calendars/events';
 export type BackendMode = 'claudian' | 'oh-my-claudian' | 'copilot' | 'none';
 
 /** Claudian and its fork Oh My Claudian share one integration. */
@@ -229,15 +229,21 @@ export interface AISettings {
 	approvalMode: boolean;
 	/** Unsent AI requests ("Ask AI to plan", "Update task with AI"), by form. */
 	drafts: Record<string, AIDraft>;
-	/** Google Calendar (early access): keep the "AI Scheduler" calendar in Google up to date. */
+	/** How many days ahead the "AI Scheduler" calendars in Google and Outlook show. */
+	calendarRunDays: number;
+	/** Google Calendar (beta): keep an "AI Scheduler" calendar in Google up to date. */
 	googleShowRuns: boolean;
-	/** How many days ahead the "AI Scheduler" calendar shows. */
-	googleRunDays: number;
-	/** Calendar ids read for {{today_events}} and meeting tasks (empty = the main calendar). */
+	/** Google calendar ids read for {{today_events}} and meeting tasks (empty = the main calendar). */
 	googleCalendars: string[];
-	/** Advanced: the user's own Google OAuth client instead of the plugin's. */
+	/** The user's own Google OAuth client ("Desktop app"). */
 	googleClientId: string;
 	googleClientSecret: string;
+	/** Outlook (beta): keep an "AI Scheduler" calendar in Outlook up to date. */
+	outlookShowRuns: boolean;
+	/** Outlook calendar ids read (empty = the main calendar). */
+	outlookCalendars: string[];
+	/** The user's own Microsoft app registration (client ID; no secret). */
+	outlookClientId: string;
 }
 
 export interface ActivityEntry {

@@ -29,7 +29,7 @@ const KIND_LABELS: Record<ScheduleKind, string> = {
 	interval: 'Every N minutes / hours',
 	event: 'When the vault changes',
 	after: 'When another task finishes',
-	meeting: 'Before Google Calendar events (early access)',
+	meeting: 'Before calendar events (beta)',
 	cron: 'Cron expression (advanced)',
 };
 
@@ -693,8 +693,8 @@ export class JobModal extends Modal {
 				break;
 			}
 			case 'meeting': {
-				if (!this.plugin.google.connected) {
-					container.createDiv('ai-scheduler-hint').setText('Connect Google Calendar in the AI Scheduler settings first. Until then this task never runs.');
+				if (!this.plugin.calendars.hasSources) {
+					container.createDiv('ai-scheduler-hint').setText('Add a calendar first, under calendar add-ons in the AI Scheduler settings. Until then this task never runs.');
 				}
 				createLabel('Minutes before the event starts', true);
 				this.scheduleInputs.minutesBefore = createInput({
@@ -709,7 +709,7 @@ export class JobModal extends Modal {
 					value: schedule.eventMatch || '',
 					placeholder: 'standup, 1:1, interview',
 				});
-				container.createDiv('ai-scheduler-example').setText('Example: 15 minutes before events with "interview" in the title: "Prepare a briefing for {{event}} from my notes." All-day and declined events are skipped. The calendars read are chosen in the settings.');
+				container.createDiv('ai-scheduler-example').setText('Example: 15 minutes before events with "interview" in the title: "Prepare a briefing for {{event}} from my notes." All-day and declined events are skipped. The calendars read are set in the settings.');
 
 				createLabel('Stop after N runs (optional)');
 				this.scheduleInputs.maxIterations = createInput({

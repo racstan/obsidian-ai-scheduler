@@ -8,11 +8,14 @@ import {
 	eventMatches,
 	formatEvents,
 	nextMeetingTrigger,
-	parseApiEvent,
+	parseGoogleEvent,
+	parseIcs,
 	planRunSync,
 	runEventId,
-} from '../src/google/calendar';
-import { emailFromIdToken } from '../src/google/auth';
+} from '../src/calendars/events';
+import { emailFromIdToken } from '../src/calendars/oauth';
+import { parseOutlookEvent } from '../src/calendars/outlook';
+import { normalizeLinkUrl } from '../src/calendars';
 import { normalizeJob, parseStoredData } from '../src/settings';
 import { describeSchedule, getScheduleNextRun, waitsForTrigger } from '../src/schedule';
 import { reconcileAfterRun } from '../src/engine';
@@ -28,7 +31,7 @@ const event = (overrides: Partial<CalendarEvent> = {}): CalendarEvent => ({
 });
 
 test('Calendar API events are parsed, cancelled ones dropped', () => {
-	const parsed = parseApiEvent({
+	const parsed = parseGoogleEvent({
 		id: 'abc',
 		status: 'confirmed',
 		summary: 'Design review',
@@ -44,8 +47,8 @@ test('Calendar API events are parsed, cancelled ones dropped', () => {
 	assert.equal(parsed.link, 'https://meet.google.com/x');
 	assert.deepEqual(parsed.attendees, ['Sam', 'jo@x.com']);
 	assert.equal(parsed.declined, true);
-	assert.equal(parseApiEvent({ id: 'gone', status: 'cancelled' }, 'primary'), null);
-	const allDay = parseApiEvent({ id: 'd', start: { date: '2026-10-20' }, end: { date: '2026-10-21' } }, 'primary');
+	assert.equal(parseGoogleEvent({ id: 'gone', status: 'cancelled' }, 'primary'), null);
+	const allDay = parseGoogleEvent({ id: 'd', start: { date: '2026-10-20' }, end: { date: '2026-10-21' } }, 'primary');
 	assert.equal(allDay?.allDay, true);
 	assert.equal(allDay?.title, '(No title)');
 	assert.equal(new Date(allDay!.start).getDate(), 20, 'all-day events start at local midnight');
@@ -123,10 +126,13 @@ test('Meeting task fields survive saving and loading', () => {
 	assert.equal(normalizeJob({ title: 'T', prompt: 'p', schedule: { kind: 'daily', time: '09:00', minutesBefore: 5 } }).schedule.minutesBefore, undefined);
 });
 
-test('Google settings have safe defaults', () => {
-	const { settings } = parseStoredData({ version: 6, settings: { googleRunDays: 500, googleCalendars: ['a', 'a', 7, 'b'], googleClientId: ' id ' }, jobs: [] });
+test('Calendar settings have safe defaults', () => {
+	const { settings } = parseStoredData({ version: 6, settings: { calendarRunDays: 500, googleCalendars: ['a', 'a', 7, 'b'], googleClientId: ' id ', outlookCalendars: 'x' }, jobs: [] });
 	assert.equal(settings.googleShowRuns, false);
-	assert.equal(settings.googleRunDays, 14);
+	assert.equal(settings.outlookShowRuns, false);
+	assert.deepEqual(settings.outlookCalendars, []);
+	assert.equal(settings.outlookClientId, '');
+	assert.equal(settings.calendarRunDays, 14);
 	assert.deepEqual(settings.googleCalendars, ['a', 'b']);
 	assert.equal(settings.googleClientId, 'id');
 	assert.equal(settings.googleClientSecret, '');
@@ -147,9 +153,9 @@ test('Run events have stable, valid Google ids and sync by difference', () => {
 	const meeting = normalizeJob({ title: 'Prep', prompt: 'p', schedule: { kind: 'meeting' } }, from);
 	const limited = normalizeJob({ title: 'Twice', prompt: 'p', runCount: 1, schedule: { kind: 'daily', time: '11:00', maxIterations: 2 } }, from);
 	const desired = desiredRunEvents([daily, paused, meeting, limited], from, to);
-	assert.equal(desired.filter(entry => entry.jobId === daily.id).length, 3);
-	assert.equal(desired.filter(entry => entry.jobId === limited.id).length, 1, 'only the runs left');
-	assert.ok(desired.every(entry => entry.jobId !== paused.id && entry.jobId !== meeting.id));
+	assert.equal(desired.filter((entry: { jobId: string }) => entry.jobId === daily.id).length, 3);
+	assert.equal(desired.filter((entry: { jobId: string }) => entry.jobId === limited.id).length, 1, 'only the runs left');
+	assert.ok(desired.every((entry: { jobId: string }) => entry.jobId !== paused.id && entry.jobId !== meeting.id));
 	assert.equal(desired[0].title, 'AI: Digest');
 	assert.match(desired[0].description, /Summarize[\s\S]*task #/);
 
@@ -167,4 +173,105 @@ test('The email is read from the id token', () => {
 	assert.equal(emailFromIdToken(`h.${payload}.s`), 'ana@example.com');
 	assert.equal(emailFromIdToken('garbage'), undefined);
 	assert.equal(emailFromIdToken(undefined), undefined);
+});
+
+const ICS = [
+	'BEGIN:VCALENDAR',
+	'VERSION:2.0',
+	'PRODID:-//Test//EN',
+	'BEGIN:VTIMEZONE',
+	'TZID:Europe/Berlin',
+	'BEGIN:STANDARD',
+	'DTSTART:19701025T030000',
+	'RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU',
+	'TZOFFSETFROM:+0200',
+	'TZOFFSETTO:+0100',
+	'END:STANDARD',
+	'BEGIN:DAYLIGHT',
+	'DTSTART:19700329T020000',
+	'RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU',
+	'TZOFFSETFROM:+0100',
+	'TZOFFSETTO:+0200',
+	'END:DAYLIGHT',
+	'END:VTIMEZONE',
+	'BEGIN:VEVENT',
+	'UID:standup@test',
+	'DTSTART;TZID=Europe/Berlin:20261012T090000',
+	'DTEND;TZID=Europe/Berlin:20261012T091500',
+	'RRULE:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR',
+	'EXDATE;TZID=Europe/Berlin:20261020T090000',
+	'SUMMARY:Daily standup',
+	'DESCRIPTION:Join: https://meet.google.com/abc-defg-hij',
+	'ATTENDEE;CN=Sam:mailto:sam@example.com',
+	'END:VEVENT',
+	'BEGIN:VEVENT',
+	'UID:standup@test',
+	'RECURRENCE-ID;TZID=Europe/Berlin:20261021T090000',
+	'DTSTART;TZID=Europe/Berlin:20261021T100000',
+	'DTEND;TZID=Europe/Berlin:20261021T101500',
+	'SUMMARY:Daily standup (moved)',
+	'END:VEVENT',
+	'BEGIN:VEVENT',
+	'UID:offsite@test',
+	'DTSTART;VALUE=DATE:20261022',
+	'DTEND;VALUE=DATE:20261023',
+	'SUMMARY:Offsite',
+	'END:VEVENT',
+	'BEGIN:VEVENT',
+	'UID:gone@test',
+	'DTSTART:20261021T120000Z',
+	'DTEND:20261021T130000Z',
+	'STATUS:CANCELLED',
+	'SUMMARY:Cancelled lunch',
+	'END:VEVENT',
+	'END:VCALENDAR',
+].join('\r\n');
+
+test('Calendar files (.ics) are read, with repeats, exceptions and time zones', () => {
+	const events = parseIcs(ICS, 'link:x', new Date('2026-10-19T00:00:00Z'), new Date('2026-10-23T00:00:00Z'));
+	const standups = events.filter(entry => entry.title.startsWith('Daily standup'));
+	// Mon 19, (Tue 20 removed), Wed 21 moved, Thu 22.
+	assert.deepEqual(standups.map(entry => entry.start), ['2026-10-19T07:00:00.000Z', '2026-10-21T08:00:00.000Z', '2026-10-22T07:00:00.000Z']);
+	assert.equal(standups[1].title, 'Daily standup (moved)');
+	assert.equal(standups[0].link, 'https://meet.google.com/abc-defg-hij');
+	assert.deepEqual(standups[0].attendees, ['Sam']);
+	assert.notEqual(eventKey(standups[0]), eventKey(standups[2]), 'each occurrence is its own event');
+	const offsite = events.find(entry => entry.title === 'Offsite');
+	assert.equal(offsite?.allDay, true);
+	assert.ok(!events.some(entry => entry.title === 'Cancelled lunch'));
+	assert.throws(() => parseIcs('<html>Sign in</html>', 'link:x', new Date(), new Date()), /did not return a calendar/);
+});
+
+test('Calendar link addresses are checked', () => {
+	assert.equal(normalizeLinkUrl(' webcal://p01-caldav.icloud.com/published/2/abc '), 'https://p01-caldav.icloud.com/published/2/abc');
+	assert.throws(() => normalizeLinkUrl('calendar.google.com'), /full calendar address/);
+	assert.throws(() => normalizeLinkUrl('ftp://example.com/a.ics'), /https/);
+});
+
+test('Outlook events are parsed', () => {
+	const parsed = parseOutlookEvent({
+		id: 'o1',
+		subject: 'Planning',
+		start: { dateTime: '2026-10-19T09:00:00.0000000', timeZone: 'UTC' },
+		end: { dateTime: '2026-10-19T10:00:00.0000000', timeZone: 'UTC' },
+		isAllDay: false,
+		location: { displayName: 'Room 2' },
+		onlineMeeting: { joinUrl: 'https://teams.microsoft.com/l/x' },
+		attendees: [{ type: 'required', emailAddress: { name: 'Jo', address: 'jo@x.com' } }, { type: 'resource', emailAddress: { name: 'Room 2' } }],
+		responseStatus: { response: 'declined' },
+		bodyPreview: 'Agenda',
+	}, 'outlook:default');
+	assert.equal(parsed?.start, '2026-10-19T09:00:00.000Z');
+	assert.equal(parsed?.link, 'https://teams.microsoft.com/l/x');
+	assert.deepEqual(parsed?.attendees, ['Jo']);
+	assert.equal(parsed?.declined, true);
+	assert.equal(parsed?.location, 'Room 2');
+	assert.equal(parseOutlookEvent({ id: 'c', isCancelled: true }, 'x'), null);
+	const allDay = parseOutlookEvent({ id: 'd', isAllDay: true, start: { dateTime: '2026-10-20T00:00:00.0000000' }, end: { dateTime: '2026-10-21T00:00:00.0000000' } }, 'x');
+	assert.equal(new Date(allDay!.start).getDate(), 20);
+});
+
+test('The email is read from a Microsoft id token', () => {
+	const payload = Buffer.from(JSON.stringify({ preferred_username: 'ana@outlook.com' })).toString('base64url');
+	assert.equal(emailFromIdToken(`h.${payload}.s`), 'ana@outlook.com');
 });

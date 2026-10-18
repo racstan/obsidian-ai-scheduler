@@ -3197,20 +3197,75 @@ body.is-phone .ai-scheduler-option-grid {
 	grid-template-columns: minmax(0, 1fr);
 }
 
-/* Google Calendar settings */
+/* Settings: tabs */
+.ai-scheduler-settings-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	padding-bottom: 8px;
+	margin-bottom: 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ai-scheduler-settings-tab {
+	background: transparent;
+	box-shadow: none;
+	border: none;
+	border-radius: var(--radius-s);
+	padding: 6px 12px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	cursor: pointer;
+}
+
+.ai-scheduler-settings-tab:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.ai-scheduler-settings-tab.is-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
 .ai-scheduler-settings-note {
 	margin: 4px 0 12px;
 	font-size: var(--font-ui-small);
 }
 
-.ai-scheduler-google-calendars {
+/* Settings: calendar add-ons */
+.ai-scheduler-beta {
+	display: inline-block;
+	margin-left: 8px;
+	padding: 1px 6px;
+	border-radius: var(--radius-s);
+	border: 1px solid var(--color-orange);
+	color: var(--color-orange);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	vertical-align: middle;
+	letter-spacing: 0.02em;
+}
+
+.ai-scheduler-setup-steps {
+	margin: 4px 0 8px;
+	padding-left: 20px;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+.ai-scheduler-setup-steps li {
+	margin-bottom: 4px;
+}
+
+.ai-scheduler-calendar-checks {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 	gap: 0 12px;
 	margin: 0 0 12px;
 }
 
-.ai-scheduler-google-dot {
+.ai-scheduler-calendar-dot {
 	width: 10px;
 	height: 10px;
 	border-radius: 50%;
@@ -3219,7 +3274,7 @@ body.is-phone .ai-scheduler-option-grid {
 }
 
 .ai-scheduler-settings-advanced {
-	margin: 4px 0 16px;
+	margin: 4px 0 12px;
 }
 
 .ai-scheduler-settings-advanced > summary {
@@ -3229,13 +3284,11 @@ body.is-phone .ai-scheduler-option-grid {
 	margin-bottom: 6px;
 }
 
-.ai-scheduler-google-steps {
-	margin: 4px 0 8px;
-	padding-left: 20px;
-	font-size: var(--font-ui-small);
-	color: var(--text-muted);
+.ai-scheduler-link-input {
+	min-width: 220px;
 }
 
-.ai-scheduler-google-steps li {
-	margin-bottom: 4px;
+body.is-phone .ai-scheduler-settings-tab {
+	flex: 1 1 auto;
+	text-align: center;
 }

@@ -13,4 +13,4 @@ import './variables.test';
 import './output.test';
 import './organize.test';
 import './integrations.test';
-import './google.test';
+import './calendars.test';

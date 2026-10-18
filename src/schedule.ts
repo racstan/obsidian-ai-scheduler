@@ -263,7 +263,7 @@ export function scheduleMinutes(schedule: TaskSchedule): number {
 /**
  * Event, "after another task" and "before calendar events" schedules have no
  * clock time: they wait for a vault change, the other task, or the next
- * matching Google Calendar event.
+ * matching calendar event.
  */
 export function waitsForTrigger(schedule: TaskSchedule | null | undefined): boolean {
 	return schedule?.kind === 'event' || schedule?.kind === 'after' || schedule?.kind === 'meeting';
@@ -374,7 +374,7 @@ export function previewSchedule(schedule: TaskSchedule | null | undefined, count
 	if (!schedule) return [];
 	if (schedule.kind === 'event') return ['fires on vault activity'];
 	if (schedule.kind === 'after') return ['runs when the other task finishes'];
-	if (schedule.kind === 'meeting') return ['runs before matching Google Calendar events'];
+	if (schedule.kind === 'meeting') return ['runs before matching calendar events'];
 	if (schedule.kind === 'once') {
 		const date = new Date(schedule.at as string);
 		return Number.isNaN(date.getTime()) ? [] : [formatLocalRun(date)];

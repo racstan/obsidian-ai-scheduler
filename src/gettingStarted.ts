@@ -31,7 +31,7 @@ AI Scheduler has no settings for providers or keys. It simply uses what you conf
 
 ## 3. Connect AI Scheduler
 
-In **Settings → AI Scheduler**:
+In **Settings → AI Scheduler**, on the **General** tab:
 
 1. **AI backend**: choose Claudian, Oh My Claudian or Copilot.
 2. **Models** (Claudian): pick the models for planning, scheduled tasks and reviews. If the list is empty, finish step 2 and refresh it.

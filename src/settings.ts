@@ -5,7 +5,7 @@ import { getScheduleNextRun, normalizeMaxIterations } from './schedule';
 import { id, localDateKey } from './util';
 import { normalizeDrafts } from './drafts';
 import { PendingChange, normalizePendingChanges } from './approval';
-import type { CalendarEvent } from './google/calendar';
+import type { CalendarEvent } from './calendars/events';
 
 export const DEFAULT_SETTINGS: AISettings = {
 	assistantTab: 1,
@@ -45,11 +45,14 @@ export const DEFAULT_SETTINGS: AISettings = {
 	statusBarNextRun: true,
 	drafts: {},
 	approvalMode: true,
+	calendarRunDays: 14,
 	googleShowRuns: false,
-	googleRunDays: 14,
 	googleCalendars: [],
 	googleClientId: '',
 	googleClientSecret: '',
+	outlookShowRuns: false,
+	outlookCalendars: [],
+	outlookClientId: '',
 };
 
 const VALID_STATUSES = new Set(['scheduled', 'running', 'completed', 'failed', 'missed', 'disabled', 'cancelled']);
@@ -309,12 +312,17 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 	settings.drafts = normalizeDrafts(settings.drafts);
 	// On unless the user turned it off.
 	settings.approvalMode = settings.approvalMode !== false;
+	const rawRunDays = Number(settings.calendarRunDays);
+	settings.calendarRunDays = Number.isInteger(rawRunDays) && rawRunDays >= 1 && rawRunDays <= 60 ? rawRunDays : DEFAULT_SETTINGS.calendarRunDays;
+	const calendarIds = (value: unknown) => Array.isArray(value) ? [...new Set(value.filter((entry): entry is string => typeof entry === 'string' && !!entry))].slice(0, 50) : [];
+	const trimmed = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 	settings.googleShowRuns = settings.googleShowRuns === true;
-	const rawGoogleDays = Number(settings.googleRunDays);
-	settings.googleRunDays = Number.isInteger(rawGoogleDays) && rawGoogleDays >= 1 && rawGoogleDays <= 60 ? rawGoogleDays : DEFAULT_SETTINGS.googleRunDays;
-	settings.googleCalendars = Array.isArray(settings.googleCalendars) ? [...new Set(settings.googleCalendars.filter(entry => typeof entry === 'string' && entry))].slice(0, 50) : [];
-	settings.googleClientId = typeof settings.googleClientId === 'string' ? settings.googleClientId.trim() : '';
-	settings.googleClientSecret = typeof settings.googleClientSecret === 'string' ? settings.googleClientSecret.trim() : '';
+	settings.googleCalendars = calendarIds(settings.googleCalendars);
+	settings.googleClientId = trimmed(settings.googleClientId);
+	settings.googleClientSecret = trimmed(settings.googleClientSecret);
+	settings.outlookShowRuns = settings.outlookShowRuns === true;
+	settings.outlookCalendars = calendarIds(settings.outlookCalendars);
+	settings.outlookClientId = trimmed(settings.outlookClientId);
 	if (typeof settings.icsExportPath !== 'string' || !settings.icsExportPath.trim()) settings.icsExportPath = DEFAULT_SETTINGS.icsExportPath;
 	const rawIcsDays = Number(settings.icsExportDays);
 	settings.icsExportDays = Number.isInteger(rawIcsDays) && rawIcsDays >= 1 && rawIcsDays <= 366 ? rawIcsDays : DEFAULT_SETTINGS.icsExportDays;

@@ -44,9 +44,9 @@ export const VARIABLE_HELP: VariableHelp[] = [
 	{ name: '{{previous_result}}', description: "for a task that runs after another: that task's reply" },
 	{ name: '{{previous_output}}', description: 'for a task that runs after another: a link to its result note' },
 	{ name: '{{dataview: LIST FROM #tag}}', description: 'the result of a Dataview query (needs the Dataview plugin); instructions only' },
-	{ name: '{{today_events}}', description: "today's Google Calendar events (early access; connect it in the settings); instructions only" },
-	{ name: '{{tomorrow_events}}', description: "tomorrow's Google Calendar events; instructions only" },
-	{ name: '{{week_events}}', description: 'Google Calendar events of the next 7 days; instructions only' },
+	{ name: '{{today_events}}', description: "today's events from your calendars (add one under calendar add-ons in the settings); instructions only" },
+	{ name: '{{tomorrow_events}}', description: "tomorrow's calendar events; instructions only" },
+	{ name: '{{week_events}}', description: 'calendar events of the next 7 days; instructions only' },
 	{ name: '{{event}}', description: 'for a task that runs before calendar events: the event it runs for; instructions only' },
 ];
 

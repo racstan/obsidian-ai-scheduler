@@ -69,7 +69,7 @@ Supported versions: Claudian 2.x (including the 2.3.2x releases), Oh My Claudian
 
 **Mobile** — On phones and tablets you can view, edit and plan tasks. Claudian and Oh My Claudian work only on desktop, so tasks run on your computer; with Copilot you can also run tasks by hand on mobile. A per-device setting, *Run scheduled tasks on this device*, decides which device starts scheduled tasks, so a vault synced between devices runs each task once (phones and tablets start with it off).
 
-**Google Calendar (early access)** — Connect your Google account in the settings (with your own free Google Cloud project, set up once), and tasks can read your events (`{{today_events}}`, `{{tomorrow_events}}`, `{{week_events}}`), run a set number of minutes before calendar events (e.g. "15 minutes before every event with *interview* in the title: prepare a briefing"), and show their upcoming runs in an **AI Scheduler** calendar in your Google account. Optional and off until you connect. See [Google Calendar](#google-calendar-early-access) below.
+**Calendar add-ons (beta)** — Optional: add your Google, Outlook, iCloud or other calendars (a calendar link is enough), and tasks can read your events (`{{today_events}}`, `{{tomorrow_events}}`, `{{week_events}}`), run a set number of minutes before calendar events (e.g. "15 minutes before every event with *interview* in the title: prepare a briefing"), and, with a Google or Outlook account, show their upcoming runs in an **AI Scheduler** calendar there. See [Calendar add-ons](#calendar-add-ons-beta) below.
 
 **Trash & restore** — Deleted tasks go to a trash section. You can restore them individually, restore all at once, or permanently delete them.
 
@@ -111,7 +111,7 @@ Supported versions: Claudian 2.x (including the 2.3.2x releases), Oh My Claudian
 | **Once** | Runs once at a specific future date and time |
 | **Vault event** | Runs when any note in the vault is modified or created (with a cooldown) |
 | **After another task** | Runs each time a chosen task finishes successfully; use `{{previous_result}}` or `{{previous_output}}` to work with that task's result |
-| **Before Google Calendar events** | Runs a set number of minutes before each event, or only events with chosen words in the title; `{{event}}` holds the event's details (early access, needs Google Calendar connected) |
+| **Before calendar events** | Runs a set number of minutes before each event, or only events with chosen words in the title; `{{event}}` holds the event's details (beta; needs a calendar add-on) |
 
 All schedule types support an optional **max iterations** limit — the job stops automatically after N runs.
 
@@ -142,12 +142,13 @@ AI Scheduler needs one of these backends installed and working first. Install it
 - **[Oh My Claudian](https://github.com/lee259/oh-my-claudian)**
 - **[Copilot](https://github.com/logancyang/obsidian-copilot)**
 
-Then in **Settings → AI Scheduler**:
+Then in **Settings → AI Scheduler**, which has five tabs:
 
-1. Pick your **AI backend** (Claudian, Oh My Claudian or Copilot).
-2. Choose models for **Planning model**, **Scheduled task model**, **Daily preview model** and **Periodic review model**.
-3. Optionally enable **Schedule notes** to mirror tasks as vault Markdown files.
-4. Optionally enable **Periodic AI review**, choose its cadence and time, and pick a review folder.
+1. **General**: pick your **AI backend** (Claudian, Oh My Claudian or Copilot) and choose models for planning, scheduled tasks and reviews. This tab also has pausing, quiet hours and notifications.
+2. **Tasks & results** (optional): where results go, approval mode, the activity log, and **Schedule notes** to mirror tasks as vault Markdown files.
+3. **Reviews** (optional): enable **Periodic AI review**, choose its cadence and time, and pick a review folder.
+4. **Calendars** (optional): the calendar file export and the calendar add-ons (beta).
+5. **About**: release notes, help and links.
 
 On first install the plugin creates a short **AI Scheduler - Getting started** note with these steps; reopen it any time with **AI Scheduler: Open getting started guide** or from **Settings → AI Scheduler → Help & community**. The dashboard, planner and AI task editor have a button to open your backend's settings (for example **Claudian settings**), and show what to fix if the backend isn't installed, enabled or set up.
 
@@ -174,7 +175,7 @@ From here you can create tasks (yourself, from a template, or with the AI Planne
 - **Pause…**: pause for 1 hour, 4 hours, until tomorrow 08:00, or until you resume. While paused, no task starts on its own; "Run now" still works. On resume, runs missed while paused follow the **Run missed jobs after startup** setting, as if Obsidian had been closed.
 - **More…**: export tasks to a JSON file, or import tasks from one. Imported tasks are added paused so you can review them first; run history and replies are not included.
 
-**Quiet hours** (Settings → Background execution): tasks that fall due in that window wait and run once it ends. The status bar shows the next run, or that AI Scheduler is paused or in quiet hours (this can be turned off).
+**Quiet hours** (Settings → General): tasks that fall due in that window wait and run once it ends. The status bar shows the next run, or that AI Scheduler is paused or in quiet hours (this can be turned off).
 
 ### Task options
 
@@ -197,7 +198,7 @@ In the task editor:
   | `{{changed_notes}}` | links to the notes changed since the last run (up to 50) |
   | `{{daily_note}}` | a link to today's daily note |
   | `{{task}}` | the task title |
-  | `{{today_events}}`, `{{tomorrow_events}}`, `{{week_events}}` | your Google Calendar events for today, tomorrow or the next 7 days (when connected) |
+  | `{{today_events}}`, `{{tomorrow_events}}`, `{{week_events}}` | your calendar events for today, tomorrow or the next 7 days (with a calendar add-on) |
   | `{{event}}` | for a task that runs before calendar events: the event it runs for |
 
   Any other `{{...}}` (for example Templater syntax) is left untouched.
@@ -216,7 +217,7 @@ Run **AI Scheduler: Open schedule calendar** to see every task's runs in a month
 
 ### See your AI tasks in Google Calendar, Outlook or Apple Calendar
 
-Turn on **Settings → AI Scheduler → Calendar export**. The plugin then keeps an `.ics` file (by default `AI Scheduler/AI Scheduler.ics`) listing your upcoming runs, and rewrites it whenever your tasks change. There are two ways to use it:
+Turn on **Settings → AI Scheduler → Calendars → Keep a calendar file of upcoming runs**. The plugin then keeps an `.ics` file (by default `AI Scheduler/AI Scheduler.ics`) listing your upcoming runs, and rewrites it whenever your tasks change. There are two ways to use it:
 
 **Import (one-time snapshot).** Import the file in your calendar app (Google Calendar: *Settings → Import & export*). This copies the runs listed at that moment; later changes need another import.
 
@@ -233,13 +234,34 @@ Good to know:
 - **Anyone with the link can read the file**, which includes task titles and prompts. Treat the link like a password and don't share it.
 - **One-way.** Events edited or deleted in your calendar app don't change your tasks.
 
-### Google Calendar (early access)
+### Calendar add-ons (beta)
 
-Instead of an `.ics` file, you can connect Google Calendar directly. You use your own Google Cloud project for this, so your calendar data only goes between your computer and your own project; the plugin's author never sees it. Setting it up takes about five minutes, once (see [Connect Google Calendar](#connect-google-calendar) below). Connecting works on desktop; the sign-in is kept on that device and is not synced with your vault.
+The schedule calendar above needs nothing set up. These optional add-ons bring your other calendars in, so tasks can use your events (`{{today_events}}`, `{{tomorrow_events}}`, `{{week_events}}`) and run before calendar events. Set them up in **Settings → AI Scheduler → Calendars**. They are in beta: they work, but expect rough edges, and tell us on GitHub if something breaks.
 
-- **Show runs in Google Calendar**: the plugin creates a calendar named **AI Scheduler** in your account and keeps it up to date with the next runs (14 days ahead by default), without reminders. Only the device that runs scheduled tasks updates it. Turning it off deletes that calendar. The plugin can change only the calendar it created, never your other calendars.
-- **Events in prompts**: `{{today_events}}`, `{{tomorrow_events}}` and `{{week_events}}` list your events (time, title, place, attendees, video link). Choose which calendars are read in the settings; by default your main calendar.
+| Add-on | What it does | Setup |
+| --- | --- | --- |
+| **Calendar links** | Reads events from Google, Outlook, iCloud and most other calendars, read-only | Paste the calendar's private address. Nothing else |
+| **Google Calendar** | Reads your Google calendars and keeps an **AI Scheduler** calendar of upcoming runs in Google | Your own free Google Cloud project, about 5 minutes once |
+| **Outlook calendar** | Reads your Outlook calendars and keeps an **AI Scheduler** calendar of upcoming runs in Outlook | Your own free Microsoft app registration, about 5 minutes once |
+
+Just want your events in prompts or tasks that run before meetings? Use a calendar link. Choose a Google or Outlook account only if you also want your runs to show up in that calendar.
+
+What the add-ons give you:
+- **Events in prompts**: `{{today_events}}`, `{{tomorrow_events}}` and `{{week_events}}` list your events (time, title, place, attendees, video link) from all the calendars you added.
 - **Before calendar events**: a schedule type that runs a task a set number of minutes before each event, or only before events with chosen words in the title. Each event runs the task once; all-day and declined events are skipped. The event's details are added to the instructions, and `{{event}}` puts them where you want.
+- **Show runs in Google or Outlook**: the plugin creates a calendar named **AI Scheduler** in your account and keeps it up to date with the next runs (14 days ahead by default), without reminders. Only the device that runs scheduled tasks updates it. Turning it off deletes that calendar. The plugin changes only the calendar it created.
+
+Links and sign-ins are kept on the device where you add them, not in your vault, so they are not synced. Add them on the computer that runs your scheduled tasks.
+
+#### Calendar links
+
+Copy the calendar's private address and paste it under **Calendar links → Add a calendar link**:
+- **Google Calendar:** on the web, *Settings → (your calendar) → Integrate calendar → Secret address in iCal format*.
+- **Outlook:** on the web, *Settings → Calendar → Shared calendars → Publish a calendar*, choose *Can view all details*, and copy the **ICS** link.
+- **iCloud:** in the Calendar app, share the calendar as a **Public Calendar** and copy the link (it starts with `webcal://`).
+- **Others** (Fastmail, Proton, Nextcloud and more): look for *subscribe*, *iCal* or *ICS* in the calendar's sharing settings.
+
+A private link works like a password: anyone who has it can read that calendar. If one leaks, reset it in your calendar's settings and add the new one. Some work accounts turn these links off; then use an account below.
 
 #### Connect Google Calendar
 
@@ -253,9 +275,20 @@ Google Cloud is free for this; you don't need to add a payment method.
    - Published, the sign-in lasts. Because only you use your app, Google never needs to review it, but it shows a "Google hasn't verified this app" screen when you connect: choose *Advanced → Go to (your app name)*.
 5. Under **Data access → Add or remove scopes**, add `calendar.app.created`, `calendar.calendarlist.readonly` and `calendar.events.readonly`.
 6. Under **Clients → Create client**, choose **Desktop app**, then copy the **client ID** and **client secret**.
-7. In Obsidian: **Settings → AI Scheduler → Google Calendar → Set up your Google client**, paste both, and click **Connect**. Your browser opens Google's sign-in; allow access and go back to Obsidian.
+7. In Obsidian: **Settings → AI Scheduler → Calendars → Google Calendar → Set up your Google client**, paste both, and click **Connect**. Your browser opens Google's sign-in; allow access and go back to Obsidian.
 
-The client ID and secret are saved with the plugin settings, so devices that sync your vault share them; each computer clicks Connect once.
+#### Connect Outlook calendar
+
+1. Open [App registrations](https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) in the Microsoft Entra admin center (sign in with your Microsoft account) and click **New registration**.
+2. Give it a name, e.g. *AI Scheduler*, and under *Supported account types* choose **Accounts in any organizational directory and personal Microsoft accounts**.
+3. Under *Redirect URI*, choose the platform **Public client/native (mobile & desktop)** and enter `http://localhost`. Click **Register**.
+4. Under **API permissions → Add a permission → Microsoft Graph → Delegated permissions**, add `Calendars.ReadWrite`.
+5. On the **Overview** page, copy the **Application (client) ID**. No client secret is needed.
+6. In Obsidian: **Settings → AI Scheduler → Calendars → Outlook calendar → Set up your Outlook client**, paste the ID, and click **Connect**.
+
+Microsoft has no permission narrower than reading and writing calendars, so the sign-in asks for both; the plugin only writes to its own **AI Scheduler** calendar. With a work or school account, your organization may need to allow the app first.
+
+The client details are saved with the plugin settings, so devices that sync your vault share them; each computer clicks Connect once.
 
 ---
 
@@ -292,7 +325,11 @@ All commands are available from the command palette (`Ctrl/Cmd + P`):
 
 - No third-party servers, no telemetry, no analytics.
 - Prompts and vault files go only to your configured backend (Claudian, Oh My Claudian or Copilot) and then to whatever AI provider you have set up there.
-- **Network use (only if you connect Google Calendar):** the plugin then talks directly to Google (`accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`) to sign in, read events from the calendars you choose, and, if you turn it on, write your upcoming task runs (titles and the start of their instructions) to the **AI Scheduler** calendar it creates. This needs a Google account and your own Google Cloud project (free). Nothing goes through any other server. The sign-in is stored on your device, outside your vault, and **Disconnect** removes it and revokes access at Google.
+- **Network use (only if you use a calendar add-on):**
+  - *Calendar links*: the plugin downloads each address you add, every few minutes while a task needs it.
+  - *Google Calendar*: it talks directly to Google (`accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`) to sign in, read events from the calendars you choose, and, if you turn it on, write your upcoming task runs (titles and the start of their instructions) to the **AI Scheduler** calendar it creates. Needs a Google account and your own Google Cloud project (free).
+  - *Outlook calendar*: the same with Microsoft (`login.microsoftonline.com`, `graph.microsoft.com`). Needs a Microsoft account and your own app registration (free).
+  - Nothing goes through any other server. Links and sign-ins are stored on your device, outside your vault; **Disconnect** removes a sign-in (and revokes it at Google).
 - Periodic reviews and automated note reading are opt-in.
 - Follow-up tasks that the AI proposes in its replies are created **disabled** — you review and enable them yourself.
 - Task output is written as Markdown notes. The plugin never replaces a note it did not create; it only adds to an existing note when you choose **Add to one note** or **Add to today's daily note** for that task. It never writes into hidden or `.obsidian` folders.
@@ -339,6 +376,8 @@ Thanks to the authors of the AI plugins that AI Scheduler works with:
 - **[Copilot](https://github.com/logancyang/obsidian-copilot)** by [Logan Yang](https://github.com/logancyang)
 
 Each plugin is developed and licensed by its own author; AI Scheduler is not affiliated with them.
+
+Calendar files are read with **[ical.js](https://github.com/kewisch/ical.js)** (Mozilla Public License 2.0), included unmodified in the plugin.
 
 Thanks also to everyone who contributed code, reported issues or suggested features. They are credited in each release of the [changelog](CHANGELOG.md) and in the plugin's **What's new** window.
 

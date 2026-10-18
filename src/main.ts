@@ -60,7 +60,7 @@ import { buildIcs } from './ics';
 import { GETTING_STARTED_PATH, gettingStartedNote } from './gettingStarted';
 import { AIDraft, normalizeDrafts, sameDraft } from './drafts';
 import { PastTimePlanError, isPastOncePlan, movePlanToFuture, replyExcerpt } from './planCheck';
-import { GoogleCalendarService } from './google';
+import { CalendarHub } from './calendars';
 
 const TICK_MS = 15000;
 
@@ -118,8 +118,8 @@ export class AISchedulerPlugin extends Plugin {
 	reviewRunning = false;
 	lastTickError: string | null = null;
 	notesSync: ScheduleNotesSync = new ScheduleNotesSync(this);
-	/** Google Calendar (early access). */
-	google: GoogleCalendarService = new GoogleCalendarService(this);
+	/** Calendar add-ons (beta): calendar links, Google and Outlook. */
+	calendars: CalendarHub = new CalendarHub(this);
 	private meetingSignature = '';
 	pendingVaultEvents: string[] = [];
 	private lastTickAt = Date.now();
@@ -431,7 +431,7 @@ export class AISchedulerPlugin extends Plugin {
 		this.statusBarEl?.remove();
 		this.statusBarEl = null;
 		this.notesSync?.dispose();
-		this.google?.dispose();
+		this.calendars?.dispose();
 		if (this.icsTimer !== null) window.clearTimeout(this.icsTimer);
 		this.icsTimer = null;
 		// Stop runs still in flight: a reloaded/updated instance recovers them, so
@@ -460,12 +460,12 @@ export class AISchedulerPlugin extends Plugin {
 		}
 		this.notesSync.requestSync();
 		this.requestIcsExport();
-		this.google.requestSync();
+		this.calendars.requestSync();
 		// A "before calendar events" task was added or changed: read events on the next tick.
 		const meetings = JSON.stringify(this.jobs.filter(job => job.schedule.kind === 'meeting').map(job => [job.id, job.enabled, job.schedule]));
 		if (meetings !== this.meetingSignature) {
 			this.meetingSignature = meetings;
-			this.google.pollSoon();
+			this.calendars.pollSoon();
 		}
 		this.updateStatusBar();
 	}
@@ -594,13 +594,13 @@ export class AISchedulerPlugin extends Plugin {
 			// "Before calendar events" tasks: when each runs next. Not awaited, so a
 			// slow connection never holds up other tasks; changes apply next tick.
 			const busy = (job: Job) => this.runningJobs.has(job.id) || this.manualRuns.has(job.id);
-			void this.google.pollMeetings(busy).then(changed => changed ? this.saveState() : undefined);
+			void this.calendars.pollMeetings(busy).then(changed => changed ? this.saveState() : undefined);
 			// Never prepare for a meeting that already started (e.g. after sleep or a restart).
 			for (const job of this.jobs) {
 				if (job.schedule.kind === 'meeting' && job.nextRunAt && job.triggerEvent && !busy(job)
 					&& new Date(job.triggerEvent.start).getTime() <= nowMs) job.nextRunAt = null;
 			}
-			if (this.settings.googleShowRuns) this.google.syncIfStale();
+			this.calendars.syncIfStale();
 		}
 		if (this.settings.paused && this.settings.pausedUntil && new Date(this.settings.pausedUntil).getTime() <= nowMs) {
 			await this.resumeAll(true);
@@ -686,7 +686,7 @@ export class AISchedulerPlugin extends Plugin {
 		job.lastOutputAppended = undefined;
 		job.lastRunAt = startedAt.toISOString();
 		job.attempts = Number(job.attempts || 0) + 1;
-		this.google.markFired(job);
+		this.calendars.markFired(job);
 		const restoreOutput = () => {
 			if (job.lastOutputPath) return;
 			job.lastOutputPath = outputBeforeRun;
@@ -719,7 +719,7 @@ export class AISchedulerPlugin extends Plugin {
 				: executionPrompt(
 					job.schedule.kind === 'event' && job.lastEventPath
 						? `${instructions}\n\nThis run was triggered by a change to: ${job.lastEventPath}`
-						: [instructions, this.google.eventContext(job)].filter(Boolean).join('\n\n'),
+						: [instructions, this.calendars.eventContext(job)].filter(Boolean).join('\n\n'),
 					context.paths,
 					job.source !== 'self-talk',
 				);
@@ -862,7 +862,7 @@ export class AISchedulerPlugin extends Plugin {
 	 */
 	async taskInstructions(job: Job, variables: VariableContext): Promise<string> {
 		const withQueries = await expandDataviewQueries(this.app, job.prompt, job.notePath || '');
-		const withEvents = await this.google.expandVariables(withQueries, job, variables.now);
+		const withEvents = await this.calendars.expandVariables(withQueries, job, variables.now);
 		const parts = [expandVariables(withEvents, variables)];
 		if (job.output?.tasks) parts.push(TASKS_INSTRUCTION);
 		if (this.settings.approvalMode) parts.push(APPROVAL_INSTRUCTION);

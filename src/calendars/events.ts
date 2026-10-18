@@ -1,13 +1,14 @@
 /*
- * Google Calendar (early access): the pure parts, so they can be tested
- * without Google or Obsidian. Turning events into text for prompts, deciding
- * which AI Scheduler runs belong in the user's "AI Scheduler" calendar, and
- * when a "before calendar events" task should run.
+ * Calendar add-ons: the pure parts, so they can be tested without Google,
+ * Microsoft or Obsidian. Reading calendar files (.ics links), turning events
+ * into text for prompts, deciding which runs belong in the "AI Scheduler"
+ * calendar, and when a "before calendar events" task should run.
  */
+import ICAL from 'ical.js';
 import { Job } from '../types';
 import { getScheduleOccurrencesInRange, waitsForTrigger } from '../schedule';
 
-/** The parts of a Google Calendar event the plugin uses. */
+/** The parts of a calendar event the plugin uses, from any source. */
 export interface CalendarEvent {
 	id: string;
 	calendarId: string;
@@ -25,8 +26,8 @@ export interface CalendarEvent {
 	declined?: boolean;
 }
 
-/** Turns one item of the Calendar API's events.list into a CalendarEvent, or null for cancelled ones. */
-export function parseApiEvent(raw: Record<string, unknown>, calendarId: string): CalendarEvent | null {
+/** Turns one item of the Google Calendar API's events.list into a CalendarEvent, or null for cancelled ones. */
+export function parseGoogleEvent(raw: Record<string, unknown>, calendarId: string): CalendarEvent | null {
 	if (!raw || raw.status === 'cancelled' || typeof raw.id !== 'string') return null;
 	const start = raw.start as { dateTime?: string; date?: string } | undefined;
 	const end = raw.end as { dateTime?: string; date?: string } | undefined;
@@ -193,4 +194,94 @@ export function planRunSync(desired: RunEvent[], existing: Array<{ id: string; s
 		// Only events this plugin made (its id prefix); anything the user added stays.
 		remove: existing.filter(event => event.id.startsWith('ais') && !wanted.has(event.id)).map(event => event.id),
 	};
+}
+
+/** Video call links in event text (Google Meet, Zoom, Teams, Webex). */
+const MEETING_LINK = /https:\/\/[^\s<>"')]*(?:meet\.google\.com|zoom\.us|teams\.microsoft\.com|teams\.live\.com|webex\.com)[^\s<>"')]*/i;
+
+export function findMeetingLink(...texts: Array<string | undefined>): string | undefined {
+	for (const text of texts) {
+		const match = text ? MEETING_LINK.exec(text) : null;
+		if (match) return match[0];
+	}
+	return undefined;
+}
+
+/** Repeating events are expanded at most this many times (from their first date). */
+const MAX_OCCURRENCES = 20_000;
+
+function propertyText(component: ICAL.Component, name: string): string | undefined {
+	const value = component.getFirstPropertyValue(name);
+	return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+/**
+ * The events in a calendar file (.ics) that overlap `from`–`to`, with
+ * repeating events expanded and changed or cancelled occurrences applied.
+ * Throws if the text is not a calendar file.
+ */
+export function parseIcs(text: string, calendarId: string, from: Date, to: Date): CalendarEvent[] {
+	if (!/BEGIN:VCALENDAR/i.test(text)) throw new Error('This link did not return a calendar (.ics) file.');
+	const root = new ICAL.Component(ICAL.parse(text) as unknown[]);
+	for (const zone of root.getAllSubcomponents('vtimezone')) {
+		try {
+			ICAL.TimezoneService.register(zone);
+		} catch {
+			// A broken time zone falls back to UTC for its events.
+		}
+	}
+	const masters: ICAL.Event[] = [];
+	const exceptions = new Map<string, ICAL.Event[]>();
+	for (const component of root.getAllSubcomponents('vevent')) {
+		const event = new ICAL.Event(component);
+		if (!event.uid || !event.startDate) continue;
+		if (event.isRecurrenceException()) exceptions.set(event.uid, [...(exceptions.get(event.uid) ?? []), event]);
+		else masters.push(event);
+	}
+	const fromMs = from.getTime();
+	const toMs = to.getTime();
+	const events: CalendarEvent[] = [];
+	const add = (item: ICAL.Event, start: Date, end: Date, allDay: boolean, occurrence?: string) => {
+		const component = item.component;
+		if (String(component.getFirstPropertyValue('status') || '').toUpperCase() === 'CANCELLED') return;
+		if (end.getTime() <= fromMs || start.getTime() >= toMs) return;
+		const description = item.description || undefined;
+		const location = item.location || undefined;
+		const attendees = component.getAllProperties('attendee')
+			.map(attendee => String(attendee.getParameter('cn') || attendee.getFirstValue() || '').replace(/^mailto:/i, ''))
+			.filter(Boolean);
+		const link = propertyText(component, 'x-google-conference') || propertyText(component, 'x-microsoft-skypeteamsmeetingurl')
+			|| findMeetingLink(location, description, propertyText(component, 'url'));
+		events.push({
+			id: occurrence ? `${item.uid}/${occurrence}` : item.uid,
+			calendarId,
+			title: item.summary?.trim() || '(No title)',
+			start: start.toISOString(),
+			end: end.toISOString(),
+			allDay,
+			...(location ? { location } : {}),
+			...(description ? { description } : {}),
+			...(link ? { link } : {}),
+			...(attendees.length ? { attendees } : {}),
+		});
+	};
+	for (const master of masters) {
+		for (const exception of exceptions.get(master.uid) ?? []) master.relateException(exception);
+		const allDay = master.startDate.isDate;
+		if (!master.isRecurring()) {
+			const start = master.startDate.toJSDate();
+			const end = master.endDate ? master.endDate.toJSDate() : new Date(start.getTime() + (allDay ? 86_400_000 : 0));
+			add(master, start, end > start ? end : new Date(start.getTime() + (allDay ? 86_400_000 : 0)), allDay);
+			continue;
+		}
+		const iterator = master.iterator();
+		for (let count = 0, next = iterator.next(); next && count < MAX_OCCURRENCES; count++, next = iterator.next()) {
+			if (next.toJSDate().getTime() >= toMs) break;
+			const details = master.getOccurrenceDetails(next);
+			const start = details.startDate.toJSDate();
+			const end = details.endDate.toJSDate();
+			add(details.item, start, end > start ? end : new Date(start.getTime() + (allDay ? 86_400_000 : 0)), details.startDate.isDate, details.recurrenceId.toString());
+		}
+	}
+	return events.sort((a, b) => a.start.localeCompare(b.start));
 }
