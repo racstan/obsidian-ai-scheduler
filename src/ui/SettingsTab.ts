@@ -5,6 +5,7 @@ import { errorText } from '../util';
 import { validClock } from '../schedule';
 import { ChangelogModal } from './ChangelogModal';
 import { FolderSuggest } from './folderSuggest';
+import { renderGoogleSettings } from './googleSettings';
 
 /** Adds the type-or-pick folder dropdown to a settings text field. */
 function withFolderSuggest(app: App, text: TextComponent): TextComponent {
@@ -393,6 +394,11 @@ export class AssistantSettingTab extends PluginSettingTab {
 						})();
 					}));
 		}
+
+		// -------------------------------------------------------------------------
+		// Google Calendar (early access)
+		// -------------------------------------------------------------------------
+		renderGoogleSettings(containerEl, this.plugin, () => this.renderSettings());
 
 		// -------------------------------------------------------------------------
 		// Calendar export (.ics)

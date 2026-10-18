@@ -477,7 +477,7 @@ export class AssistantModal extends Modal {
 				const liveHint = runningDiv.createDiv({ cls: 'ai-scheduler-running-hint' });
 				liveHint.setText('AI is executing the prompt. Output will be saved when finished.');
 			} else {
-				const nextText = job.nextRunAt ? `Next run: ${formatDate(job.nextRunAt)}` : (job.schedule.kind === 'event' ? 'Trigger: On vault note modification' : job.schedule.kind === 'after' ? `Runs ${describeSchedule(job)}` : 'Next run: Not scheduled');
+				const nextText = job.nextRunAt ? `Next run: ${formatDate(job.nextRunAt)}` : (job.schedule.kind === 'event' ? 'Trigger: On vault note modification' : job.schedule.kind === 'after' || job.schedule.kind === 'meeting' ? `Runs ${describeSchedule(job)}` : 'Next run: Not scheduled');
 				copy.createDiv({ cls: 'ai-scheduler-task-next', text: nextText });
 			}
 

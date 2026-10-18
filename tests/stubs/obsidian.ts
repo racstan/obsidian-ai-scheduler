@@ -42,3 +42,11 @@ export class AbstractInputSuggest<T> {
 	close(): void {}
 	protected suggestionType?: T;
 }
+
+export async function requestUrl(): Promise<never> {
+	throw new Error('No network in tests.');
+}
+
+export const moment = (): never => {
+	throw new Error('moment is not available in tests.');
+};

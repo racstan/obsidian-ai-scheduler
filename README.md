@@ -69,6 +69,8 @@ Supported versions: Claudian 2.x (including the 2.3.2x releases), Oh My Claudian
 
 **Mobile** — On phones and tablets you can view, edit and plan tasks. Claudian and Oh My Claudian work only on desktop, so tasks run on your computer; with Copilot you can also run tasks by hand on mobile. A per-device setting, *Run scheduled tasks on this device*, decides which device starts scheduled tasks, so a vault synced between devices runs each task once (phones and tablets start with it off).
 
+**Google Calendar (early access)** — Connect your Google account in the settings, and tasks can read your events (`{{today_events}}`, `{{tomorrow_events}}`, `{{week_events}}`), run a set number of minutes before calendar events (e.g. "15 minutes before every event with *interview* in the title: prepare a briefing"), and show their upcoming runs in an **AI Scheduler** calendar in your Google account. Optional and off until you connect. See [Google Calendar](#google-calendar-early-access) below.
+
 **Trash & restore** — Deleted tasks go to a trash section. You can restore them individually, restore all at once, or permanently delete them.
 
 ---
@@ -109,6 +111,7 @@ Supported versions: Claudian 2.x (including the 2.3.2x releases), Oh My Claudian
 | **Once** | Runs once at a specific future date and time |
 | **Vault event** | Runs when any note in the vault is modified or created (with a cooldown) |
 | **After another task** | Runs each time a chosen task finishes successfully; use `{{previous_result}}` or `{{previous_output}}` to work with that task's result |
+| **Before Google Calendar events** | Runs a set number of minutes before each event, or only events with chosen words in the title; `{{event}}` holds the event's details (early access, needs Google Calendar connected) |
 
 All schedule types support an optional **max iterations** limit — the job stops automatically after N runs.
 
@@ -194,6 +197,8 @@ In the task editor:
   | `{{changed_notes}}` | links to the notes changed since the last run (up to 50) |
   | `{{daily_note}}` | a link to today's daily note |
   | `{{task}}` | the task title |
+  | `{{today_events}}`, `{{tomorrow_events}}`, `{{week_events}}` | your Google Calendar events for today, tomorrow or the next 7 days (when connected) |
+  | `{{event}}` | for a task that runs before calendar events: the event it runs for |
 
   Any other `{{...}}` (for example Templater syntax) is left untouched.
 - **Run options**:
@@ -227,6 +232,16 @@ Good to know:
 - **Updates aren't instant.** Your calendar app decides when to re-download the file; Google can take several hours to a day. Outlook and Apple usually refresh sooner.
 - **Anyone with the link can read the file**, which includes task titles and prompts. Treat the link like a password and don't share it.
 - **One-way.** Events edited or deleted in your calendar app don't change your tasks.
+
+### Google Calendar (early access)
+
+Instead of an `.ics` file, you can connect Google Calendar directly: **Settings → AI Scheduler → Google Calendar (early access) → Connect**. Your browser opens Google's sign-in; allow access and go back to Obsidian. Connecting works on desktop; the sign-in is kept on that device and is not synced with your vault.
+
+- **Show runs in Google Calendar**: the plugin creates a calendar named **AI Scheduler** in your account and keeps it up to date with the next runs (14 days ahead by default), without reminders. Only the device that runs scheduled tasks updates it. Turning it off deletes that calendar. The plugin can change only the calendar it created, never your other calendars.
+- **Events in prompts**: `{{today_events}}`, `{{tomorrow_events}}` and `{{week_events}}` list your events (time, title, place, attendees, video link). Choose which calendars are read in the settings; by default your main calendar.
+- **Before calendar events**: a schedule type that runs a task a set number of minutes before each event, or only before events with chosen words in the title. Each event runs the task once; all-day and declined events are skipped. The event's details are added to the instructions, and `{{event}}` puts them where you want.
+
+While this feature is in early access, Google may show a screen saying the app isn't verified yet; choose *Advanced → Go to AI Scheduler* to continue. Advanced: you can use your own Google Cloud OAuth client (type *Desktop app*) instead of the plugin's.
 
 ---
 
@@ -263,6 +278,7 @@ All commands are available from the command palette (`Ctrl/Cmd + P`):
 
 - No third-party servers, no telemetry, no analytics.
 - Prompts and vault files go only to your configured backend (Claudian, Oh My Claudian or Copilot) and then to whatever AI provider you have set up there.
+- **Network use (only if you connect Google Calendar):** the plugin then talks directly to Google (`accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`) to sign in, read events from the calendars you choose, and, if you turn it on, write your upcoming task runs (titles and the start of their instructions) to the **AI Scheduler** calendar it creates. This needs a Google account. Nothing goes through any other server. The sign-in is stored on your device, outside your vault, and **Disconnect** removes it and revokes access at Google.
 - Periodic reviews and automated note reading are opt-in.
 - Follow-up tasks that the AI proposes in its replies are created **disabled** — you review and enable them yourself.
 - Task output is written as Markdown notes. The plugin never replaces a note it did not create; it only adds to an existing note when you choose **Add to one note** or **Add to today's daily note** for that task. It never writes into hidden or `.obsidian` folders.

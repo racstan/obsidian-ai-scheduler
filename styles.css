@@ -3196,3 +3196,35 @@ body.is-phone .ai-scheduler-footer-wrap button {
 body.is-phone .ai-scheduler-option-grid {
 	grid-template-columns: minmax(0, 1fr);
 }
+
+/* Google Calendar settings */
+.ai-scheduler-settings-note {
+	margin: 4px 0 12px;
+	font-size: var(--font-ui-small);
+}
+
+.ai-scheduler-google-calendars {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 0 12px;
+	margin: 0 0 12px;
+}
+
+.ai-scheduler-google-dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	flex: none;
+	background: var(--ai-scheduler-dot, var(--interactive-accent));
+}
+
+.ai-scheduler-settings-advanced {
+	margin: 4px 0 16px;
+}
+
+.ai-scheduler-settings-advanced > summary {
+	cursor: pointer;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	margin-bottom: 6px;
+}

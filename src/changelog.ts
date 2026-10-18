@@ -33,11 +33,12 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
 		version: '2.2.0',
 		date: '2026-10-18',
-		title: 'Approval Mode, Plugin Integrations & Mobile',
+		title: 'Approval Mode, Google Calendar, Plugin Integrations & Mobile',
 		highlights: [
 			'Approval mode, on by default: changes a task would make to existing notes wait under "Awaiting approval" on the dashboard, shown as a diff to approve or reject. Turn it off in the settings with "Ask before changing existing notes".',
 			'Works with other plugins: Dataview queries in a task\'s instructions, action items as Tasks-plugin checkboxes, and result notes started from a template (with Templater commands).',
 			'Mobile: view, edit and plan tasks on phones and tablets, and choose per device which one runs scheduled tasks.',
+			'Google Calendar (early access): connect your account to put your events in prompts, run tasks before calendar events, and see upcoming runs in an "AI Scheduler" calendar in Google.',
 		],
 		added: [
 			'Approval mode (setting "Ask before changing existing notes", on by default): adding a result to an existing note, replacing a result note, and edits the AI proposes in <ai-scheduler-edit> blocks wait for approval. The run history and a notice say when a note was changed directly while the task ran.',
@@ -47,6 +48,10 @@ export const CHANGELOG_DATA: ReleaseChangelog[] = [
 			'"Template note" for new result notes: {{result}} marks where the result goes, {{variables}} work, and Templater commands run when Templater is installed.',
 			'Phones and tablets: the plugin is no longer desktop-only. The calendar opens in the agenda view on phones.',
 			'"Run scheduled tasks on this device", kept per device and not synced, so a vault shared between devices runs each task once.',
+			'Google Calendar (early access) in the settings: connect with Google sign-in on desktop; the sign-in stays on the device.',
+			'{{today_events}}, {{tomorrow_events}} and {{week_events}} list your Google Calendar events from the calendars you choose.',
+			'"Before Google Calendar events" schedule: runs a task a set number of minutes before each event, or events with chosen words in the title, once per event; {{event}} holds its details.',
+			'"Show runs in Google Calendar": an "AI Scheduler" calendar in your Google account with the upcoming runs, kept up to date.',
 		],
 		changed: [
 			'Claudian and Oh My Claudian say clearly that they work only on desktop when used on a phone or tablet.',

@@ -133,6 +133,8 @@ export class ScheduleNotesSync {
 		if (job.schedule.dayOfMonth) schedule.dayOfMonth = job.schedule.dayOfMonth;
 		if (job.schedule.month) schedule.month = job.schedule.month;
 		if (job.schedule.afterTask) schedule.afterTask = job.schedule.afterTask;
+		if (job.schedule.minutesBefore !== undefined) schedule.minutesBefore = job.schedule.minutesBefore;
+		if (job.schedule.eventMatch) schedule.eventMatch = job.schedule.eventMatch;
 		const definition: NoteDefinition = {
 			id: job.id,
 			taskNumber: job.taskNumber,

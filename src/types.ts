@@ -6,6 +6,7 @@
  * owns when the agent should wake up and what should happen after it replies.
  */
 import { AIDraft } from './drafts';
+import type { CalendarEvent } from './google/calendar';
 export type BackendMode = 'claudian' | 'oh-my-claudian' | 'copilot' | 'none';
 
 /** Claudian and its fork Oh My Claudian share one integration. */
@@ -15,7 +16,7 @@ export function isClaudianBackend(mode: string | null | undefined): mode is Clau
 	return mode === 'claudian' || mode === 'oh-my-claudian';
 }
 
-export type ScheduleKind = 'once' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'multi' | 'hourly' | 'interval' | 'event' | 'after' | 'cron';
+export type ScheduleKind = 'once' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'multi' | 'hourly' | 'interval' | 'event' | 'after' | 'cron' | 'meeting';
 
 export type JobStatus = 'scheduled' | 'running' | 'completed' | 'failed' | 'disabled' | 'missed';
 
@@ -56,6 +57,10 @@ export interface TaskSchedule {
 	expression?: string;
 	/** Id of the task whose successful run starts this one, for kind 'after'. */
 	afterTask?: string;
+	/** Minutes before a Google Calendar event, for kind 'meeting'. */
+	minutesBefore?: number;
+	/** Comma-separated words; a 'meeting' task runs only for events whose title contains one (empty = every event). */
+	eventMatch?: string;
 }
 
 /**
@@ -158,6 +163,10 @@ export interface Job {
 	history?: RunRecord[];
 	/** Labels for finding and grouping tasks on the dashboard. */
 	tags?: string[];
+	/** Kind 'meeting': the calendar event the next (or current) run is for. */
+	triggerEvent?: CalendarEvent;
+	/** Kind 'meeting': events already handled (newest last), so each runs the task once. */
+	firedEvents?: string[];
 }
 
 export interface AISettings {
@@ -220,6 +229,15 @@ export interface AISettings {
 	approvalMode: boolean;
 	/** Unsent AI requests ("Ask AI to plan", "Update task with AI"), by form. */
 	drafts: Record<string, AIDraft>;
+	/** Google Calendar (early access): keep the "AI Scheduler" calendar in Google up to date. */
+	googleShowRuns: boolean;
+	/** How many days ahead the "AI Scheduler" calendar shows. */
+	googleRunDays: number;
+	/** Calendar ids read for {{today_events}} and meeting tasks (empty = the main calendar). */
+	googleCalendars: string[];
+	/** Advanced: the user's own Google OAuth client instead of the plugin's. */
+	googleClientId: string;
+	googleClientSecret: string;
 }
 
 export interface ActivityEntry {
@@ -256,4 +274,4 @@ export const BACKEND_INFO = {
 	},
 } as const;
 
-export const SCHEDULE_KINDS: ScheduleKind[] = ['once', 'daily', 'weekly', 'monthly', 'yearly', 'hourly', 'interval', 'multi', 'event', 'after', 'cron'];
+export const SCHEDULE_KINDS: ScheduleKind[] = ['once', 'daily', 'weekly', 'monthly', 'yearly', 'hourly', 'interval', 'multi', 'event', 'after', 'meeting', 'cron'];

@@ -5,6 +5,7 @@ import { getScheduleNextRun, normalizeMaxIterations } from './schedule';
 import { id, localDateKey } from './util';
 import { normalizeDrafts } from './drafts';
 import { PendingChange, normalizePendingChanges } from './approval';
+import type { CalendarEvent } from './google/calendar';
 
 export const DEFAULT_SETTINGS: AISettings = {
 	assistantTab: 1,
@@ -44,6 +45,11 @@ export const DEFAULT_SETTINGS: AISettings = {
 	statusBarNextRun: true,
 	drafts: {},
 	approvalMode: true,
+	googleShowRuns: false,
+	googleRunDays: 14,
+	googleCalendars: [],
+	googleClientId: '',
+	googleClientSecret: '',
 };
 
 const VALID_STATUSES = new Set(['scheduled', 'running', 'completed', 'failed', 'missed', 'disabled', 'cancelled']);
@@ -87,6 +93,12 @@ function normalizeHistory(raw: unknown): RunRecord[] | undefined {
 			if (typeof entry.error === 'string') record.error = entry.error;
 			const retry = Number(entry.retry);
 			if (Number.isInteger(retry) && retry > 0) record.retry = retry;
+			const pending = Number(entry.pending);
+			if (Number.isInteger(pending) && pending > 0) record.pending = pending;
+			if (Array.isArray(entry.changed)) {
+				const changed = entry.changed.filter((path): path is string => typeof path === 'string');
+				if (changed.length) record.changed = changed;
+			}
 			return record;
 		});
 	return records.length ? records.slice(-20) : undefined;
@@ -116,6 +128,8 @@ export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date(
 		everyMonths: intInRange(scheduleRaw.everyMonths, 1, Number.MAX_SAFE_INTEGER),
 		dayOfMonth: intInRange(scheduleRaw.dayOfMonth, 1, 31),
 		month: intInRange(scheduleRaw.month, 1, 12),
+		minutesBefore: scheduleRaw.kind === 'meeting' ? (intInRange(scheduleRaw.minutesBefore, 0, 1440) ?? 10) : undefined,
+		eventMatch: scheduleRaw.kind === 'meeting' && typeof scheduleRaw.eventMatch === 'string' && scheduleRaw.eventMatch.trim() ? scheduleRaw.eventMatch.trim() : undefined,
 	};
 	// A weekly schedule with no days used "whatever weekday it is now" on every
 	// reschedule, so it drifted. Pin it to the weekday the job was created.
@@ -200,9 +214,25 @@ export function normalizeJob(raw: Record<string, unknown>, now: Date = new Date(
 		lastSuccessAt: typeof raw.lastSuccessAt === 'string' ? raw.lastSuccessAt : undefined,
 		history: normalizeHistory(raw.history),
 		tags: normalizeTags(raw.tags),
+		triggerEvent: normalizedSchedule.kind === 'meeting' ? normalizeCalendarEvent(raw.triggerEvent) : undefined,
+		firedEvents: normalizedSchedule.kind === 'meeting' && Array.isArray(raw.firedEvents) ? raw.firedEvents.filter((key): key is string => typeof key === 'string').slice(-50) : undefined,
 		schedule: normalizedSchedule,
 		nextRunAt,
 	};
+}
+
+/** A stored meeting task's event, or undefined if it is malformed. */
+function normalizeCalendarEvent(raw: unknown): CalendarEvent | undefined {
+	if (!isRecord(raw)) return undefined;
+	const { id: eventId, calendarId, title, start, end } = raw;
+	if (![eventId, calendarId, title, start, end].every(value => typeof value === 'string')) return undefined;
+	if (Number.isNaN(new Date(start as string).getTime()) || Number.isNaN(new Date(end as string).getTime())) return undefined;
+	const event: CalendarEvent = { id: eventId as string, calendarId: calendarId as string, title: title as string, start: start as string, end: end as string, allDay: raw.allDay === true };
+	if (typeof raw.location === 'string') event.location = raw.location;
+	if (typeof raw.description === 'string') event.description = raw.description;
+	if (typeof raw.link === 'string') event.link = raw.link;
+	if (Array.isArray(raw.attendees)) event.attendees = raw.attendees.filter((name): name is string => typeof name === 'string');
+	return event;
 }
 
 /** Tags without '#', trimmed, unique (case-insensitively), at most 20. */
@@ -279,6 +309,12 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 	settings.drafts = normalizeDrafts(settings.drafts);
 	// On unless the user turned it off.
 	settings.approvalMode = settings.approvalMode !== false;
+	settings.googleShowRuns = settings.googleShowRuns === true;
+	const rawGoogleDays = Number(settings.googleRunDays);
+	settings.googleRunDays = Number.isInteger(rawGoogleDays) && rawGoogleDays >= 1 && rawGoogleDays <= 60 ? rawGoogleDays : DEFAULT_SETTINGS.googleRunDays;
+	settings.googleCalendars = Array.isArray(settings.googleCalendars) ? [...new Set(settings.googleCalendars.filter(entry => typeof entry === 'string' && entry))].slice(0, 50) : [];
+	settings.googleClientId = typeof settings.googleClientId === 'string' ? settings.googleClientId.trim() : '';
+	settings.googleClientSecret = typeof settings.googleClientSecret === 'string' ? settings.googleClientSecret.trim() : '';
 	if (typeof settings.icsExportPath !== 'string' || !settings.icsExportPath.trim()) settings.icsExportPath = DEFAULT_SETTINGS.icsExportPath;
 	const rawIcsDays = Number(settings.icsExportDays);
 	settings.icsExportDays = Number.isInteger(rawIcsDays) && rawIcsDays >= 1 && rawIcsDays <= 366 ? rawIcsDays : DEFAULT_SETTINGS.icsExportDays;

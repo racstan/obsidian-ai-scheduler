@@ -44,6 +44,7 @@ export function plannerPrompt(goal: string, contextPaths: string[]): string {
 		'- {"kind":"interval","everyHours":2,"maxIterations":null}',
 		'- {"kind":"event","event":"modify","cooldownMinutes":10}',
 		'- {"kind":"cron","expression":"*/15 * * * *"}',
+		'- {"kind":"meeting","minutesBefore":10,"eventMatch":"standup, 1:1"} (before Google Calendar events whose title contains one of the words; eventMatch is optional. Only when the user asks for something before meetings or calendar events.)',
 		'Use the user\'s local time. Add output only when the user says where results should go: {"folder":"...","filename":"...","mode":"new|replace|append|daily","heading":"..."}. mode "new" (default) saves a new note each run, "replace" keeps one note and replaces it, "append" adds each run to the note folder/filename (under "heading" if given), "daily" adds each run to today\'s daily note (under "heading" if given).',
 		`The prompt, filename and heading may use these variables, filled in at run time: ${VARIABLE_HELP.map(variable => `${variable.name} (${variable.description})`).join('; ')}. Use them instead of fixed dates, e.g. "Summarize the notes changed since {{last_run}}: {{changed_notes}}".`,
 		'For "cron", the expression must be a standard 5-field cron expression (minute hour day-of-month month day-of-week, 0 = Sunday) evaluated in the user\'s local time. Prefer the simpler kinds when they can express the pattern; use cron only for advanced cadences such as "every 15 minutes", "weekdays at 9 and 17", or "0 9 * * 1-5". Never invent 6-field expressions.',

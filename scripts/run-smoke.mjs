@@ -68,6 +68,11 @@ class FuzzySuggestModal extends Modal {
 const normalizePath = (p) => String(p || '').replace(/\\\\/g, '/');
 // Enough of moment's formatting for the date patterns the plugin uses.
 const moment = (date) => ({
+	startOf: () => { const d = new Date(date); d.setHours(0, 0, 0, 0); return moment(d); },
+	clone: () => moment(new Date(date)),
+	add: (amount) => { const d = new Date(date); d.setDate(d.getDate() + amount); return moment(d); },
+	toDate: () => new Date(date),
+	valueOf: () => new Date(date).getTime(),
 	format: (pattern) => {
 		const d = new Date(date);
 		const pad = (n) => String(n).padStart(2, '0');
@@ -590,6 +595,64 @@ async function main() {
 	await second.runJobNow(appender);
 	assert.ok(claudianTab.lastPrompt.includes('RESULT OF LIST FROM #todo'), 'Dataview result in the prompt');
 	delete app.plugins.plugins.dataview;
+
+	// Google Calendar: without a connection the event variables say so.
+	appender.prompt = 'Plan around {{today_events}}';
+	assert.ok((await second.previewPrompt(appender)).includes('(Google Calendar is not connected.)'));
+	// Connected (fake API): events fill the variables, and a meeting task runs before its event.
+	second.saveDeviceSetting('google-tokens', { access: 'a', refresh: 'r', expires: Date.now() + 3600000, email: 'me@example.com' });
+	assert.equal(second.google.connected, true);
+	assert.equal(second.google.email, 'me@example.com');
+	const soon = new Date(Date.now() + 20 * 60000);
+	const apiCalls = [];
+	const appEvents = new Map();
+	second.google.api = async (method, apiPath, query, body) => {
+		apiCalls.push(method + ' ' + apiPath);
+		if (method === 'GET' && apiPath === '/calendars/primary/events') {
+			return { items: [
+				{ id: 'm1', summary: 'Weekly standup', start: { dateTime: soon.toISOString() }, end: { dateTime: new Date(soon.getTime() + 900000).toISOString() } },
+				{ id: 'm2', summary: 'Lunch', start: { dateTime: soon.toISOString() }, end: { dateTime: new Date(soon.getTime() + 900000).toISOString() } },
+			] };
+		}
+		if (method === 'POST' && apiPath === '/calendars') return { id: 'appcal' };
+		if (method === 'GET' && apiPath === '/calendars/appcal/events') return { items: [...appEvents.values()] };
+		if (method === 'POST' && apiPath === '/calendars/appcal/events') {
+			appEvents.set(body.id, { id: body.id, summary: body.summary, description: body.description, start: body.start });
+			return {};
+		}
+		if (method === 'DELETE' && apiPath.startsWith('/calendars/appcal/events/')) {
+			appEvents.delete(apiPath.split('/').pop());
+			return {};
+		}
+		return {};
+	};
+	assert.ok((await second.previewPrompt(appender)).includes('Weekly standup'), 'today\\'s events in the prompt');
+	const prep = await second.addJob({ title: 'Standup prep', prompt: 'Prepare notes for {{event}}', schedule: { kind: 'meeting', minutesBefore: 30, eventMatch: 'standup' } });
+	assert.equal(prep.nextRunAt, null);
+	assert.equal(await second.google.pollMeetings(() => false, true), true);
+	assert.equal(prep.triggerEvent.title, 'Weekly standup');
+	assert.ok(new Date(prep.nextRunAt).getTime() <= Date.now() + 1000, 'within 30 minutes of the event: due now');
+	await second.tick();
+	assert.equal(prep.runCount, 1, 'the meeting task ran');
+	assert.ok(claudianTab.lastPrompt.includes('Title: Weekly standup'), 'the event is in the prompt');
+	assert.equal(prep.nextRunAt, null, 'waits for the next event');
+	await second.google.pollMeetings(() => false, true);
+	assert.equal(prep.nextRunAt, null, 'the same event does not run it again');
+	assert.equal(prep.triggerEvent, undefined);
+	await second.deleteJob(prep);
+	// Show runs in Google: the calendar is made and holds the upcoming runs.
+	second.settings.googleShowRuns = true;
+	const digest = await second.addJob({ title: 'Digest', prompt: 'p', schedule: { kind: 'daily', time: '09:00' } });
+	await second.google.syncRuns(true);
+	assert.ok(apiCalls.includes('POST /calendars'), 'calendar created');
+	assert.ok([...appEvents.values()].some(entry => entry.summary === 'AI: Digest'), 'runs added');
+	await second.deleteJob(digest);
+	await second.google.syncRuns(true);
+	assert.ok(![...appEvents.values()].some(entry => entry.summary === 'AI: Digest'), 'runs of a deleted task removed');
+	second.settings.googleShowRuns = false;
+	second.saveDeviceSetting('google-tokens', null);
+	second.saveDeviceSetting('google-app-calendar', null);
+	assert.equal(second.google.connected, false);
 
 	// A device set not to run tasks leaves due tasks alone; "Run now" still works there.
 	second.setRunsTasksHere(false);

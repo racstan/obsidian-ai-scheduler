@@ -3,7 +3,7 @@ import { AISchedulerPlugin } from '../main';
 import { errorText, formatDate, isNightlyReviewJob } from '../util';
 import { isPastOncePlan } from '../planCheck';
 import { SCHEDULE_KINDS, ScheduleKind, TaskSchedule } from '../types';
-import { DAY_SHORT_NAMES, MONTH_NAMES, formatMultiRules, getScheduleNextRun, normalizeMaxIterations, parseMultiRulesText, previewSchedule, validClock, waitsForTrigger } from '../schedule';
+import { DAY_SHORT_NAMES, MONTH_NAMES, describeSchedule, formatMultiRules, getScheduleNextRun, normalizeMaxIterations, parseMultiRulesText, previewSchedule, validClock, waitsForTrigger } from '../schedule';
 import { validateCron } from '../cron';
 import { createContextPicker } from './contextPicker';
 import { bindDraft } from './draftBanner';
@@ -29,6 +29,7 @@ const KIND_LABELS: Record<ScheduleKind, string> = {
 	interval: 'Every N minutes / hours',
 	event: 'When the vault changes',
 	after: 'When another task finishes',
+	meeting: 'Before Google Calendar events (early access)',
 	cron: 'Cron expression (advanced)',
 };
 
@@ -52,6 +53,8 @@ interface ScheduleInputs {
 	multiArea?: HTMLTextAreaElement;
 	cronInput?: HTMLInputElement;
 	afterSelect?: HTMLSelectElement;
+	minutesBefore?: HTMLInputElement;
+	eventMatch?: HTMLInputElement;
 	dayChecks: HTMLInputElement[];
 }
 
@@ -388,6 +391,10 @@ export class JobModal extends Modal {
 			preview.setText('Runs each time the chosen task finishes successfully. Use {{previous_result}} or {{previous_output}} in the instructions to work with its result.');
 			return;
 		}
+		if (schedule.kind === 'meeting') {
+			preview.setText(`Runs ${describeSchedule({ schedule })}, once per event. The event's details are added to the instructions; {{event}} puts them where you want.`);
+			return;
+		}
 		const runs = previewSchedule(schedule, 3);
 		if (!runs.length) {
 			preview.setText('No upcoming runs with the current values.');
@@ -685,6 +692,34 @@ export class JobModal extends Modal {
 				});
 				break;
 			}
+			case 'meeting': {
+				if (!this.plugin.google.connected) {
+					container.createDiv('ai-scheduler-hint').setText('Connect Google Calendar in the AI Scheduler settings first. Until then this task never runs.');
+				}
+				createLabel('Minutes before the event starts', true);
+				this.scheduleInputs.minutesBefore = createInput({
+					type: 'number',
+					value: String(schedule.minutesBefore ?? 10),
+					min: '0',
+					max: '1440',
+				});
+				createLabel('Only events with these words in the title (optional, comma-separated)');
+				this.scheduleInputs.eventMatch = createInput({
+					type: 'text',
+					value: schedule.eventMatch || '',
+					placeholder: 'standup, 1:1, interview',
+				});
+				container.createDiv('ai-scheduler-example').setText('Example: 15 minutes before events with "interview" in the title: "Prepare a briefing for {{event}} from my notes." All-day and declined events are skipped. The calendars read are chosen in the settings.');
+
+				createLabel('Stop after N runs (optional)');
+				this.scheduleInputs.maxIterations = createInput({
+					type: 'number',
+					value: schedule.maxIterations ? String(schedule.maxIterations) : '',
+					min: '1',
+					placeholder: 'Run indefinitely'
+				});
+				break;
+			}
 			case 'cron': {
 				createLabel('5-field cron: minute, hour, day-of-month, month, day-of-week (0 = Sunday)', true);
 				this.scheduleInputs.cronInput = createInput({
@@ -839,6 +874,18 @@ export class JobModal extends Modal {
 					},
 				};
 			}
+			case 'meeting': {
+				const minutes = s.minutesBefore ? Math.floor(Number(s.minutesBefore.value)) : Number(previous.minutesBefore ?? 10);
+				const words = s.eventMatch ? s.eventMatch.value.trim() : previous.eventMatch || '';
+				return {
+					schedule: {
+						kind: 'meeting',
+						minutesBefore: Number.isFinite(minutes) ? minutes : 10,
+						...(words ? { eventMatch: words } : {}),
+						maxIterations,
+					},
+				};
+			}
 			case 'cron': {
 				return {
 					schedule: {
@@ -855,6 +902,10 @@ export class JobModal extends Modal {
 		const schedule = state.schedule;
 		if (schedule.kind === 'event') return null;
 		if (schedule.kind === 'after') return schedule.afterTask ? null : 'Choose the task this one runs after.';
+		if (schedule.kind === 'meeting') {
+			const minutes = Number(schedule.minutesBefore);
+			return Number.isInteger(minutes) && minutes >= 0 && minutes <= 1440 ? null : 'Enter the minutes before the event, from 0 to 1440.';
+		}
 		if (schedule.kind === 'cron') {
 			if (!schedule.expression) return 'Enter a cron expression, for example */15 * * * *';
 			return validateCron(schedule.expression);
