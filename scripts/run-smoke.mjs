@@ -262,6 +262,9 @@ async function main() {
 
 	const first = new PluginClass(app, { id: 'ai-scheduler', version: '2.1.1' });
 	await first.onload();
+	assert.equal(first.settings.approvalMode, true, "approval mode is on by default");
+	// The checks below predate approval mode; it is tested on its own further down.
+	first.settings.approvalMode = false;
 	assert.ok(Array.isArray(first.jobs));
 	assert.equal(first.jobs.length, 0, 'fresh install starts with no jobs');
 	// A fresh install creates and opens the getting-started guide once.
@@ -413,6 +416,7 @@ async function main() {
 	app._pluginData.jobs.find(job => job.title === 'Smoke task').status = 'running';
 	const second = new PluginClass(app, { id: 'ai-scheduler', version: '2.1.1' });
 	await second.onload();
+	second.settings.approvalMode = false;
 	const recovered = second.jobs.find(job => job.title === 'Smoke task');
 	assert.equal(recovered.status, 'scheduled', 'interrupted run recovered on load');
 
@@ -544,7 +548,7 @@ async function main() {
 	assert.ok(dailyNote && dailyNote._content.includes('## AI') && dailyNote._content.includes(GENERIC_REPLY), 'daily note gets the result under the heading');
 
 	// Approval mode: adding to an existing note waits; approving applies it.
-	appender.approval = true;
+	second.settings.approvalMode = true;
 	const dailyBefore = dailyNote._content;
 	await second.runJobNow(appender);
 	assert.equal(dailyNote._content, dailyBefore, 'an existing note is not changed before approval');
@@ -565,7 +569,7 @@ async function main() {
 	for (const change of [...second.pendingChanges]) await second.rejectChange(change);
 	assert.equal(app.vault.getAbstractFileByPath('Journal/today.md')._content, 'my own note', 'rejected edit leaves the note alone');
 	delete claudianTab.taskReply;
-	appender.approval = undefined;
+	second.settings.approvalMode = false;
 
 	// Tasks format and a template for new result notes.
 	await app.vault.create('Templates/Result.md', '# {{task}} {{date}}\\n\\n{{result}}\\n\\nEnd');

@@ -126,7 +126,6 @@ export interface RunOptions {
 	retryDelayMinutes?: number;
 	timeoutMinutes?: number;
 	onlyIfChanged?: boolean;
-	approval?: boolean;
 }
 
 function readInt(input: HTMLInputElement, min: number, max: number): number | undefined {
@@ -140,7 +139,7 @@ function readInt(input: HTMLInputElement, min: number, max: number): number | un
 export function renderRunOptions(shell: HTMLElement, job: Job): () => RunOptions {
 	const card = makeCard(shell, 'ai-scheduler-card-tight', 'ai-scheduler-card-flush');
 	const details = card.createEl('details', { cls: 'ai-scheduler-details' });
-	const configured = !!(job.retries || job.timeoutMinutes || job.onlyIfChanged || job.approval);
+	const configured = !!(job.retries || job.timeoutMinutes || job.onlyIfChanged);
 	details.open = configured;
 	details.createEl('summary', { cls: 'ai-scheduler-lead', text: 'Run options' });
 
@@ -161,17 +160,7 @@ export function renderRunOptions(shell: HTMLElement, job: Job): () => RunOptions
 		text: 'Skips a run when none of the attached notes or folders changed since the last successful run. With nothing attached, any note in the vault counts. Results the plugin wrote itself never count.',
 	});
 
-	const approvalRow = details.createEl('label', { cls: 'ai-scheduler-check-row' });
-	const approvalCheck = approvalRow.createEl('input', { type: 'checkbox' });
-	approvalCheck.checked = job.approval === true;
-	approvalRow.createSpan({ text: 'Ask before changing existing notes' });
-	details.createDiv({
-		cls: 'ai-scheduler-hint',
-		text: 'Adding the result to an existing note, replacing the result note, and edits the AI proposes wait under "Awaiting approval" until you approve them. New notes are still created right away. The AI is asked to propose edits instead of making them; if your AI backend still edits a note itself, the run history says so.',
-	});
-
 	return () => ({
-		approval: approvalCheck.checked ? true : undefined,
 		retries: readInt(retries, 0, MAX_RETRIES),
 		retryDelayMinutes: readInt(delay, 1, 1440),
 		timeoutMinutes: readInt(timeout, 0, 1440) || undefined,

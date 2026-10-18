@@ -455,6 +455,16 @@ export class AssistantSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Background execution & notifications').setHeading();
 
 		new Setting(containerEl)
+			.setName('Ask before changing existing notes')
+			.setDesc('On by default. Changes a task would make to a note that already exists (adding its result, replacing its result note, or an edit the AI proposes) wait on the dashboard until you approve them. New notes are still created right away. If your AI backend edits a note itself anyway, the run history says so.')
+			.addToggle(toggle => toggle.setValue(this.plugin.settings.approvalMode).onChange(value => {
+				void (async () => {
+					this.plugin.settings.approvalMode = value;
+					await this.plugin.saveState();
+				})();
+			}));
+
+		new Setting(containerEl)
 			.setName('Run scheduled tasks on this device')
 			.setDesc('Applies to this device only and is not synced. If several devices share this vault through sync, turn it on for one of them so each task runs once. Phones and tablets start with it off. Running a task by hand works on any device where your AI backend is available.')
 			.addToggle(toggle => toggle.setValue(this.plugin.runsTasksHere).onChange(value => {

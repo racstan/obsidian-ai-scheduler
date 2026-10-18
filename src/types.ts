@@ -150,8 +150,6 @@ export interface Job {
 	timeoutMinutes?: number;
 	/** Skip a run when nothing it reads has changed since the last successful run. */
 	onlyIfChanged?: boolean;
-	/** Approval mode: changes to notes that already exist wait for the user's approval. */
-	approval?: boolean;
 	/** Retries used for the current failure; reset by a successful run. */
 	retryCount?: number;
 	/** End time of the last successful run. */
@@ -218,6 +216,8 @@ export interface AISettings {
 	quietEnd: string;
 	/** Show the next run in the status bar when nothing is running. */
 	statusBarNextRun: boolean;
+	/** Approval mode: changes tasks would make to notes that already exist wait for the user's approval. */
+	approvalMode: boolean;
 	/** Unsent AI requests ("Ask AI to plan", "Update task with AI"), by form. */
 	drafts: Record<string, AIDraft>;
 }

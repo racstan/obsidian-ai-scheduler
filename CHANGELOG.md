@@ -10,12 +10,12 @@ If AI Scheduler is useful to you, you can support its continued development at [
 ## [2.2.0] - 2026-10-18
 
 ### Highlights
-- **Approval mode**: with *Ask before changing existing notes*, changes a task would make to existing notes wait under **Awaiting approval** on the dashboard, shown as a diff to approve or reject.
+- **Approval mode**, on by default: changes a task would make to existing notes wait under **Awaiting approval** on the dashboard, shown as a diff to approve or reject. Turn it off in the settings with *Ask before changing existing notes*.
 - **Works with other plugins**: Dataview queries in a task's instructions, action items as Tasks-plugin checkboxes, and result notes started from a template (with Templater commands).
 - **Mobile**: view, edit and plan tasks on phones and tablets, and choose per device which one runs scheduled tasks.
 
 ### Added
-- Approval mode for a task: adding its result to an existing note, replacing its result note, and edits the AI proposes in `<ai-scheduler-edit>` blocks wait for approval. The run history and a notice say when a note was changed directly while the task ran.
+- Approval mode (setting *Ask before changing existing notes*, on by default): adding a result to an existing note, replacing a result note, and edits the AI proposes in `<ai-scheduler-edit>` blocks wait for approval. The run history and a notice say when a note was changed directly while the task ran.
 - **Awaiting approval** on the dashboard, a review window with a line-by-line diff, a status bar count, and the command **Review changes awaiting approval**.
 - `{{dataview: QUERY}}` in a task's instructions is replaced by the query's result when the task runs (needs the Dataview plugin).
 - **Write action items as task checkboxes**: `- [ ] …` lines with dates in the Tasks plugin format, and an optional tag on each task.

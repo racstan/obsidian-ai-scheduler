@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { dataviewQueries, expandDataviewQueries, fillTemplate, formatAsTasks, replaceDataviewQueries } from '../src/integrations';
 import { editTargetPath, extractEdits, foldDiff, lineDiff, normalizePendingChanges } from '../src/approval';
-import { normalizeJob } from '../src/settings';
+import { normalizeJob, parseStoredData } from '../src/settings';
 import type { App } from 'obsidian';
 
 const fakeApp = (plugins: Record<string, unknown>) => ({ plugins: { plugins } }) as unknown as App;
@@ -72,7 +72,8 @@ test('pending changes and new options survive saving and loading', () => {
 	assert.equal(changes.length, 1);
 	assert.equal(changes[0].heading, 'AI');
 	assert.equal(changes[0].dailyNote, true);
-	const job = normalizeJob({ title: 'T', prompt: 'p', approval: true, output: { tasks: true, taskTag: '#ai', template: ' Templates/R.md ' }, schedule: { kind: 'daily', time: '09:00' } });
-	assert.equal(job.approval, true);
+	const job = normalizeJob({ title: 'T', prompt: 'p', output: { tasks: true, taskTag: '#ai', template: ' Templates/R.md ' }, schedule: { kind: 'daily', time: '09:00' } });
+	assert.equal(parseStoredData({ version: 6, settings: {}, jobs: [] }).settings.approvalMode, true, 'approval is on by default');
+	assert.equal(parseStoredData({ version: 6, settings: { approvalMode: false }, jobs: [] }).settings.approvalMode, false);
 	assert.deepEqual(job.output, { folder: undefined, filename: undefined, tasks: true, taskTag: 'ai', template: 'Templates/R.md' });
 });

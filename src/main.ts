@@ -674,7 +674,7 @@ export class AISchedulerPlugin extends Plugin {
 		this.updateStatusBar();
 		await this.saveState();
 		const variables = this.variablesFor(job, startedAt, lastRun);
-		const watched = job.approval && !isReview ? new Set<string>() : null;
+		const watched = this.settings.approvalMode && !isReview ? new Set<string>() : null;
 		const pendingBefore = this.pendingChanges.length;
 		try {
 			const execution = await backends.resolveJobExecution(this, job);
@@ -717,7 +717,7 @@ export class AISchedulerPlugin extends Plugin {
 			// Reviews write their own report in runDailyReview.
 			if (!isReview) {
 				// Approval mode: edits the AI proposes wait for approval; the rest is the result.
-				const { edits, rest } = job.approval ? extractEdits(reply) : { edits: [], rest: reply };
+				const { edits, rest } = this.settings.approvalMode ? extractEdits(reply) : { edits: [], rest: reply };
 				for (const proposed of edits) this.stageEdit(job, proposed.path, proposed.content);
 				const result = rest || (edits.length ? `The AI proposed ${edits.length} change(s) to existing notes; they are waiting for your approval.` : reply);
 				await this.saveRunOutput(job, result, variables);
@@ -839,7 +839,7 @@ export class AISchedulerPlugin extends Plugin {
 		const withQueries = await expandDataviewQueries(this.app, job.prompt, job.notePath || '');
 		const parts = [expandVariables(withQueries, variables)];
 		if (job.output?.tasks) parts.push(TASKS_INSTRUCTION);
-		if (job.approval) parts.push(APPROVAL_INSTRUCTION);
+		if (this.settings.approvalMode) parts.push(APPROVAL_INSTRUCTION);
 		return parts.join('\n\n');
 	}
 
@@ -969,7 +969,7 @@ export class AISchedulerPlugin extends Plugin {
 			const stamp = this.formatDate(variables.now, 'YYYY-MM-DD HH:mm');
 			const block = appendBlock(job.title, stamp, reply);
 			// Approval mode: adding to a note that already exists waits for approval.
-			if (job.approval && this.app.vault.getAbstractFileByPath(path) instanceof TFile) {
+			if (this.settings.approvalMode && this.app.vault.getAbstractFileByPath(path) instanceof TFile) {
 				this.stageChange(job, { kind: 'append', path, content: block, heading, dailyNote: mode === 'daily' });
 				return;
 			}
@@ -985,7 +985,7 @@ export class AISchedulerPlugin extends Plugin {
 			const name = filename || outputTitle(job.title);
 			const target = this.safeNotePath(folder, name);
 			// Approval mode: replacing the existing result note waits for approval.
-			if (job.approval && this.app.vault.getAbstractFileByPath(target) instanceof TFile && this.isOwnOutput(target)) {
+			if (this.settings.approvalMode && this.app.vault.getAbstractFileByPath(target) instanceof TFile && this.isOwnOutput(target)) {
 				this.stageChange(job, { kind: 'replace', path: target, content });
 				return;
 			}

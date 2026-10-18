@@ -45,12 +45,11 @@ export interface NoteDefinition {
 	retryDelayMinutes?: number;
 	timeoutMinutes?: number;
 	onlyIfChanged?: boolean;
-	approval?: boolean;
 	tags?: string[];
 }
 
 /** Per-task run options shared by data.json and schedule notes. */
-const RUN_OPTION_KEYS = ['retries', 'retryDelayMinutes', 'timeoutMinutes', 'onlyIfChanged', 'approval', 'tags'] as const;
+const RUN_OPTION_KEYS = ['retries', 'retryDelayMinutes', 'timeoutMinutes', 'onlyIfChanged', 'tags'] as const;
 
 function slugify(title: string): string {
 	const slug = String(title || 'task')
@@ -255,7 +254,6 @@ export class ScheduleNotesSync {
 			retryDelayMinutes: definition.retryDelayMinutes,
 			timeoutMinutes: definition.timeoutMinutes,
 			onlyIfChanged: definition.onlyIfChanged,
-			approval: definition.approval,
 			tags: definition.tags,
 			notePath: file.path,
 		});
