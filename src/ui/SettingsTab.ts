@@ -657,9 +657,23 @@ export class AssistantSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Documentation & source code')
-			.setDesc('Read the setup guide, contribute, or star the project on GitHub.')
+			.setDesc('Read the setup guide or contribute on GitHub.')
 			.addButton(button => button.setButtonText('View on GitHub').onClick(() => {
 				window.open('https://github.com/racstan/obsidian-ai-scheduler', '_blank');
+			}));
+
+		new Setting(containerEl).setName('Support the project').setHeading();
+		new Setting(containerEl)
+			.setName('Star on GitHub')
+			.setDesc('A star helps other Obsidian users find AI Scheduler. It takes a second and costs nothing.')
+			.addButton(button => button.setButtonText('⭐ Star on GitHub').onClick(() => {
+				window.open('https://github.com/racstan/obsidian-ai-scheduler', '_blank');
+			}));
+		new Setting(containerEl)
+			.setName('Buy me a coffee')
+			.setDesc('AI Scheduler is free. If it saves you time, you can support its development.')
+			.addButton(button => button.setButtonText('☕ Buy me a coffee').setCta().onClick(() => {
+				window.open('https://buymeacoffee.com/rachitasthana', '_blank');
 			}));
 	}
 }
