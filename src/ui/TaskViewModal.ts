@@ -11,7 +11,7 @@ import { describeBinding, formatDate, isPastTask } from '../util';
 import { RunAgainModal } from './RunAgainModal';
 import { describeSchedule } from '../schedule';
 import { closeExistingSchedulerModals, makeButton, makeCard, makeClickable, releaseSchedulerModal } from './dom';
-import { AssistantModal, ConfirmModal } from './AssistantModal';
+import { ConfirmModal } from './AssistantModal';
 import { PromptPreviewModal } from './PromptPreviewModal';
 
 export interface TaskFileReference {
@@ -174,7 +174,7 @@ export class TaskViewModal extends Modal {
 			if (this.onBack) {
 				window.setTimeout(() => this.onBack!(), 50);
 			} else {
-				window.setTimeout(() => new AssistantModal(this.app, this.plugin).open(), 50);
+				window.setTimeout(() => this.plugin.openDashboard(), 50);
 			}
 		};
 

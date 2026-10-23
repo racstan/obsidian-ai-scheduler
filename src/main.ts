@@ -12,7 +12,7 @@
  * releases its lock in a finally block so a crashed run can never wedge a
  * schedule.
  */
-import { Platform, Notice, Plugin, TFile, moment, normalizePath } from 'obsidian';
+import { Platform, Notice, Plugin, TFile, WorkspaceSidedock, moment, normalizePath } from 'obsidian';
 import { ActivityEntry, AISettings, BACKEND_INFO, Job, JobOutput, ScheduleKind, TaskSchedule } from './types';
 import { DEFAULT_SETTINGS, normalizeJob, parseStoredData } from './settings';
 import {
@@ -46,7 +46,7 @@ import { executionPrompt, plannerPrompt, refinePrompt, reviewPrompt } from './pr
 import { getPathsContext, getVaultContextOptions, JobContext } from './context';
 import * as backends from './backends';
 import { extractJson, errorText, formatDate, formatDuration, isDisabledTask, isNightlyReviewJob, localDateKey, localTimestampKey, logActivityEntry, outputTitle, sendSystemNotification, sleep, validateJobSchema, buildTaskLogRow, TASK_LOG_HEADER } from './util';
-import { AssistantModal } from './ui/AssistantModal';
+import { AssistantModal, DASHBOARD_VIEW_TYPE, SchedulerDashboardView } from './ui/AssistantModal';
 import { PlannerModal } from './ui/PlannerModal';
 import { CalendarModal } from './ui/CalendarModal';
 import { AssistantSettingTab } from './ui/SettingsTab';
@@ -172,11 +172,17 @@ export class AISchedulerPlugin extends Plugin {
 			this.updateStatusBar();
 		}
 
-		this.addRibbonIcon('brain', 'Open AI Scheduler', () => new AssistantModal(this.app, this).open());
+		this.registerView(DASHBOARD_VIEW_TYPE, leaf => new SchedulerDashboardView(leaf, this));
+		this.addRibbonIcon('brain', 'Open AI Scheduler', () => this.openDashboard());
 		this.addCommand({
 			id: 'open-assistant',
 			name: 'Open assistant dashboard',
-			callback: () => new AssistantModal(this.app, this).open(),
+			callback: () => this.openDashboard(),
+		});
+		this.addCommand({
+			id: 'open-dashboard-sidebar',
+			name: 'Open dashboard in the sidebar',
+			callback: () => this.openDashboard('sidebar'),
 		});
 		this.addCommand({
 			id: 'open-calendar',
@@ -1757,6 +1763,30 @@ export class AISchedulerPlugin extends Plugin {
 		return backends.refreshModels(this);
 	}
 
+	/** Opens the dashboard where the user chose: a window, or the panel in the sidebar. */
+	openDashboard(location = this.settings.dashboardLocation): void {
+		if (location === 'sidebar') void this.revealDashboardView();
+		else new AssistantModal(this.app, this).open();
+	}
+
+	/** Shows the sidebar panel, creating it in the right sidebar the first time. */
+	private async revealDashboardView(): Promise<void> {
+		const { workspace } = this.app;
+		let leaf = workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE)[0];
+		if (!leaf) {
+			const right = workspace.getRightLeaf(false);
+			if (!right) return;
+			leaf = right;
+			await leaf.setViewState({ type: DASHBOARD_VIEW_TYPE, active: true });
+		}
+		// workspace.revealLeaf needs Obsidian 1.7.2: open a collapsed sidebar, then focus the panel.
+		const root = leaf.getRoot();
+		if (root === workspace.rightSplit || root === workspace.leftSplit) (root as WorkspaceSidedock).expand();
+		workspace.setActiveLeaf(leaf, { focus: true });
+		// Back from another window: show what changed there right away.
+		if (leaf.view instanceof SchedulerDashboardView) leaf.view.render();
+	}
+
 	/** Opens Obsidian settings on a tab: AI Scheduler's by default, or another plugin's / a core tab by id. */
 	openSettingsTab(tabId: string = this.manifest.id): void {
 		const appWithSetting = this.app as unknown as { setting?: { open: () => void; openTabById: (id: string) => void } };
@@ -2135,7 +2165,7 @@ export class AISchedulerPlugin extends Plugin {
 			this.statusBarEl.show();
 			this.statusBarEl.createSpan({ cls: 'ai-scheduler-status-bar-text', text: idle.text });
 			this.statusBarEl.setAttribute('title', idle.tooltip);
-			this.statusBarEl.onclick = () => new AssistantModal(this.app, this).open();
+			this.statusBarEl.onclick = () => this.openDashboard();
 			return;
 		}
 
@@ -2159,7 +2189,7 @@ export class AISchedulerPlugin extends Plugin {
 
 		this.statusBarEl.setAttribute('title', 'AI Scheduler is running in background. Click to open dashboard.');
 		this.statusBarEl.onclick = () => {
-			new AssistantModal(this.app, this).open();
+			this.openDashboard();
 		};
 
 		if (this.statusBarTimer === null) {

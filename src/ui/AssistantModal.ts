@@ -1,4 +1,4 @@
-import { App, Menu, Modal, Notice, Setting } from 'obsidian';
+import { App, ItemView, Menu, Modal, Notice, Setting, WorkspaceLeaf } from 'obsidian';
 import { AISchedulerPlugin } from '../main';
 import { formatDate, formatDuration, describeBinding, isDisabledTask, isNightlyReviewJob, summarizeTasks } from '../util';
 import { describeSchedule, getScheduleNextRun, waitsForTrigger } from '../schedule';
@@ -98,25 +98,95 @@ export class PastDuePromptModal extends Modal {
 	}
 }
 
+/** The dashboard window. */
 export class AssistantModal extends Modal {
-	plugin: AISchedulerPlugin;
+	private dashboard: SchedulerDashboard;
 	private refreshTimer: number | null = null;
+
+	constructor(app: AISchedulerPlugin['app'], public plugin: AISchedulerPlugin) {
+		super(app);
+		// Close first, so the next window isn't hidden behind this one.
+		this.dashboard = new SchedulerDashboard(plugin, this.contentEl, then => {
+			this.close();
+			window.setTimeout(then, 50);
+		});
+	}
+
+	onOpen(): void {
+		closeExistingSchedulerModals(this);
+		this.modalEl.addClass('ai-scheduler-modal');
+		this.modalEl.addClass('ai-scheduler-modal-lg');
+		this.dashboard.render();
+		// Live auto-refresh every 3s so task progress and state transitions update in real time
+		const refresh = liveRefresh(this.modalEl, () => this.plugin.stateSignature(), () => this.dashboard.render());
+		this.refreshTimer = window.setInterval(refresh, 3000);
+	}
+
+	onClose(): void {
+		if (this.refreshTimer) {
+			window.clearInterval(this.refreshTimer);
+			this.refreshTimer = null;
+		}
+		releaseSchedulerModal(this);
+		this.contentEl.empty();
+	}
+}
+
+export const DASHBOARD_VIEW_TYPE = 'ai-scheduler-dashboard';
+
+/** The dashboard as a panel in a sidebar (or any pane the user drags it to). */
+export class SchedulerDashboardView extends ItemView {
+	private dashboard: SchedulerDashboard;
+
+	constructor(leaf: WorkspaceLeaf, public plugin: AISchedulerPlugin) {
+		super(leaf);
+		// The panel stays open; other windows open over the workspace.
+		this.dashboard = new SchedulerDashboard(plugin, this.contentEl, then => then());
+	}
+
+	getViewType(): string {
+		return DASHBOARD_VIEW_TYPE;
+	}
+
+	getDisplayText(): string {
+		return 'AI Scheduler';
+	}
+
+	getIcon(): string {
+		return 'brain';
+	}
+
+	async onOpen(): Promise<void> {
+		this.contentEl.addClass('ai-scheduler-view');
+		this.render();
+		const refresh = liveRefresh(this.contentEl, () => this.plugin.stateSignature(), () => this.render());
+		this.registerInterval(window.setInterval(refresh, 3000));
+	}
+
+	render(): void {
+		this.dashboard.render();
+	}
+
+	async onClose(): Promise<void> {
+		this.contentEl.empty();
+	}
+}
+
+/** The dashboard's content, shown in the window or the sidebar panel. */
+export class SchedulerDashboard {
 	// Search, tag filter and sort survive the live re-renders.
 	private query = '';
 	private tagFilter = '';
 	private sort: TaskSort = 'default';
 
-	constructor(app: AISchedulerPlugin['app'], plugin: AISchedulerPlugin) {
-		super(app);
-		this.plugin = plugin;
-	}
+	/**
+	 * `leave` runs `then` (which opens another window) after the window
+	 * version has closed itself.
+	 */
+	constructor(public plugin: AISchedulerPlugin, private contentEl: HTMLElement, private leave: (then: () => void) => void) {}
 
-	onOpen(): void {
-		closeExistingSchedulerModals(this);
-		this.render();
-		// Live auto-refresh every 3s so task progress and state transitions update in real time
-		const refresh = liveRefresh(this.modalEl, () => this.plugin.stateSignature(), () => this.render());
-		this.refreshTimer = window.setInterval(refresh, 3000);
+	private get app(): App {
+		return this.plugin.app;
 	}
 
 	private isJobPastDue(job: Job): { isPastDue: boolean; originalTime?: string } {
@@ -140,8 +210,6 @@ export class AssistantModal extends Modal {
 
 	render(): void {
 		const { contentEl } = this;
-		this.modalEl.addClass('ai-scheduler-modal');
-		this.modalEl.addClass('ai-scheduler-modal-lg');
 		contentEl.addClass('ai-scheduler-content');
 		contentEl.empty();
 		const shell = contentEl.createDiv('ai-scheduler-shell ai-scheduler-shell-lg');
@@ -166,20 +234,17 @@ export class AssistantModal extends Modal {
 
 		const actions = shell.createDiv('ai-scheduler-actions');
 		makeButton(actions, 'Ask AI to plan', () => {
-			this.close();
-			window.setTimeout(() => {
+			this.leave(() => {
 				new PlannerModal(this.app, this.plugin).open();
-			}, 50);
+			});
 		}, true);
 		makeButton(actions, 'Calendar', () => {
-			this.close();
-			window.setTimeout(() => {
+			this.leave(() => {
 				new CalendarModal(this.app, this.plugin).open();
-			}, 50);
+			});
 		});
 		makeButton(actions, 'From a template', () => {
-			this.close();
-			window.setTimeout(() => new TemplateModal(this.app, this.plugin).open(), 50);
+			this.leave(() => new TemplateModal(this.app, this.plugin).open());
 		});
 		const pauseButton = makeButton(actions, this.plugin.settings.paused ? 'Resume' : 'Pause…', () => {
 			if (this.plugin.settings.paused) {
@@ -189,15 +254,11 @@ export class AssistantModal extends Modal {
 			this.showPauseMenu(pauseButton);
 		});
 		const moreButton = makeButton(actions, 'More…', () => this.showMoreMenu(moreButton));
-		renderBackendBar(backendSlot, this.plugin, then => {
-			this.close();
-			window.setTimeout(then, 50);
-		}, actions);
+		renderBackendBar(backendSlot, this.plugin, this.leave, actions);
 		makeButton(actions, 'AI Scheduler settings', () => {
-			this.close();
-			window.setTimeout(() => {
+			this.leave(() => {
 				this.plugin.openSettingsTab();
-			}, 50);
+			});
 		});
 
 		const userJobs = this.plugin.jobs.filter(job => !isNightlyReviewJob(job));
@@ -364,12 +425,11 @@ export class AssistantModal extends Modal {
 						e.stopPropagation();
 						const target = this.plugin.jobs.find(j => j.id === event.jobId) || this.plugin.deletedJobs.find(j => j.id === event.jobId);
 						if (target) {
-							this.close();
-							window.setTimeout(() => {
+							this.leave(() => {
 								new TaskViewModal(this.app, this.plugin, target, () => {
-									new AssistantModal(this.app, this.plugin).open();
+									this.plugin.openDashboard();
 								}).open();
-							}, 50);
+							});
 						} else {
 							new Notice(`Task ${event.jobId} is no longer available.`);
 						}
@@ -430,12 +490,11 @@ export class AssistantModal extends Modal {
 			const job = only[0];
 			card.addClass('ai-scheduler-stat-clickable');
 			makeClickable(card, `Open ${job.title}`, () => {
-				this.close();
-				window.setTimeout(() => {
+				this.leave(() => {
 					new TaskViewModal(this.app, this.plugin, job, () => {
-						new AssistantModal(this.app, this.plugin).open();
+						this.plugin.openDashboard();
 					}).open();
-				}, 50);
+				});
 			});
 		}
 	}
@@ -514,12 +573,11 @@ export class AssistantModal extends Modal {
 			}
 
 			makeButton(controls, 'Edit', () => {
-				this.close();
-				window.setTimeout(() => {
+				this.leave(() => {
 					new JobModal(this.app, this.plugin, job, () => {
-						new AssistantModal(this.app, this.plugin).open();
+						this.plugin.openDashboard();
 					}).open();
-				}, 50);
+				});
 			});
 
 			if (!isRunning) {
@@ -555,12 +613,11 @@ export class AssistantModal extends Modal {
 				copy.createDiv({ cls: 'ai-scheduler-task-paused', text: 'Paused (click Enable to schedule next run)' });
 				const controls = card.createDiv({ cls: 'ai-scheduler-task-actions' });
 				makeButton(controls, 'Edit', () => {
-					this.close();
-					window.setTimeout(() => {
+					this.leave(() => {
 						new JobModal(this.app, this.plugin, job, () => {
-							new AssistantModal(this.app, this.plugin).open();
+							this.plugin.openDashboard();
 						}).open();
-					}, 50);
+					});
 				});
 				makeButton(controls, 'Enable', async () => {
 					const pastDue = this.isJobPastDue(job);
@@ -602,12 +659,11 @@ export class AssistantModal extends Modal {
 				}
 				const controls = card.createDiv('ai-scheduler-task-actions');
 				makeButton(controls, 'View', () => {
-					this.close();
-					window.setTimeout(() => {
+					this.leave(() => {
 						new TaskViewModal(this.app, this.plugin, job, () => {
-							new AssistantModal(this.app, this.plugin).open();
+							this.plugin.openDashboard();
 						}).open();
-					}, 50);
+					});
 				});
 				makeButton(controls, 'Run again…', () => {
 					new RunAgainModal(this.app, this.plugin, job, () => this.render()).open();
@@ -682,10 +738,9 @@ export class AssistantModal extends Modal {
 		const head = card.createDiv({ cls: 'ai-scheduler-approval-head' });
 		head.createDiv({ cls: 'ai-scheduler-alert-title', text: `Awaiting approval (${waiting.length})` });
 		const review = (change: PendingChange) => {
-			this.close();
-			window.setTimeout(() => {
-				new ApprovalModal(this.app, this.plugin, change, () => new AssistantModal(this.app, this.plugin).open()).open();
-			}, 50);
+			this.leave(() => {
+				new ApprovalModal(this.app, this.plugin, change, () => this.plugin.openDashboard()).open();
+			});
 		};
 		makeButton(head, waiting.length > 1 ? 'Review all' : 'Review', () => review(waiting[0]), true);
 		for (const change of waiting.slice(0, 5)) {
@@ -786,14 +841,5 @@ export class AssistantModal extends Modal {
 		heading.createEl('h2', { text: title }).addClass('ai-scheduler-section-title');
 		heading.createSpan({ text: description }).addClass('ai-scheduler-section-desc');
 		return heading;
-	}
-
-	onClose(): void {
-		if (this.refreshTimer) {
-			window.clearInterval(this.refreshTimer);
-			this.refreshTimer = null;
-		}
-		releaseSchedulerModal(this);
-		this.contentEl.empty();
 	}
 }

@@ -12,7 +12,6 @@ import { closeExistingSchedulerModals, linkLabel, makeButton, makeCard, makeClic
 import { renderBackendBar } from './backendBar';
 import { FolderSuggest } from './folderSuggest';
 import { attachLinkHighlight } from './linkHighlight';
-import { AssistantModal } from './AssistantModal';
 import { attachMentionSuggest } from './mentionSuggest';
 import { renderResultSection, renderRunOptions, renderTagsInput, renderVariableHelp, validateOutput } from './taskOptions';
 
@@ -114,7 +113,7 @@ export class JobModal extends Modal {
 			if (this.onSaved) {
 				window.setTimeout(() => this.onSaved(), 50);
 			} else {
-				window.setTimeout(() => new AssistantModal(this.app, this.plugin).open(), 50);
+				window.setTimeout(() => this.plugin.openDashboard(), 50);
 			}
 		};
 

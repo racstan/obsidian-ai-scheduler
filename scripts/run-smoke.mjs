@@ -36,6 +36,7 @@ class Plugin extends Component {
 	addRibbonIcon() {}
 	addCommand(cmd) { this.app.commands.commands[cmd.id] = cmd; }
 	addSettingTab() {}
+	registerView(type, create) { this.app._views = { ...this.app._views, [type]: create }; }
 	addStatusBarItem() { return { empty() {}, hide() {}, show() {}, addClass() {}, remove() {}, setAttribute() {}, createSpan() { return { setText() {}, addClass() {} }; } }; }
 }
 class Modal {
@@ -44,6 +45,9 @@ class Modal {
 	close() {}
 	onOpen() {}
 	onClose() {}
+}
+class ItemView extends Component {
+	constructor(leaf) { super(); this.leaf = leaf; this.app = leaf.app; this.contentEl = { empty() {}, addClass() {} }; }
 }
 class PluginSettingTab {
 	constructor(app, plugin) { this.app = app; this.plugin = plugin; this.containerEl = { empty() {}, createEl() { return { style: {}, createEl() { return { style: {} }; } }; } }; }
@@ -81,7 +85,7 @@ const moment = (date) => ({
 	},
 });
 module.exports = {
-	Plugin, Modal, PluginSettingTab, Notice, TFile, TFolder, TAbstractFile, AbstractInputSuggest,
+	Plugin, Modal, ItemView, PluginSettingTab, Notice, TFile, TFolder, TAbstractFile, AbstractInputSuggest,
 	FuzzySuggestModal,
 	Platform: { isMobile: false, isDesktop: true, isPhone: false },
 	normalizePath,

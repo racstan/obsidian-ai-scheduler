@@ -15,7 +15,6 @@ import { closeExistingSchedulerModals, linkLabel, makeButton, makeCard, makeClic
 import { renderBackendBar } from './backendBar';
 import { FolderSuggest } from './folderSuggest';
 import { attachLinkHighlight } from './linkHighlight';
-import { AssistantModal } from './AssistantModal';
 import { Job } from '../types';
 import { attachMentionSuggest } from './mentionSuggest';
 import { JobModal } from './JobModal';
@@ -83,7 +82,7 @@ export class PlannerModal extends Modal {
 		backBtn.onclick = () => {
 			this.close();
 			window.setTimeout(() => {
-				new AssistantModal(this.app, this.plugin).open();
+				this.plugin.openDashboard();
 			}, 50);
 		};
 
@@ -228,7 +227,7 @@ export class PlannerModal extends Modal {
 		backBtn.onclick = () => {
 			this.close();
 			window.setTimeout(() => {
-				new AssistantModal(this.app, this.plugin).open();
+				this.plugin.openDashboard();
 			}, 50);
 		};
 
@@ -322,7 +321,7 @@ export class PlannerModal extends Modal {
 		makeButton(footer, 'Done & open AI Scheduler', () => {
 			this.close();
 			window.setTimeout(() => {
-				new AssistantModal(this.app, this.plugin).open();
+				this.plugin.openDashboard();
 			}, 50);
 		}, true);
 	}

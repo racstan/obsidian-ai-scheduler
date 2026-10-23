@@ -225,6 +225,8 @@ export interface AISettings {
 	quietEnd: string;
 	/** Show the next run in the status bar when nothing is running. */
 	statusBarNextRun: boolean;
+	/** Where the dashboard opens: a window over the note, or a panel in the right sidebar. */
+	dashboardLocation: 'modal' | 'sidebar';
 	/** Approval mode: changes tasks would make to notes that already exist wait for the user's approval. */
 	approvalMode: boolean;
 	/** Unsent AI requests ("Ask AI to plan", "Update task with AI"), by form. */

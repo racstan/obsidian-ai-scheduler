@@ -10,7 +10,6 @@ import { OUTPUT_MODE_LABELS, outputMode } from '../output';
 import { TASK_TEMPLATES, TaskTemplate } from '../templates';
 import { closeExistingSchedulerModals, makeButton, makeCard, releaseSchedulerModal } from './dom';
 import { JobModal } from './JobModal';
-import { AssistantModal } from './AssistantModal';
 
 export class TemplateModal extends Modal {
 	constructor(app: App, private plugin: AISchedulerPlugin) {
@@ -26,7 +25,7 @@ export class TemplateModal extends Modal {
 
 		const nav = shell.createDiv({ cls: 'ai-scheduler-modal-nav' });
 		const back = nav.createEl('button', { cls: 'ai-scheduler-back-btn', text: 'Back to dashboard' });
-		back.onclick = () => this.navigate(() => new AssistantModal(this.app, this.plugin).open());
+		back.onclick = () => this.navigate(() => this.plugin.openDashboard());
 
 		shell.createEl('h2', { text: 'New task from a template' });
 		shell.createEl('p', {
@@ -61,7 +60,7 @@ export class TemplateModal extends Modal {
 			source: 'template',
 		});
 		this.navigate(() => new JobModal(this.app, this.plugin, job, () => {
-			new AssistantModal(this.app, this.plugin).open();
+			this.plugin.openDashboard();
 		}).open());
 	}
 

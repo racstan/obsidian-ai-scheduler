@@ -42,6 +42,27 @@
 	margin: 0 auto;
 }
 
+/* The dashboard as a sidebar panel: fills the pane and follows its width. */
+.ai-scheduler-view.ai-scheduler-content {
+	max-height: none;
+	height: 100%;
+	container-type: inline-size;
+}
+
+@container (max-width: 500px) {
+	.ai-scheduler-view .ai-scheduler-shell {
+		padding: 16px 12px;
+	}
+
+	.ai-scheduler-view .ai-scheduler-stats {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+
+	.ai-scheduler-view .ai-scheduler-stat-next {
+		grid-column: 1 / -1;
+	}
+}
+
 .ai-scheduler-shell-tight {
 	padding: 24px;
 }
@@ -2756,6 +2777,7 @@ textarea.ai-scheduler-textarea.ai-scheduler-input-highlight,
 }
 
 .ai-scheduler-modal [role="button"]:focus-visible,
+.ai-scheduler-view [role="button"]:focus-visible,
 .ai-scheduler-mention-popup [role="option"]:focus-visible {
 	outline: 2px solid var(--interactive-accent);
 	outline-offset: 2px;

@@ -9,7 +9,6 @@ import { closeExistingSchedulerModals, liveRefresh, makeButton, makeCard, makeCl
 import { JobModal } from './JobModal';
 import { PlannerModal } from './PlannerModal';
 import { TaskViewModal } from './TaskViewModal';
-import { AssistantModal } from './AssistantModal';
 
 export interface CalendarOccurrence {
 	job: Job;
@@ -179,7 +178,7 @@ export class CalendarModal extends Modal {
 		const backBtn = navBar.createEl('button', { cls: 'ai-scheduler-back-btn', text: 'Back to dashboard' });
 		backBtn.onclick = () => {
 			this.close();
-			window.setTimeout(() => new AssistantModal(this.app, this.plugin).open(), 50);
+			window.setTimeout(() => this.plugin.openDashboard(), 50);
 		};
 		const header = shell.createDiv({ cls: 'ai-scheduler-calendar-header' });
 		const titleCol = header.createDiv();
@@ -356,7 +355,7 @@ export class CalendarModal extends Modal {
 		const topActions = header.createDiv({ cls: 'ai-scheduler-calendar-top-actions' });
 		makeButton(topActions, '📋 Task dashboard', () => {
 			this.close();
-			window.setTimeout(() => new AssistantModal(this.app, this.plugin).open(), 50);
+			window.setTimeout(() => this.plugin.openDashboard(), 50);
 		});
 		makeButton(topActions, '⚡ Ask AI to plan', () => {
 			this.close();
