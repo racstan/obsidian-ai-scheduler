@@ -20,7 +20,7 @@ It works with the AI plugins you likely already have installed:
 
 AI Scheduler does not call AI providers directly. It drives Claudian, Oh My Claudian or Copilot — whichever you have configured — and owns only the scheduling and execution layer.
 
-Supported versions: Claudian 2.x (including the 2.3.2x releases), Oh My Claudian, and Copilot 3.x and 4.x. Claudian's providers (Claude, Codex, OpenCode, Pi and others) and Oh My Claudian's extra providers are supported.
+Supported versions: Claudian 2.x, Oh My Claudian 2.5.x, and Copilot 3.x and 4.x; see [Compatibility with AI backends](#compatibility-with-ai-backends) for the versions last tested. Claudian's providers (Claude, Codex, OpenCode, Pi and others) and Oh My Claudian's extra providers are supported.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/racstan/obsidian-ai-scheduler/main/docs/media/demo.gif" alt="Planning a task in plain English: AI Scheduler creates and schedules it" width="860">
@@ -160,7 +160,7 @@ On first install the plugin creates a short **AI Scheduler - Getting started** n
 
 ## Dashboard
 
-Click the brain icon in the ribbon or run **AI Scheduler: Open assistant dashboard** from the command palette.
+Click the brain icon in the ribbon or run **AI Scheduler: Open assistant dashboard** from the command palette. It opens as a panel in the right sidebar that stays open next to your notes (drag its tab to move it to the left sidebar). To open it in a window instead, change **Open the dashboard in** (Settings → General → Dashboard).
 
 The dashboard shows:
 - All scheduled tasks with their next run time and status
@@ -298,7 +298,8 @@ All commands are available from the command palette (`Ctrl/Cmd + P`):
 
 | Command | What it does |
 | --- | --- |
-| `Open assistant dashboard` | Opens the scheduling dashboard |
+| `Open assistant dashboard` | Opens the scheduling dashboard (in the sidebar or a window, per the setting) |
+| `Open dashboard in the sidebar` | Opens the dashboard as a sidebar panel, whatever the setting says |
 | `Open schedule calendar` | Opens the month / agenda / day calendar of upcoming runs |
 | `Ask AI to plan a schedule` | Opens the natural language planner |
 | `Run AI daily preview` | Runs today's preview report immediately |
@@ -342,6 +343,20 @@ All commands are available from the command palette (`Ctrl/Cmd + P`):
 The plugin runs a lightweight dispatcher every 15 seconds. When a job becomes due, it sends the configured prompt (with any attached context files) to the active backend plugin. The backend executes the AI agent, and results are written to a vault folder you choose. Recurring jobs are rescheduled automatically; one-time jobs are marked complete.
 
 The cron engine is dependency-free and bundled directly — no external packages, DST-safe, and tested against a full suite of edge cases.
+
+---
+
+## Compatibility with AI backends
+
+AI Scheduler runs tasks through another plugin, so it relies on parts of Claudian, Oh My Claudian and Copilot that are not a public API. An update to one of those plugins can stop AI Scheduler from running tasks through it until AI Scheduler is updated too.
+
+| Backend | Supported | Last tested with |
+|---|---|---|
+| [Claudian](https://github.com/YishenTu/claudian) | 2.x | 2.3.23 |
+| [Oh My Claudian](https://github.com/lee259/oh-my-claudian) | 2.5.x | 2.5.16 |
+| [Copilot](https://github.com/logancyang/obsidian-copilot) | 3.x and 4.x | 4.0.15 |
+
+Tested with AI Scheduler 2.2.1. If a backend update breaks tasks (for example, the dashboard says the backend's automation API is unavailable), please [open an issue](https://github.com/racstan/obsidian-ai-scheduler/issues) with the backend's version, and stay on the last tested version until it is fixed.
 
 ---
 

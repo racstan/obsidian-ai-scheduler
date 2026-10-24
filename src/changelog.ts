@@ -31,6 +31,30 @@ export const MAINTAINER: Contributor = {
 
 export const CHANGELOG_DATA: ReleaseChangelog[] = [
 	{
+		version: '2.2.1',
+		date: '2026-10-24',
+		title: 'Dashboard in the Sidebar',
+		highlights: [
+			'Dashboard in the sidebar: the dashboard now opens as a panel in the sidebar that stays open next to your notes. You can switch back to a window in the settings.',
+		],
+		added: [
+			'The ribbon icon, the status bar and "Open assistant dashboard" open the dashboard as a panel in the right sidebar. Drag its tab to move it to the left sidebar. To open it in a window as before, change "Open the dashboard in" (Settings → General → Dashboard).',
+			'The command "Open dashboard in the sidebar".',
+			'The README lists the Claudian, Oh My Claudian and Copilot versions AI Scheduler supports and was last tested with.',
+		],
+		changed: [],
+		fixed: [],
+		contributors: [
+			MAINTAINER,
+			{
+				name: 'Frédéric',
+				username: 'fmatray',
+				url: 'https://github.com/fmatray',
+				role: 'Suggested opening the dashboard in a panel (#9)',
+			},
+		],
+	},
+	{
 		version: '2.2.0',
 		date: '2026-10-18',
 		title: 'Approval Mode, Calendar Add-ons, Plugin Integrations & Mobile',

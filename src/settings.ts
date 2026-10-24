@@ -43,7 +43,7 @@ export const DEFAULT_SETTINGS: AISettings = {
 	quietStart: '23:00',
 	quietEnd: '07:00',
 	statusBarNextRun: true,
-	dashboardLocation: 'modal',
+	dashboardLocation: 'sidebar',
 	drafts: {},
 	approvalMode: true,
 	calendarRunDays: 14,
@@ -310,7 +310,7 @@ export function parseStoredData(data: Record<string, unknown> | null | undefined
 	if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(settings.quietStart))) settings.quietStart = DEFAULT_SETTINGS.quietStart;
 	if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(settings.quietEnd))) settings.quietEnd = DEFAULT_SETTINGS.quietEnd;
 	settings.statusBarNextRun = settings.statusBarNextRun !== false;
-	settings.dashboardLocation = settings.dashboardLocation === 'sidebar' ? 'sidebar' : 'modal';
+	settings.dashboardLocation = settings.dashboardLocation === 'modal' ? 'modal' : 'sidebar';
 	settings.drafts = normalizeDrafts(settings.drafts);
 	// On unless the user turned it off.
 	settings.approvalMode = settings.approvalMode !== false;

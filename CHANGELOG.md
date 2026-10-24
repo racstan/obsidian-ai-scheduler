@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If AI Scheduler is useful to you, you can support its continued development at [buymeacoffee.com/rachitasthana](https://buymeacoffee.com/rachitasthana).
 
+## [2.2.1] - 2026-10-24
+
+### Added
+- **Dashboard in the sidebar** ([#9](https://github.com/racstan/obsidian-ai-scheduler/issues/9)): the ribbon icon, the status bar and *Open assistant dashboard* now open the dashboard as a panel in the right sidebar that stays open next to your notes. Drag its tab to move it to the left sidebar. To open it in a window as before, change *Open the dashboard in* (Settings → General → Dashboard).
+- The command **Open dashboard in the sidebar**.
+- README: **Compatibility with AI backends**, listing the Claudian, Oh My Claudian and Copilot versions AI Scheduler supports and was last tested with.
+
+### Contributors
+- [@racstan](https://github.com/racstan)
+- [@fmatray](https://github.com/fmatray) (Frédéric - suggested opening the dashboard in a panel, [#9](https://github.com/racstan/obsidian-ai-scheduler/issues/9))
+
 ## [2.2.0] - 2026-10-18
 
 ### Highlights

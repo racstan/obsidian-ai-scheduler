@@ -75,8 +75,8 @@ test('pending changes and new options survive saving and loading', () => {
 	const job = normalizeJob({ title: 'T', prompt: 'p', output: { tasks: true, taskTag: '#ai', template: ' Templates/R.md ' }, schedule: { kind: 'daily', time: '09:00' } });
 	assert.equal(parseStoredData({ version: 6, settings: {}, jobs: [] }).settings.approvalMode, true, 'approval is on by default');
 	assert.equal(parseStoredData({ version: 6, settings: { approvalMode: false }, jobs: [] }).settings.approvalMode, false);
-	assert.equal(parseStoredData({ version: 6, settings: {}, jobs: [] }).settings.dashboardLocation, 'modal', 'the dashboard opens as a window by default');
-	assert.equal(parseStoredData({ version: 6, settings: { dashboardLocation: 'sidebar' }, jobs: [] }).settings.dashboardLocation, 'sidebar');
-	assert.equal(parseStoredData({ version: 6, settings: { dashboardLocation: 'left' }, jobs: [] }).settings.dashboardLocation, 'modal');
+	assert.equal(parseStoredData({ version: 6, settings: {}, jobs: [] }).settings.dashboardLocation, 'sidebar', 'the dashboard opens in the sidebar by default');
+	assert.equal(parseStoredData({ version: 6, settings: { dashboardLocation: 'modal' }, jobs: [] }).settings.dashboardLocation, 'modal');
+	assert.equal(parseStoredData({ version: 6, settings: { dashboardLocation: 'left' }, jobs: [] }).settings.dashboardLocation, 'sidebar');
 	assert.deepEqual(job.output, { folder: undefined, filename: undefined, tasks: true, taskTag: 'ai', template: 'Templates/R.md' });
 });

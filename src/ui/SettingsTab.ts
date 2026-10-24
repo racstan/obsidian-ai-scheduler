@@ -188,6 +188,21 @@ export class AssistantSettingTab extends PluginSettingTab {
 			}
 		}
 
+		new Setting(containerEl).setName('Dashboard').setHeading();
+		new Setting(containerEl)
+			.setName('Open the dashboard in')
+			.setDesc('Where the ribbon icon, the status bar and the open dashboard command show it. In the sidebar it stays open next to your notes; drag its tab to move it to the left sidebar.')
+			.addDropdown(dropdown => dropdown
+				.addOption('sidebar', 'The sidebar')
+				.addOption('modal', 'A window')
+				.setValue(this.plugin.settings.dashboardLocation)
+				.onChange(value => {
+					void (async () => {
+						this.plugin.settings.dashboardLocation = value === 'modal' ? 'modal' : 'sidebar';
+						await this.plugin.saveState();
+					})();
+				}));
+
 		new Setting(containerEl).setName('Running tasks').setHeading();
 		new Setting(containerEl)
 			.setName('Run scheduled tasks on this device')
@@ -291,20 +306,6 @@ export class AssistantSettingTab extends PluginSettingTab {
 					await this.plugin.saveState();
 				})();
 			}));
-
-		new Setting(containerEl)
-			.setName('Open the dashboard in')
-			.setDesc('Where the ribbon icon, the status bar and the open dashboard command show it. In the sidebar it stays open next to your notes; drag its tab to move it to the left sidebar.')
-			.addDropdown(dropdown => dropdown
-				.addOption('modal', 'A window')
-				.addOption('sidebar', 'The sidebar')
-				.setValue(this.plugin.settings.dashboardLocation)
-				.onChange(value => {
-					void (async () => {
-						this.plugin.settings.dashboardLocation = value === 'sidebar' ? 'sidebar' : 'modal';
-						await this.plugin.saveState();
-					})();
-				}));
 	}
 
 	/** Where results go, approval, the activity log and schedule notes. */
